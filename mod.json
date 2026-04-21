@@ -10,7 +10,7 @@
 	"name": "Git Editor",
 	"version": "v1.0.0",
 	"developer": "imes",
-	"description": "commit changes in gd level like git",
+	"description": "Per-level commit history for the GD editor: commit, browse, and checkout snapshots of your level locally.",
 	"dependencies": {
 		"geode.node-ids": ">=v1.23.3"
 	}
