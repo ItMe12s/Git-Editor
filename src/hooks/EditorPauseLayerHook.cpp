@@ -1,5 +1,5 @@
 #include "../editor/LevelStateIO.hpp"
-#include "../store/CommitStore.hpp"
+#include "../service/GitService.hpp"
 #include "../ui/CommitMessageLayer.hpp"
 #include "../ui/HistoryLayer.hpp"
 #include "../util/LevelKey.hpp"
@@ -25,8 +25,6 @@ namespace {
 // with vanilla or other mods' IDs.
 constexpr auto kSideMenuID = "side-menu"_spr;
 
-git_editor::CommitStore& store() { return git_editor::sharedCommitStore(); }
-
 std::string currentLevelKey(LevelEditorLayer* editor) {
     if (!editor || !editor->m_level) return "unknown:0";
     return git_editor::levelKeyFor(editor->m_level);
@@ -43,25 +41,16 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
         // Defer the menu injection to the next main-thread tick. This lets
         // every other mod's customSetup / post-init work (including NodeIDs
         // restructuring and BetterEdit's layout changes) finish BEFORE we
-        // perturb the child list. Without this, our extra CCMenu sibling
-        // races BetterEdit's index-based child iteration and crashes it.
-        //
-        // We capture a weak Ref so if the user dismisses the pause layer
-        // before the queued job runs, we just no-op instead of accessing a
-        // dangling `this`.
+        // perturb the child list.
         Ref<EditorPauseLayer> safeSelf(this);
         geode::queueInMainThread([safeSelf]() {
             auto* self = safeSelf.data();
-            // Bail if the user already dismissed the pause layer between
-            // customSetup and this deferred tick.
             if (!self || !self->getParent()) return;
             static_cast<GitEditorPauseHook*>(self)->installSideMenu();
         });
     }
 
     void installSideMenu() {
-        // Idempotent guard: if, for any reason, this runs twice on the same
-        // pause layer, don't stack menus.
         if (this->getChildByID(kSideMenuID)) return;
 
         auto winSize = CCDirector::sharedDirector()->getWinSize();
@@ -116,12 +105,15 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
                     return;
                 }
 
-                auto id = store().addCommit(levelKey, message, levelStr);
-                if (id) {
+                auto outcome = git_editor::sharedGitService().commit(
+                    levelKey, message, levelStr
+                );
+                if (outcome.ok) {
                     Notification::create("Committed", NotificationIcon::Success)->show();
                 } else {
                     Notification::create(
-                        "Commit failed", NotificationIcon::Error
+                        ("Commit failed: " + outcome.error).c_str(),
+                        NotificationIcon::Error
                     )->show();
                 }
             }

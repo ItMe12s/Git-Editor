@@ -13,5 +13,17 @@
 	"description": "Per-level commit history for the GD editor: commit, browse, and checkout snapshots of your level locally.",
 	"dependencies": {
 		"geode.node-ids": ">=v1.23.3"
+	},
+	"settings": {
+		"nothing": {
+			"type": "title",
+			"name": "Nothing here yet"
+		},
+		"nothing-else": {
+			"name": "Read description",
+			"description": "It's here so you can open the mod config menu to access the files.",
+			"type": "bool",
+			"default": false
+		}
 	}
 }

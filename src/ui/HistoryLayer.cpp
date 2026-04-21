@@ -1,6 +1,7 @@
 #include "HistoryLayer.hpp"
 
 #include "../editor/LevelStateIO.hpp"
+#include "../service/GitService.hpp"
 #include "../store/CommitStore.hpp"
 
 #include <Geode/Geode.hpp>
@@ -24,12 +25,12 @@ namespace git_editor {
 
 namespace {
 
-constexpr float kPopupWidth    = 400.f;
-constexpr float kPopupHeight   = 260.f;
+constexpr float kPopupWidth    = 420.f;
+constexpr float kPopupHeight   = 280.f;
 constexpr float kListPadX      = 20.f;
 constexpr float kListPadTop    = 36.f;
 constexpr float kListPadBottom = 16.f;
-constexpr float kRowHeight     = 38.f;
+constexpr float kRowHeight     = 46.f;
 
 std::string formatTimestamp(std::int64_t unixSeconds) {
     std::time_t t = static_cast<std::time_t>(unixSeconds);
@@ -47,6 +48,49 @@ std::string formatTimestamp(std::int64_t unixSeconds) {
 std::string shorten(std::string const& s, std::size_t maxChars) {
     if (s.size() <= maxChars) return s;
     return s.substr(0, maxChars - 1) + "...";
+}
+
+// Build a small "revert" / "checkout" tag badge for rows whose reverts_id
+// is populated. Keeps the history list readable when many rows are
+// automatic state changes rather than manual edits.
+CCNode* makeBadge(char const* text) {
+    auto bg = CCLayerColor::create({ 70, 110, 180, 200 }, 44.f, 12.f);
+    bg->ignoreAnchorPointForPosition(false);
+    bg->setAnchorPoint({ .5f, .5f });
+
+    auto lbl = CCLabelBMFont::create(text, "chatFont.fnt");
+    lbl->setScale(.4f);
+    lbl->setPosition({ 22.f, 6.f });
+    bg->addChild(lbl);
+    return bg;
+}
+
+// Summary dialog shown after a revert that skipped any ops. We only surface
+// counts here - full details are in the log for dev inspection.
+void showConflictSummary(std::vector<Conflict> const& conflicts) {
+    if (conflicts.empty()) return;
+
+    int adds = 0, removes = 0, missingTargets = 0, stale = 0;
+    for (auto const& c : conflicts) {
+        switch (c.kind) {
+            case Conflict::Kind::AddAlreadyExists: ++adds;           break;
+            case Conflict::Kind::RemoveMissing:    ++removes;        break;
+            case Conflict::Kind::ModifyMissing:    ++missingTargets; break;
+            case Conflict::Kind::ModifyStale:      ++stale;          break;
+        }
+    }
+
+    std::string body = "Some ops could not be applied cleanly:\n";
+    if (adds)           body += "- " + std::to_string(adds)           + " add(s) already present\n";
+    if (removes)        body += "- " + std::to_string(removes)        + " remove(s) already gone\n";
+    if (missingTargets) body += "- " + std::to_string(missingTargets) + " modify(ies) targeting missing objects\n";
+    if (stale)          body += "- " + std::to_string(stale)          + " stale field(s) skipped";
+
+    FLAlertLayer::create(
+        "Revert - partial",
+        body.c_str(),
+        "OK"
+    )->show();
 }
 
 } // namespace
@@ -85,7 +129,7 @@ bool HistoryLayer::init(
     m_scroll->setAnchorPoint({0.f, 0.f});
     m_scroll->m_contentLayer->setLayout(
         ColumnLayout::create()
-            ->setAxisReverse(true)   // newest on top
+            ->setAxisReverse(true)
             ->setGap(3.f)
             ->setAxisAlignment(AxisAlignment::End)
             ->setCrossAxisOverflow(false)
@@ -108,7 +152,7 @@ void HistoryLayer::rebuildList() {
     auto* content = m_scroll->m_contentLayer;
     content->removeAllChildren();
 
-    auto commits = sharedCommitStore().listCommits(m_levelKey);
+    auto commits = sharedCommitStore().list(m_levelKey);
 
     float const rowWidth = content->getContentSize().width;
 
@@ -117,92 +161,147 @@ void HistoryLayer::rebuildList() {
         empty->setScale(.5f);
         empty->setOpacity(160);
         content->addChild(empty);
-    } else {
-        // Stable, non-owning snapshots of the collaborators we'll need inside
-        // the Checkout confirmation lambda. Capturing `this` would risk
-        // dangling access if HistoryLayer gets torn down before the user
-        // answers the confirm dialog.
-        auto* editor     = m_editor;
-        auto* pauseLayer = m_pauseLayer;
-        Ref<HistoryLayer> self(this);
+        content->updateLayout();
+        m_scroll->scrollToTop();
+        return;
+    }
 
-        for (auto const& c : commits) {
-            auto row = CCNode::create();
-            row->setContentSize({rowWidth, kRowHeight});
-            row->setAnchorPoint({0.f, 0.f});
-            row->setLayout(AnchorLayout::create());
+    // Stable, non-owning snapshots for the row callbacks. Capturing `this`
+    // would risk dangling access if the popup is closed mid-confirm.
+    auto* editor     = m_editor;
+    auto* pauseLayer = m_pauseLayer;
+    std::string levelKey = m_levelKey;
+    Ref<HistoryLayer> self(this);
 
-            auto bg = CCLayerColor::create({0, 0, 0, 60}, rowWidth, kRowHeight);
-            bg->ignoreAnchorPointForPosition(false);
-            bg->setAnchorPoint({.5f, .5f});
-            row->addChildAtPosition(bg, Anchor::Center);
+    auto makeBtn = [](char const* label, char const* texture,
+                      geode::Function<void(CCMenuItemSpriteExtra*)> cb) -> CCMenuItemSpriteExtra* {
+        auto spr = ButtonSprite::create(label, "bigFont.fnt", texture, .8f);
+        spr->setScale(.4f);
+        return CCMenuItemExt::createSpriteExtra(spr, std::move(cb));
+    };
 
-            auto timeLbl = CCLabelBMFont::create(
-                formatTimestamp(c.createdAt).c_str(), "chatFont.fnt"
-            );
-            timeLbl->setScale(.5f);
-            timeLbl->setAnchorPoint({0.f, .5f});
-            row->addChildAtPosition(timeLbl, Anchor::Left, {6.f, 8.f});
+    for (auto const& c : commits) {
+        auto row = CCNode::create();
+        row->setContentSize({rowWidth, kRowHeight});
+        row->setAnchorPoint({0.f, 0.f});
+        row->setLayout(AnchorLayout::create());
 
-            auto msgLbl = CCLabelBMFont::create(
-                shorten(c.message, 32).c_str(), "chatFont.fnt"
-            );
-            msgLbl->setScale(.55f);
-            msgLbl->setAnchorPoint({0.f, .5f});
-            row->addChildAtPosition(msgLbl, Anchor::Left, {6.f, -8.f});
+        auto bg = CCLayerColor::create({0, 0, 0, 60}, rowWidth, kRowHeight);
+        bg->ignoreAnchorPointForPosition(false);
+        bg->setAnchorPoint({.5f, .5f});
+        row->addChildAtPosition(bg, Anchor::Center);
 
-            auto menu = CCMenu::create();
-            menu->setContentSize({80.f, kRowHeight});
-            menu->setAnchorPoint({1.f, .5f});
+        auto timeLbl = CCLabelBMFont::create(
+            formatTimestamp(c.createdAt).c_str(), "chatFont.fnt"
+        );
+        timeLbl->setScale(.5f);
+        timeLbl->setAnchorPoint({0.f, .5f});
+        row->addChildAtPosition(timeLbl, Anchor::Left, {6.f, 11.f});
 
-            auto spr = ButtonSprite::create("Checkout", "bigFont.fnt", "GJ_button_02.png", .8f);
-            spr->setScale(.45f);
+        auto msgLbl = CCLabelBMFont::create(
+            shorten(c.message, 34).c_str(), "chatFont.fnt"
+        );
+        msgLbl->setScale(.55f);
+        msgLbl->setAnchorPoint({0.f, .5f});
+        row->addChildAtPosition(msgLbl, Anchor::Left, {6.f, -8.f});
 
-            auto const commitId = c.id;
-            auto btn = CCMenuItemExt::createSpriteExtra(
-                spr,
-                [self, editor, pauseLayer, commitId](CCMenuItemSpriteExtra*) {
-                    createQuickPopup(
-                        "Checkout",
-                        "This will <cr>replace</c> all current objects in the editor. "
-                        "Continue?",
-                        "Cancel", "Checkout",
-                        [self, editor, pauseLayer, commitId](FLAlertLayer*, bool yes) {
-                            if (!yes) return;
-
-                            auto commit = sharedCommitStore().getCommit(commitId);
-                            if (!commit) {
-                                Notification::create(
-                                    "Commit not found", NotificationIcon::Error
-                                )->show();
-                                return;
-                            }
-                            if (!applyLevelString(editor, commit->levelString)) {
-                                Notification::create(
-                                    "Checkout failed", NotificationIcon::Error
-                                )->show();
-                                return;
-                            }
-                            Notification::create(
-                                "Checked out", NotificationIcon::Success
-                            )->show();
-
-                            // Close this popup, then the pause layer so the
-                            // user lands back in the editor with the
-                            // restored objects. `self` is a Ref so the
-                            // popup is guaranteed alive for this call.
-                            if (self) self->onClose(nullptr);
-                            if (pauseLayer) pauseLayer->onResume(nullptr);
-                        }
-                    );
-                }
-            );
-            btn->setAnchorPoint({1.f, .5f});
-            menu->addChild(btn);
-            row->addChildAtPosition(menu, Anchor::Right, {-6.f, 0.f});
-
-            content->addChild(row);
+        // Badge for auto-commits produced by checkout / revert.
+        if (c.reverts) {
+            auto const* label = (c.message.rfind("Revert", 0) == 0) ? "revert" : "checkout";
+            auto badge = makeBadge(label);
+            row->addChildAtPosition(badge, Anchor::TopLeft, { 30.f, -8.f });
         }
+
+        auto menu = CCMenu::create();
+        menu->setContentSize({120.f, kRowHeight});
+        menu->setAnchorPoint({1.f, .5f});
+        menu->setLayout(
+            RowLayout::create()
+                ->setGap(4.f)
+                ->setAxisAlignment(AxisAlignment::End)
+                ->setCrossAxisOverflow(true)
+        );
+
+        auto const commitId = c.id;
+        auto const commitMsg = c.message;
+
+        auto checkoutBtn = makeBtn(
+            "Checkout", "GJ_button_02.png",
+            [self, editor, pauseLayer, levelKey, commitId, commitMsg](CCMenuItemSpriteExtra*) {
+                createQuickPopup(
+                    "Checkout",
+                    ("Load state of commit \"" + shorten(commitMsg, 40) +
+                     "\"? A new auto-revert commit will be added on top of HEAD.").c_str(),
+                    "Cancel", "Checkout",
+                    [self, editor, pauseLayer, levelKey, commitId](FLAlertLayer*, bool yes) {
+                        if (!yes) return;
+                        auto outcome = sharedGitService().checkout(levelKey, commitId);
+                        if (!outcome.ok) {
+                            Notification::create(
+                                ("Checkout failed: " + outcome.error).c_str(),
+                                NotificationIcon::Error
+                            )->show();
+                            return;
+                        }
+                        if (!applyLevelState(editor, outcome.state)) {
+                            Notification::create(
+                                "Checkout applied to DB but editor refused",
+                                NotificationIcon::Warning
+                            )->show();
+                        } else {
+                            Notification::create("Checked out", NotificationIcon::Success)->show();
+                        }
+                        if (self) self->onClose(nullptr);
+                        if (pauseLayer) pauseLayer->onResume(nullptr);
+                    }
+                );
+            }
+        );
+        menu->addChild(checkoutBtn);
+
+        auto revertBtn = makeBtn(
+            "Revert", "GJ_button_06.png",
+            [self, editor, pauseLayer, levelKey, commitId, commitMsg](CCMenuItemSpriteExtra*) {
+                createQuickPopup(
+                    "Revert",
+                    ("Undo just the changes from commit \"" + shorten(commitMsg, 40) +
+                     "\"? Later commits are preserved.").c_str(),
+                    "Cancel", "Revert",
+                    [self, editor, pauseLayer, levelKey, commitId](FLAlertLayer*, bool yes) {
+                        if (!yes) return;
+                        auto outcome = sharedGitService().revert(levelKey, commitId);
+                        if (!outcome.ok) {
+                            Notification::create(
+                                ("Revert failed: " + outcome.error).c_str(),
+                                NotificationIcon::Error
+                            )->show();
+                            return;
+                        }
+                        if (!applyLevelState(editor, outcome.state)) {
+                            Notification::create(
+                                "Revert applied to DB but editor refused",
+                                NotificationIcon::Warning
+                            )->show();
+                        } else if (outcome.conflicts.empty()) {
+                            Notification::create("Reverted", NotificationIcon::Success)->show();
+                        } else {
+                            Notification::create(
+                                "Reverted with conflicts", NotificationIcon::Warning
+                            )->show();
+                        }
+                        if (self) self->onClose(nullptr);
+                        if (pauseLayer) pauseLayer->onResume(nullptr);
+                        showConflictSummary(outcome.conflicts);
+                    }
+                );
+            }
+        );
+        menu->addChild(revertBtn);
+
+        menu->updateLayout();
+        row->addChildAtPosition(menu, Anchor::Right, {-6.f, 0.f});
+
+        content->addChild(row);
     }
 
     content->updateLayout();

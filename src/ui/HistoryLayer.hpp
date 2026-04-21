@@ -8,10 +8,16 @@
 
 namespace git_editor {
 
-// Popup: scrollable list of commits for a level. Each row exposes a
-// Checkout button that (after a confirm dialog) restores the commit to the
-// editor via LevelStateIO::applyLevelString and then dismisses the pause
-// layer so the user lands back in the editor.
+// Popup: scrollable list of commits for a level. Each row exposes two
+// actions:
+//   - Checkout: load that commit's state into the editor. Persists as a
+//     new auto-revert commit so history is never lost.
+//   - Revert: undo the operations introduced by that specific commit,
+//     leaving every newer commit's work intact. Creates a new revert
+//     commit; conflicts are surfaced in a summary dialog.
+//
+// Auto-revert and revert commits are rendered with a small badge so the
+// user can tell real edits apart from state changes.
 class HistoryLayer : public geode::Popup {
 public:
     static HistoryLayer* create(

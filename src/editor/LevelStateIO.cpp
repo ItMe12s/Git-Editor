@@ -1,5 +1,7 @@
 #include "LevelStateIO.hpp"
 
+#include "../model/LevelParser.hpp"
+
 #include <Geode/loader/Log.hpp>
 
 namespace git_editor {
@@ -21,11 +23,15 @@ bool applyLevelString(LevelEditorLayer* editor, std::string const& levelString) 
 
     editor->removeAllObjects();
 
-    // createObjectsFromSetup takes a non-const gd::string& - copy into a local
-    // gd::string so the binding can mutate its working buffer freely.
+    // createObjectsFromSetup mutates its argument, so hand it a fresh
+    // gd::string copy rather than risk any alias with the stored blob.
     gd::string s(levelString.c_str(), levelString.size());
     editor->createObjectsFromSetup(s);
     return true;
+}
+
+bool applyLevelState(LevelEditorLayer* editor, LevelState const& state) {
+    return applyLevelString(editor, serializeLevelString(state));
 }
 
 } // namespace git_editor

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../model/LevelState.hpp"
+
 #include <Geode/binding/LevelEditorLayer.hpp>
 #include <string>
 
@@ -9,9 +11,12 @@ namespace git_editor {
 // failure (null editor, bindings missing).
 std::string captureLevelString(LevelEditorLayer* editor);
 
-// Full replace: discard every object currently in the editor and repopulate
-// from `levelString`. NOTE: built-in undo/redo history is NOT reset; use the
-// editor's own undo if needed.
+// Full replace from a raw GD level string. Built-in editor undo/redo is NOT
+// reset.
 bool applyLevelString(LevelEditorLayer* editor, std::string const& levelString);
+
+// Full replace from a logical LevelState. Internally serializes via
+// LevelParser and hands off to applyLevelString.
+bool applyLevelState(LevelEditorLayer* editor, LevelState const& state);
 
 } // namespace git_editor
