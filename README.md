@@ -15,8 +15,19 @@ without touching anything else.
   Later commits are preserved. Ops that can't be applied cleanly (object
   already gone, field drifted, etc.) are reported instead of silently
   clobbered.
+- **Levels** - open a list of every level key that has commits in the database.
+  You can remove all history for a level in one step (for example after
+  deleting the level in-game). There is no checkout or revert from this list,
+  it is storage management only.
 
 All data is offline SQLite under the mod save dir (`git-editor.db`).
+
+## Pause menu UI
+
+The mod adds a compact row (**Commit**, **History**, **Levels**) along the
+**top center** of the editor pause screen. Commit history for the **current**
+level opens from **History**, auto-checkout and auto-revert commits are shown
+with small **checkout** / **revert** text labels (no colored badge strip).
 
 ## Model
 

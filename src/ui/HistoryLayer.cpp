@@ -51,15 +51,11 @@ std::string shorten(std::string const& s, std::size_t maxChars) {
 }
 
 CCNode* makeBadge(char const* text) {
-    auto bg = CCLayerColor::create({ 70, 110, 180, 200 }, 44.f, 12.f);
-    bg->ignoreAnchorPointForPosition(false);
-    bg->setAnchorPoint({ .5f, .5f });
-
     auto lbl = CCLabelBMFont::create(text, "chatFont.fnt");
     lbl->setScale(.4f);
-    lbl->setPosition({ 22.f, 6.f });
-    bg->addChild(lbl);
-    return bg;
+    lbl->ignoreAnchorPointForPosition(false);
+    lbl->setAnchorPoint({ .5f, .5f });
+    return lbl;
 }
 
 void showConflictSummary(std::vector<Conflict> const& conflicts) {

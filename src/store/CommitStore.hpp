@@ -14,6 +14,12 @@ using CommitId = std::int64_t;
 using LevelKey = std::string;
 
 // deltaBlob: JSON Delta. Root commit: parent null, delta is all adds for that snapshot.
+struct LevelSummary {
+    LevelKey     levelKey;
+    int          commitCount   = 0;
+    std::int64_t lastCreatedAt = 0;
+};
+
 struct CommitRow {
     CommitId                 id        = 0;
     LevelKey                 levelKey;
@@ -48,6 +54,9 @@ public:
     std::optional<CommitRow> get(CommitId id);
 
     std::vector<CommitRow> list(LevelKey const& levelKey);
+
+    std::vector<LevelSummary> listLevels();
+    bool                      deleteLevel(LevelKey const& levelKey);
 
     std::optional<CommitId> getHead(LevelKey const& levelKey);
     bool                    setHead(LevelKey const& levelKey, CommitId head);

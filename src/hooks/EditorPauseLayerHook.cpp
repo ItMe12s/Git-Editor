@@ -2,6 +2,7 @@
 #include "../service/GitService.hpp"
 #include "../ui/CommitMessageLayer.hpp"
 #include "../ui/HistoryLayer.hpp"
+#include "../ui/LevelBrowserLayer.hpp"
 #include "../util/LevelKey.hpp"
 
 #include <Geode/Geode.hpp>
@@ -13,6 +14,7 @@
 #include <Geode/loader/Loader.hpp>
 #include <Geode/loader/Mod.hpp>
 #include <Geode/modify/EditorPauseLayer.hpp>
+#include <Geode/ui/Layout.hpp>
 #include <Geode/ui/Notification.hpp>
 #include <Geode/utils/cocos.hpp>
 
@@ -21,7 +23,7 @@ using namespace geode::prelude;
 namespace {
 
 // "_spr" prefixes mod id (avoids ID collisions).
-constexpr auto kSideMenuID = "side-menu"_spr;
+constexpr auto kTopMenuID = "top-menu"_spr;
 
 std::string currentLevelKey(LevelEditorLayer* editor) {
     if (!editor || !editor->m_level) return "unknown:0";
@@ -41,29 +43,29 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
         geode::queueInMainThread([safeSelf]() {
             auto* self = safeSelf.data();
             if (!self || !self->getParent()) return;
-            static_cast<GitEditorPauseHook*>(self)->installSideMenu();
+            static_cast<GitEditorPauseHook*>(self)->installTopMenu();
         });
     }
 
-    void installSideMenu() {
-        if (this->getChildByID(kSideMenuID)) return;
+    void installTopMenu() {
+        if (this->getChildByID(kTopMenuID)) return;
 
         auto winSize = CCDirector::sharedDirector()->getWinSize();
 
         auto menu = CCMenu::create();
-        menu->setID(kSideMenuID);
-        menu->setContentSize({80.f, 100.f});
-        menu->setPosition({ 30.f, winSize.height / 2.f });
+        menu->setID(kTopMenuID);
+        menu->setContentSize({220.f, 26.f});
+        menu->setPosition({ winSize.width / 2.f, winSize.height - 14.f });
         menu->setLayout(
-            ColumnLayout::create()
-                ->setGap(8.f)
+            RowLayout::create()
+                ->setGap(6.f)
                 ->setAxisAlignment(AxisAlignment::Center)
                 ->setAutoGrowAxis(0.f)
                 ->setCrossAxisOverflow(true)
         );
 
         auto commitSpr = ButtonSprite::create("Commit", "bigFont.fnt", "GJ_button_01.png", .8f);
-        commitSpr->setScale(.7f);
+        commitSpr->setScale(.5f);
         auto commitBtn = CCMenuItemExt::createSpriteExtra(commitSpr, [this](CCMenuItemSpriteExtra*) {
             this->onGitCommit();
         });
@@ -71,12 +73,20 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
         menu->addChild(commitBtn);
 
         auto historySpr = ButtonSprite::create("History", "bigFont.fnt", "GJ_button_04.png", .8f);
-        historySpr->setScale(.7f);
+        historySpr->setScale(.5f);
         auto historyBtn = CCMenuItemExt::createSpriteExtra(historySpr, [this](CCMenuItemSpriteExtra*) {
             this->onGitHistory();
         });
         historyBtn->setID("history-button"_spr);
         menu->addChild(historyBtn);
+
+        auto levelsSpr = ButtonSprite::create("Levels", "bigFont.fnt", "GJ_button_05.png", .8f);
+        levelsSpr->setScale(.5f);
+        auto levelsBtn = CCMenuItemExt::createSpriteExtra(levelsSpr, [this](CCMenuItemSpriteExtra*) {
+            this->onGitLevels();
+        });
+        levelsBtn->setID("levels-button"_spr);
+        menu->addChild(levelsBtn);
 
         menu->updateLayout();
         this->addChild(menu);
@@ -124,6 +134,12 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
         }
         auto levelKey = currentLevelKey(editor);
         if (auto popup = git_editor::HistoryLayer::create(levelKey, editor, this)) {
+            popup->show();
+        }
+    }
+
+    void onGitLevels() {
+        if (auto popup = git_editor::LevelBrowserLayer::create()) {
             popup->show();
         }
     }

@@ -250,6 +250,91 @@ std::vector<CommitRow> CommitStore::list(LevelKey const& levelKey) {
     return out;
 }
 
+std::vector<LevelSummary> CommitStore::listLevels() {
+    std::vector<LevelSummary> out;
+    if (!m_db) return out;
+
+    constexpr char const* sql =
+        "SELECT level_key, COUNT(*), MAX(created_at) FROM commits "
+        "GROUP BY level_key ORDER BY MAX(created_at) DESC;";
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(m_db, sql, -1, &st, nullptr) != SQLITE_OK) {
+        geode::log::error("prepare listLevels failed: {}", sqlite3_errmsg(m_db));
+        return out;
+    }
+
+    while (sqlite3_step(st) == SQLITE_ROW) {
+        LevelSummary s;
+        auto const* key = reinterpret_cast<char const*>(sqlite3_column_text(st, 0));
+        s.levelKey      = key ? key : "";
+        s.commitCount   = static_cast<int>(sqlite3_column_int64(st, 1));
+        s.lastCreatedAt = sqlite3_column_int64(st, 2);
+        out.push_back(std::move(s));
+    }
+    sqlite3_finalize(st);
+    return out;
+}
+
+bool CommitStore::deleteLevel(LevelKey const& levelKey) {
+    if (!m_db) return false;
+
+    if (!execOrLog(m_db, "BEGIN IMMEDIATE;")) return false;
+    if (!execOrLog(m_db, "PRAGMA defer_foreign_keys = ON;")) {
+        execOrLog(m_db, "ROLLBACK;");
+        return false;
+    }
+
+    {
+        constexpr char const* delRefs =
+            "DELETE FROM refs WHERE level_key = ?;";
+        sqlite3_stmt* st = nullptr;
+        if (sqlite3_prepare_v2(m_db, delRefs, -1, &st, nullptr) != SQLITE_OK) {
+            geode::log::error("prepare deleteLevel refs: {}", sqlite3_errmsg(m_db));
+            execOrLog(m_db, "ROLLBACK;");
+            return false;
+        }
+        sqlite3_bind_text(
+            st, 1, levelKey.c_str(), static_cast<int>(levelKey.size()), SQLITE_TRANSIENT
+        );
+        if (sqlite3_step(st) != SQLITE_DONE) {
+            geode::log::error("deleteLevel refs step: {}", sqlite3_errmsg(m_db));
+            sqlite3_finalize(st);
+            execOrLog(m_db, "ROLLBACK;");
+            return false;
+        }
+        sqlite3_finalize(st);
+    }
+
+    {
+        constexpr char const* delCommits =
+            "DELETE FROM commits WHERE level_key = ?;";
+        sqlite3_stmt* st = nullptr;
+        if (sqlite3_prepare_v2(m_db, delCommits, -1, &st, nullptr) != SQLITE_OK) {
+            geode::log::error("prepare deleteLevel commits: {}", sqlite3_errmsg(m_db));
+            execOrLog(m_db, "ROLLBACK;");
+            return false;
+        }
+        sqlite3_bind_text(
+            st, 1, levelKey.c_str(), static_cast<int>(levelKey.size()), SQLITE_TRANSIENT
+        );
+        if (sqlite3_step(st) != SQLITE_DONE) {
+            geode::log::error("deleteLevel commits step: {}", sqlite3_errmsg(m_db));
+            sqlite3_finalize(st);
+            execOrLog(m_db, "ROLLBACK;");
+            return false;
+        }
+        sqlite3_finalize(st);
+    }
+
+    if (!execOrLog(m_db, "COMMIT;")) {
+        execOrLog(m_db, "ROLLBACK;");
+        execOrLog(m_db, "PRAGMA defer_foreign_keys = OFF;");
+        return false;
+    }
+    execOrLog(m_db, "PRAGMA defer_foreign_keys = OFF;");
+    return true;
+}
+
 std::optional<CommitId> CommitStore::getHead(LevelKey const& levelKey) {
     if (!m_db) return std::nullopt;
 
