@@ -1,31 +1,27 @@
 # Git Editor
 
-A mod that tries to implement git into the level editor
+A Geometry Dash (Geode) mod: per-level commit history, checkout/revert/squash, level browser, and `.gdge` import/export/merge. Normal user info in [about.md](about.md).
 
 ## Core model
 
 - Linear history per level key, no branches.
-- Commit stores JSON `Delta` against parent in `git-editor.db`.
+- Commits store a JSON `Delta` against the parent in `git-editor.db` (under the mod save directory).
 - Delta keys: `h` (header), `+` (adds), `-` (removes), `~` (modifies).
-- State reconstruction replays root -> HEAD, with LRU cache (default 16 states).
+- State reconstruction replays root -> HEAD, with an LRU cache (default 16 states).
 
 ## Other info not in about.md
 
-- Checkout is forward-only: inserts new commit with `diff(HEAD, target)`.
+- Checkout is forward-only: inserts a new commit with `diff(HEAD, target)`.
 - Revert applies `diff(target, target.parent)` onto current HEAD, reports conflicts.
 - Squash requires 2+ contiguous selected commits.
-
-## Identity + keys
-
-- Object UUID assignment uses fingerprint + nearest match (32-unit radius, same type).
-- Saved level key: `m_levelID`.
-- Unsaved observed keys are mapped to stable canonical aliases (`localid:<n>`) for persistent history.
+- Editor levels use `id:<n>` as the level key, from **cvolton.level-id-api** (see [mod.json](mod.json) dependencies and `levelKeyFor` in the source).
+- Heavy git/DB work is scheduled with `geode::async::runtime().spawnBlocking` (`postToGitWorker`), the UI can still read the store on the main thread. See comments on `CommitStore` and [AsyncQueue.cpp](src/util/AsyncQueue.cpp).
 
 ## TO-DO
 
-- Actually none, waiting for bug reports rn.
+- None planned, file issues or bug reports (Discord in mod.json, source link on GitHub).
 
 ## Build
 
-- SQLite via CPM in `CMakeLists.txt`.
-- Manual testing: `testing-checklist.md`.
+- **SQLite** is pulled via **CPM** in [CMakeLists.txt](CMakeLists.txt) and linked into the mod.
+- For manual testing, see [testing-checklist.md](testing-checklist.md).
