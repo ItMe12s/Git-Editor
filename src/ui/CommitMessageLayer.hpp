@@ -16,10 +16,20 @@ public:
 
     static constexpr std::size_t kMaxMessageLen = 120;
 
-    static CommitMessageLayer* create(ConfirmFn onConfirm);
+    static CommitMessageLayer* create(
+        ConfirmFn onConfirm,
+        std::string title = "New Commit",
+        std::string buttonLabel = "Commit",
+        std::string initialText = ""
+    );
 
 protected:
-    bool init(ConfirmFn onConfirm);
+    bool init(
+        ConfirmFn onConfirm,
+        std::string title,
+        std::string buttonLabel,
+        std::string initialText
+    );
 
     void onConfirmClicked(cocos2d::CCObject*);
 

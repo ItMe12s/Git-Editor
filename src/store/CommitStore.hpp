@@ -54,6 +54,7 @@ public:
     std::optional<CommitRow> get(CommitId id);
 
     std::vector<CommitRow> list(LevelKey const& levelKey);
+    bool                   updateMessage(CommitId id, std::string const& message);
 
     std::vector<LevelSummary> listLevels();
     bool                      deleteLevel(LevelKey const& levelKey);

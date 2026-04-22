@@ -8,6 +8,8 @@
 #include <Geode/ui/TextInput.hpp>
 #include <Geode/utils/cocos.hpp>
 
+#include <cctype>
+
 using namespace geode::prelude;
 
 namespace git_editor {
@@ -23,9 +25,16 @@ std::string trim(std::string s) {
 
 } // namespace
 
-CommitMessageLayer* CommitMessageLayer::create(ConfirmFn onConfirm) {
+CommitMessageLayer* CommitMessageLayer::create(
+    ConfirmFn onConfirm,
+    std::string title,
+    std::string buttonLabel,
+    std::string initialText
+) {
     auto ret = new CommitMessageLayer();
-    if (ret && ret->init(std::move(onConfirm))) {
+    if (ret && ret->init(
+        std::move(onConfirm), std::move(title), std::move(buttonLabel), std::move(initialText)
+    )) {
         ret->autorelease();
         return ret;
     }
@@ -33,7 +42,12 @@ CommitMessageLayer* CommitMessageLayer::create(ConfirmFn onConfirm) {
     return nullptr;
 }
 
-bool CommitMessageLayer::init(ConfirmFn onConfirm) {
+bool CommitMessageLayer::init(
+    ConfirmFn onConfirm,
+    std::string title,
+    std::string buttonLabel,
+    std::string initialText
+) {
     constexpr float kWidth  = 340.f;
     constexpr float kHeight = 160.f;
 
@@ -41,14 +55,17 @@ bool CommitMessageLayer::init(ConfirmFn onConfirm) {
 
     m_callback = std::move(onConfirm);
 
-    this->setTitle("New Commit");
+    this->setTitle(title.c_str());
 
     m_input = TextInput::create(kWidth - 60.f, "Commit message", "chatFont.fnt");
     m_input->setMaxCharCount(static_cast<size_t>(kMaxMessageLen));
     m_input->setCommonFilter(CommonFilter::Any);
+    if (!initialText.empty()) {
+        m_input->setString(initialText);
+    }
     m_mainLayer->addChildAtPosition(m_input, Anchor::Center, {0.f, 6.f});
 
-    auto confirmSpr = ButtonSprite::create("Commit", "bigFont.fnt", "GJ_button_01.png", .8f);
+    auto confirmSpr = ButtonSprite::create(buttonLabel.c_str(), "bigFont.fnt", "GJ_button_01.png", .8f);
     confirmSpr->setScale(.7f);
     auto confirmBtn = CCMenuItemSpriteExtra::create(
         confirmSpr, this,

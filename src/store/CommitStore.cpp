@@ -232,7 +232,7 @@ std::vector<CommitRow> CommitStore::list(LevelKey const& levelKey) {
     if (!m_db) return out;
 
     constexpr char const* sql =
-        "SELECT id, level_key, parent_id, reverts_id, message, created_at, '' AS delta_blob "
+        "SELECT id, level_key, parent_id, reverts_id, message, created_at, delta_blob "
         "FROM commits WHERE level_key = ? "
         "ORDER BY created_at DESC, id DESC;";
 
@@ -244,10 +244,28 @@ std::vector<CommitRow> CommitStore::list(LevelKey const& levelKey) {
     sqlite3_bind_text(st, 1, levelKey.c_str(), static_cast<int>(levelKey.size()), SQLITE_TRANSIENT);
 
     while (sqlite3_step(st) == SQLITE_ROW) {
-        out.push_back(rowFromStatement(st, /*includeBlob*/ false));
+        out.push_back(rowFromStatement(st, /*includeBlob*/ true));
     }
     sqlite3_finalize(st);
     return out;
+}
+
+bool CommitStore::updateMessage(CommitId id, std::string const& message) {
+    if (!m_db) return false;
+
+    constexpr char const* sql = "UPDATE commits SET message = ? WHERE id = ?;";
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(m_db, sql, -1, &st, nullptr) != SQLITE_OK) {
+        geode::log::error("prepare updateMessage failed: {}", sqlite3_errmsg(m_db));
+        return false;
+    }
+
+    sqlite3_bind_text(st, 1, message.c_str(), static_cast<int>(message.size()), SQLITE_TRANSIENT);
+    sqlite3_bind_int64(st, 2, id);
+
+    bool const ok = (sqlite3_step(st) == SQLITE_DONE) && (sqlite3_changes(m_db) > 0);
+    sqlite3_finalize(st);
+    return ok;
 }
 
 std::vector<LevelSummary> CommitStore::listLevels() {

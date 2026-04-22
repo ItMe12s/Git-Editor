@@ -1,5 +1,7 @@
 #include "HistoryLayer.hpp"
 
+#include "CommitMessageLayer.hpp"
+#include "../diff/Delta.hpp"
 #include "../editor/LevelStateIO.hpp"
 #include "../service/GitService.hpp"
 #include "../store/CommitStore.hpp"
@@ -31,6 +33,9 @@ constexpr float kListPadX      = 20.f;
 constexpr float kListPadTop    = 36.f;
 constexpr float kListPadBottom = 16.f;
 constexpr float kRowHeight     = 46.f;
+constexpr ccColor3B kAddColor  = {64, 227, 72};
+constexpr ccColor3B kModColor  = {50, 200, 255};
+constexpr ccColor3B kDelColor  = {255, 90, 90};
 
 std::string formatTimestamp(std::int64_t unixSeconds) {
     std::time_t t = static_cast<std::time_t>(unixSeconds);
@@ -179,6 +184,37 @@ void HistoryLayer::rebuildList() {
         timeLbl->setAnchorPoint({0.f, .5f});
         row->addChildAtPosition(timeLbl, Anchor::Left, {6.f, 11.f});
 
+        auto statsNode = CCNode::create();
+        statsNode->setContentSize({110.f, 12.f});
+        statsNode->setAnchorPoint({0.f, .5f});
+        statsNode->setLayout(
+            RowLayout::create()
+                ->setGap(4.f)
+                ->setAxisAlignment(AxisAlignment::Start)
+                ->setCrossAxisOverflow(false)
+        );
+        if (auto delta = parseDelta(c.deltaBlob)) {
+            auto const stats = computeStats(*delta);
+            auto makeStat = [](std::string const& text, ccColor3B color) {
+                auto* lbl = CCLabelBMFont::create(text.c_str(), "chatFont.fnt");
+                lbl->setScale(.45f);
+                lbl->setColor(color);
+                return lbl;
+            };
+            if (stats.adds > 0) {
+                statsNode->addChild(makeStat("+" + std::to_string(stats.adds), kAddColor));
+            }
+            if (stats.modifies > 0) {
+                statsNode->addChild(makeStat("~" + std::to_string(stats.modifies), kModColor));
+            }
+            if (stats.removes > 0) {
+                statsNode->addChild(makeStat("-" + std::to_string(stats.removes), kDelColor));
+            }
+        }
+        statsNode->updateLayout();
+        float const timeWidth = timeLbl->getContentSize().width * timeLbl->getScale();
+        row->addChildAtPosition(statsNode, Anchor::Left, {10.f + timeWidth, 11.f});
+
         auto msgLbl = CCLabelBMFont::create(
             shorten(c.message, 34).c_str(), "chatFont.fnt"
         );
@@ -187,7 +223,7 @@ void HistoryLayer::rebuildList() {
         row->addChildAtPosition(msgLbl, Anchor::Left, {6.f, -8.f});
 
         auto menu = CCMenu::create();
-        menu->setContentSize({120.f, kRowHeight});
+        menu->setContentSize({170.f, kRowHeight});
         menu->setAnchorPoint({1.f, .5f});
         menu->setLayout(
             RowLayout::create()
@@ -198,6 +234,28 @@ void HistoryLayer::rebuildList() {
 
         auto const commitId = c.id;
         auto const commitMsg = c.message;
+
+        auto renameBtn = makeBtn(
+            "Rename", "GJ_button_04.png",
+            [self, commitId, commitMsg](CCMenuItemSpriteExtra*) {
+                if (auto popup = CommitMessageLayer::create(
+                    [self, commitId](std::string const& newMessage) {
+                        if (!sharedCommitStore().updateMessage(commitId, newMessage)) {
+                            Notification::create("Rename failed", NotificationIcon::Error)->show();
+                            return;
+                        }
+                        Notification::create("Renamed commit", NotificationIcon::Success)->show();
+                        if (self) self->rebuildList();
+                    },
+                    "Rename Commit",
+                    "Save",
+                    commitMsg
+                )) {
+                    popup->show();
+                }
+            }
+        );
+        menu->addChild(renameBtn);
 
         auto checkoutBtn = makeBtn(
             "Checkout", "GJ_button_02.png",

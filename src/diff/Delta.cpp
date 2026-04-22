@@ -233,4 +233,12 @@ std::optional<Delta> parseDelta(std::string const& blob) {
     return out;
 }
 
+DeltaStats computeStats(Delta const& d) {
+    DeltaStats out;
+    out.adds     = static_cast<int>(d.adds.size());
+    out.modifies = static_cast<int>(d.modifies.size());
+    out.removes  = static_cast<int>(d.removes.size());
+    return out;
+}
+
 } // namespace git_editor

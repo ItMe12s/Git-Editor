@@ -30,9 +30,16 @@ struct Delta {
     std::vector<Modify> modifies;
 };
 
+struct DeltaStats {
+    int adds     = 0;
+    int modifies = 0;
+    int removes  = 0;
+};
+
 std::string dumpDelta(Delta const& d);
 
 // std::nullopt on parse failure, callers must not substitute empty delta (corrupts state).
 std::optional<Delta> parseDelta(std::string const& blob);
+DeltaStats           computeStats(Delta const& d);
 
 } // namespace git_editor
