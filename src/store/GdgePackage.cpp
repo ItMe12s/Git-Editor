@@ -3,6 +3,7 @@
 #include <sqlite3.h>
 
 #include <algorithm>
+#include <charconv>
 #include <chrono>
 
 namespace git_editor {
@@ -57,15 +58,10 @@ std::optional<std::string> getMeta(SqlitePtr db, std::string const& key) {
 }
 
 bool parseInt64(std::string const& text, std::int64_t& out) {
-    try {
-        std::size_t consumed = 0;
-        auto const value = std::stoll(text, &consumed, 10);
-        if (consumed != text.size()) return false;
-        out = value;
-        return true;
-    } catch (...) {
-        return false;
-    }
+    auto const* begin = text.data();
+    auto const* end = text.data() + text.size();
+    auto [ptr, ec] = std::from_chars(begin, end, out);
+    return ec == std::errc() && ptr == end;
 }
 
 bool validateData(GdgePackageData const& data) {

@@ -8,11 +8,12 @@
 	},
 	"id": "imes.git-editor",
 	"name": "Git Editor (Level/Collab Merger, History, Backups)",
-	"version": "v1.0.0-beta.1",
+	"version": "v1.0.0-beta.2",
 	"developer": "imes",
 	"description": "Per-level commit history for the GD editor, collab merging, and more.",
 	"links": {
-		"community": "https://discord.gg/E8f6D6XqbW"
+		"community": "https://discord.gg/E8f6D6XqbW",
+		"source": "https://github.com/ItMe12s/Git-Editor"
 	},
 	"tags": [
 		"editor",

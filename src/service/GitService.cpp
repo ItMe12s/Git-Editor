@@ -25,6 +25,11 @@ std::string shortPreview(std::string s, std::size_t n = 40) {
     return s.substr(0, n - 1) + "...";
 }
 
+std::string pathUtf8(std::filesystem::path const& path) {
+    auto const u8 = path.u8string();
+    return std::string(reinterpret_cast<char const*>(u8.c_str()), u8.size());
+}
+
 std::optional<LevelState> reconstructRoot(CommitStore& store, GitService& svc, LevelKey const& levelKey) {
     auto rows = store.list(levelKey);
     if (rows.empty()) return LevelState {};
@@ -407,7 +412,7 @@ GitService::MergeSingleResult GitService::mergeSingleGdge(
     if (!head) {
         auto blob = dumpDelta(diff(LevelState {}, *theirs));
         auto id = m_store.insert(
-            canonicalDest, std::nullopt, std::nullopt, "Import .gdge: " + inPath.filename().string(), blob
+            canonicalDest, std::nullopt, std::nullopt, "Import .gdge: " + pathUtf8(inPath.filename()), blob
         );
         if (!id || !m_store.setHead(canonicalDest, *id)) {
             out.error = "failed to persist imported level";
@@ -440,7 +445,7 @@ GitService::MergeSingleResult GitService::mergeSingleGdge(
     auto persistDelta = diff(*ours, *merged);
     auto blob = dumpDelta(persistDelta);
     auto id = m_store.insert(
-        canonicalDest, *head, std::nullopt, "Merge import: " + inPath.filename().string(), blob
+        canonicalDest, *head, std::nullopt, "Merge import: " + pathUtf8(inPath.filename()), blob
     );
     if (!id || !m_store.setHead(canonicalDest, *id)) {
         out.error = "failed to persist merge commit";
@@ -503,7 +508,7 @@ GitService::MergeSingleResult GitService::smartMergeMany(
         }
         merged = std::move(*step);
         totalConflicts += conflicts;
-        names.push_back(inPath.filename().string());
+        names.push_back(pathUtf8(inPath.filename()));
     }
 
     auto persistDelta = diff(ours, merged);
@@ -589,7 +594,7 @@ ImportManyGdgeOutcome GitService::importManyFromGdge(
         if (!merged.ok) {
             out.skippedCount++;
             if (lastError.empty()) {
-                lastError = path.filename().string() + ": " + merged.error;
+                lastError = pathUtf8(path.filename()) + ": " + merged.error;
             }
             continue;
         }
