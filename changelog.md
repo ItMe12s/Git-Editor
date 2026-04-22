@@ -1,3 +1,3 @@
-# 1.0.0
+# 1.0.0-beta.1
 
-Initial version.
+- Initial version, expect edge cases. Report bugs at my Discord server.

@@ -23,6 +23,7 @@
 #include <Geode/ui/Notification.hpp>
 #include <Geode/utils/cocos.hpp>
 
+#include <algorithm>
 #include <optional>
 
 using namespace geode::prelude;
@@ -115,6 +116,11 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
         if (this->getChildByID(kTopMenuID)) return;
 
         auto winSize = CCDirector::sharedDirector()->getWinSize();
+        auto const sizeMultiplier = std::clamp(
+            static_cast<float>(Mod::get()->getSettingValue<double>("size-multiplier")),
+            0.2f,
+            2.0f
+        );
 
         auto menu = CCMenu::create();
         menu->setID(kTopMenuID);
@@ -122,14 +128,14 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
         menu->setPosition({ winSize.width / 2.f, winSize.height - 14.f });
         menu->setLayout(
             RowLayout::create()
-                ->setGap(6.f)
+                ->setGap(6.f * sizeMultiplier)
                 ->setAxisAlignment(AxisAlignment::Center)
                 ->setAutoGrowAxis(0.f)
                 ->setCrossAxisOverflow(true)
         );
 
         auto commitSpr = ButtonSprite::create("Commit", "bigFont.fnt", "GJ_button_01.png", .8f);
-        commitSpr->setScale(.5f);
+        commitSpr->setScale(.5f * sizeMultiplier);
         auto commitBtn = CCMenuItemExt::createSpriteExtra(commitSpr, [this](CCMenuItemSpriteExtra*) {
             this->onGitCommit();
         });
@@ -137,7 +143,7 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
         menu->addChild(commitBtn);
 
         auto historySpr = ButtonSprite::create("History", "bigFont.fnt", "GJ_button_04.png", .8f);
-        historySpr->setScale(.5f);
+        historySpr->setScale(.5f * sizeMultiplier);
         auto historyBtn = CCMenuItemExt::createSpriteExtra(historySpr, [this](CCMenuItemSpriteExtra*) {
             this->onGitHistory();
         });
@@ -145,7 +151,7 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
         menu->addChild(historyBtn);
 
         auto levelsSpr = ButtonSprite::create("Levels", "bigFont.fnt", "GJ_button_05.png", .8f);
-        levelsSpr->setScale(.5f);
+        levelsSpr->setScale(.5f * sizeMultiplier);
         auto levelsBtn = CCMenuItemExt::createSpriteExtra(levelsSpr, [this](CCMenuItemSpriteExtra*) {
             this->onGitLevels();
         });
@@ -153,7 +159,7 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
         menu->addChild(levelsBtn);
 
         auto exportSpr = ButtonSprite::create("Export .gdge", "bigFont.fnt", "GJ_button_06.png", .7f);
-        exportSpr->setScale(.5f);
+        exportSpr->setScale(.5f * sizeMultiplier);
         auto exportBtn = CCMenuItemExt::createSpriteExtra(exportSpr, [this](CCMenuItemSpriteExtra*) {
             this->onGitExportGdge();
         });
@@ -161,7 +167,7 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
         menu->addChild(exportBtn);
 
         auto importSpr = ButtonSprite::create("Import .gdge", "bigFont.fnt", "GJ_button_02.png", .7f);
-        importSpr->setScale(.5f);
+        importSpr->setScale(.5f * sizeMultiplier);
         auto importBtn = CCMenuItemExt::createSpriteExtra(importSpr, [this](CCMenuItemSpriteExtra*) {
             this->onGitImportGdge();
         });
