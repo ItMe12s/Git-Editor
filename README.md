@@ -1,106 +1,48 @@
 # Git Editor
 
-Real diff-based history for the Geometry Dash editor. Every commit stores a
-logical delta against its parent, so you can **revert a single commit**
-without touching anything else.
+Linear, diff-based version history for the Geometry Dash editor. Each commit stores a JSON `Delta` against its parent, state is **replay** from root + apply chain. Data is local SQLite: `git-editor.db` in the mod save directory.
 
-## Features
+## Capabilities (pause menu, top center)
 
-- **Commit** - from the pause menu, name a snapshot. The mod parses the level,
-  matches every object to a persistent UUID, and stores only what changed
-  since the previous commit (add / remove / modify-per-field).
-- **Checkout** - load any earlier commit's state into the editor. A new
-  auto-revert commit is written on top of HEAD, so history is never lost.
-- **Revert** - undo only the operations introduced by one specific commit.
-  Later commits are preserved. Ops that can't be applied cleanly (object
-  already gone, field drifted, etc.) are reported instead of silently
-  clobbered.
-- **Levels** - open a list of every level key that has commits in the database.
-  You can remove all history for a level in one step (for example after
-  deleting the level in-game). There is no checkout or revert from this list,
-  it is storage management only.
+- **`Commit`** - Parse live level, match objects to stable UUIDs, append delta vs previous HEAD: `+` / `-` / `~` / header `h`.
+- **`Checkout` (via History)** - Append commit whose delta equals `diff(HEAD, target)`, **HEAD only moves forward**, never destructive rewind.
+- **`Revert` (on a commit in History)** - Compute `diff(target, target.parent)` against current state, report conflicts, stored delta re-derived from actual before/after if some ops skip.
+- **`Levels`** - Enumerate level keys in DB, **delete history** for a key only. No checkout/revert from this screen.
 
-All data is offline SQLite under the mod save dir (`git-editor.db`).
+Row: **Commit** , **History** , **Levels**. History lists commits for the **current** level, synthetic checkout/revert entries labeled in small text (no separate badge row).
 
-## Pause menu UI
+## Storage and replay
 
-The mod adds a compact row (**Commit**, **History**, **Levels**) along the
-**top center** of the editor pause screen. Commit history for the **current**
-level opens from **History**, auto-checkout and auto-revert commits are shown
-with small **checkout** / **revert** text labels (no colored badge strip).
+Linear chain: `commit_N -> ... -> commit_1`, `commit_1` parent `null` (full state represented as adds).
 
-## Model
+`Delta` shape (JSON keys):
 
-```
-commit N  (parent = N-1)
-   |
-   v
-commit 2  (parent = 1)
-   |
-   v
-commit 1  (parent = null, full state as adds)
-```
+- `h` - level header: field before/after.
+- `+` / `-` - objects added or removed (uuid + fields).
+- `~` - per-object field before/after.
 
-Each commit carries a JSON-serialized `Delta`:
-
-```
-{
-  "h": { header field changes with before/after },
-  "+": [ added objects    (uuid + fields) ],
-  "-": [ removed objects  (uuid + fields) ],
-  "~": [ modified objects (uuid + per-field before/after) ]
-}
-```
-
-State at any commit is rebuilt by walking the parent chain from the root and
-applying deltas. Recent reconstructions are cached in-memory (LRU).
+Reconstruction: walk from root, apply deltas. **LRU** cache of recent full-state builds.
 
 ## Object identity
 
-GD doesn't give objects stable IDs, so the mod synthesizes one (64-bit
-random) per object, persisted inside the committed delta.
+Editor objects have no native stable id. Mod assigns **64-bit random** UUID per object, stored in committed deltas. On each commit, matcher maps live level <-> previous HEAD:
 
-On each new commit the matcher re-aligns UUIDs between the live level and
-the previous HEAD:
+1. Fingerprint: `(type, rounded-x, rounded-y, rotation, groups)`.
+2. Nearest neighbor within **32** units, same type only.
+3. Unmatched → new UUID.
 
-1. Fingerprint match on `(type, rounded-x, rounded-y, rotation, groups)`.
-2. Spatial nearest-neighbor fallback within 32 units, same type only.
-3. Fresh UUID for anything still unmatched.
+Effect: small moves are `~` (field changes), not add+remove. Duplicating yields one `~` and one `+`.
 
-Consequence: nudging an object reads as a modify (position fields change),
-not add+remove. Duplicating an object produces one modify and one add.
+## Checkout vs revert
 
-## Checkout vs. revert
+- **Checkout** - New commit, delta = `diff(HEAD, target)`.
+- **Revert (single commit)** - Apply `diff(target, target.parent)` to HEAD; see conflict / re-derive behavior above.
 
-- **Checkout = "jump to that state"** - fabricates a delta equal to
-  `diff(HEAD, target)` and appends it as a new commit. HEAD always moves
-  forward.
-- **Revert = "undo just that commit"** - computes `diff(target, target.parent)`
-  and applies it to HEAD with conflict reporting. The resulting delta is
-  then re-derived from the actual before/after so the stored row is
-  self-consistent even when some ops were skipped.
+## Level keys
 
-## Level identity
-
-- Saved levels: keyed by `m_levelID`.
-- Unsaved / local levels: keyed by `"name:<fnv1a64-hex>"`. Renaming forks
-  history (by design).
-
-## Known limitations
-
-- No branches, merges, rebase. History is a single linear chain per level.
-- Object identity across very large edits (many overlapping stacks, bulk
-  rotations) can produce avoidable add+remove pairs rather than modifies.
-  This is a cost-of-matching trade-off, not a correctness issue.
-- Commit messages capped at 120 characters.
-- SQLite schema version 2. Databases from pre-release snapshot builds are
-  wiped automatically on first run.
+- Saved: `m_levelID`.
+- Local/unsaved: `name:<fnv1a64-hex>`. **Rename = new key** = forked history.
 
 ## Build
 
-```bash
-cmake -B build
-cmake --build build
-```
-
-Requires `GEODE_SDK` in the environment. SQLite is fetched by CPM.
+SQLite is fetched by CPM.
