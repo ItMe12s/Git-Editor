@@ -50,14 +50,6 @@ std::string shorten(std::string const& s, std::size_t maxChars) {
     return s.substr(0, maxChars - 1) + "...";
 }
 
-CCNode* makeBadge(char const* text) {
-    auto lbl = CCLabelBMFont::create(text, "chatFont.fnt");
-    lbl->setScale(.4f);
-    lbl->ignoreAnchorPointForPosition(false);
-    lbl->setAnchorPoint({ .5f, .5f });
-    return lbl;
-}
-
 void showConflictSummary(std::vector<Conflict> const& conflicts) {
     if (conflicts.empty()) return;
 
@@ -193,12 +185,6 @@ void HistoryLayer::rebuildList() {
         msgLbl->setScale(.55f);
         msgLbl->setAnchorPoint({0.f, .5f});
         row->addChildAtPosition(msgLbl, Anchor::Left, {6.f, -8.f});
-
-        if (c.reverts) {
-            auto const* label = (c.message.rfind("Revert", 0) == 0) ? "revert" : "checkout";
-            auto badge = makeBadge(label);
-            row->addChildAtPosition(badge, Anchor::TopLeft, { 30.f, -8.f });
-        }
 
         auto menu = CCMenu::create();
         menu->setContentSize({120.f, kRowHeight});

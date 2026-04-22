@@ -8,7 +8,7 @@
 
 namespace git_editor {
 
-// Commit list: checkout (forward commit to that state) and revert (undo that commit's delta). Badge on auto-commits.
+// Commit list: checkout (forward commit to that state) and revert (undo that commit's delta).
 class HistoryLayer : public geode::Popup {
 public:
     static HistoryLayer* create(
