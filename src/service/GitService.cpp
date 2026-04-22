@@ -3,6 +3,7 @@
 #include "../diff/Delta.hpp"
 #include "../diff/Differ.hpp"
 #include "../identity/Matcher.hpp"
+#include "../model/GdHeader.hpp"
 #include "../model/LevelParser.hpp"
 #include "../store/GdgePackage.hpp"
 #include "../util/StateHash.hpp"
@@ -71,10 +72,22 @@ std::optional<LevelState> mergeStates3Way(LevelState const& base,
     };
 
     mergeFieldMap(merged.header, base.header, ours.header, theirs.header);
-    if (ours.rawHeader == theirs.rawHeader) merged.rawHeader = ours.rawHeader;
-    else if (ours.rawHeader == base.rawHeader) merged.rawHeader = theirs.rawHeader;
-    else if (theirs.rawHeader == base.rawHeader) merged.rawHeader = ours.rawHeader;
-    else conflictCount++;
+    int headerConflicts = 0;
+    auto structured = gd_header::mergeHeaders3Way(
+        base.rawHeader, ours.rawHeader, theirs.rawHeader, headerConflicts
+    );
+    if (structured) {
+        merged.rawHeader = std::move(*structured);
+        conflictCount += headerConflicts;
+    } else {
+        if (ours.rawHeader == theirs.rawHeader) merged.rawHeader = ours.rawHeader;
+        else if (ours.rawHeader == base.rawHeader) merged.rawHeader = theirs.rawHeader;
+        else if (theirs.rawHeader == base.rawHeader) merged.rawHeader = ours.rawHeader;
+        else {
+            merged.rawHeader = ours.rawHeader;
+            conflictCount++;
+        }
+    }
 
     std::set<ObjectUuid> ids;
     for (auto const& [id, _] : base.objects) ids.insert(id);
@@ -497,25 +510,36 @@ GitService::MergeSingleResult GitService::mergeSingleGdge(
         return out;
     }
 
+    auto theirs = reconstructPackageHead(*pkg);
+    if (!theirs) {
+        out.error = "package history graph invalid";
+        return out;
+    }
+
+    auto head = m_store.getHead(canonicalDest);
+    if (!head) {
+        auto blob = dumpDelta(diff(LevelState {}, *theirs));
+        auto id = m_store.insert(
+            canonicalDest, std::nullopt, std::nullopt, "Import .gdge: " + inPath.filename().string(), blob
+        );
+        if (!id || !m_store.setHead(canonicalDest, *id)) {
+            out.error = "failed to persist imported level";
+            return out;
+        }
+        this->cachePut(*id, *theirs);
+        out.ok = true;
+        out.conflictCount = 0;
+        out.state = std::move(*theirs);
+        return out;
+    }
     auto root = reconstructRoot(m_store, *this, canonicalDest);
     if (!root) {
         out.error = "failed to reconstruct current root";
         return out;
     }
-    auto head = m_store.getHead(canonicalDest);
-    if (!head) {
-        out.error = "no local HEAD";
-        return out;
-    }
     auto ours = this->reconstruct(*head);
     if (!ours) {
         out.error = "failed to reconstruct local state";
-        return out;
-    }
-
-    auto theirs = reconstructPackageHead(*pkg);
-    if (!theirs) {
-        out.error = "package history graph invalid";
         return out;
     }
 
@@ -542,6 +566,122 @@ GitService::MergeSingleResult GitService::mergeSingleGdge(
     return out;
 }
 
+GitService::MergeSingleResult GitService::smartMergeMany(
+    LevelKey const& canonicalDest,
+    std::vector<std::filesystem::path> const& paths
+) {
+    MergeSingleResult out;
+    if (paths.empty()) {
+        out.error = "no smart-mergeable files";
+        return out;
+    }
+
+    auto head = m_store.getHead(canonicalDest);
+    std::optional<LevelState> root = reconstructRoot(m_store, *this, canonicalDest);
+    if (!root) {
+        out.error = "failed to reconstruct current root";
+        return out;
+    }
+    LevelState base = *root;
+    LevelState ours;
+    if (head) {
+        auto recon = this->reconstruct(*head);
+        if (!recon) {
+            out.error = "failed to reconstruct local state";
+            return out;
+        }
+        ours = std::move(*recon);
+    }
+    LevelState merged = ours;
+    int totalConflicts = 0;
+
+    std::vector<std::string> names;
+    names.reserve(paths.size());
+    for (auto const& inPath : paths) {
+        auto pkg = readGdgePackage(inPath);
+        if (!pkg || pkg->commits.empty() || !pkg->metadata.headIndex) {
+            out.error = "invalid .gdge file";
+            return out;
+        }
+        auto theirs = reconstructPackageHead(*pkg);
+        if (!theirs) {
+            out.error = "package history graph invalid";
+            return out;
+        }
+        int conflicts = 0;
+        auto step = mergeStates3Way(base, merged, *theirs, conflicts);
+        if (!step) {
+            out.error = "3-way merge failed";
+            return out;
+        }
+        merged = std::move(*step);
+        totalConflicts += conflicts;
+        names.push_back(inPath.filename().string());
+    }
+
+    auto persistDelta = diff(ours, merged);
+    auto blob = dumpDelta(persistDelta);
+    std::string preview;
+    for (std::size_t i = 0; i < names.size(); ++i) {
+        if (i > 0) preview += ", ";
+        preview += names[i];
+        if (preview.size() >= 80) break;
+    }
+    auto message = shortPreview(
+        "Smart merge: " + std::to_string(paths.size()) + " imports (" + preview + ")", 120
+    );
+    auto id = m_store.insert(canonicalDest, head, std::nullopt, message, blob);
+    if (!id || !m_store.setHead(canonicalDest, *id)) {
+        out.error = "failed to persist merge commit";
+        return out;
+    }
+    this->cachePut(*id, merged);
+    out.ok = true;
+    out.conflictCount = totalConflicts;
+    out.state = std::move(merged);
+    return out;
+}
+
+ImportPlan GitService::classifyImports(
+    LevelKey const& canonicalDest,
+    std::vector<std::filesystem::path> const& inPaths
+) {
+    ImportPlan plan;
+    plan.noLocalCommits = !m_store.getHead(canonicalDest).has_value();
+    auto root = reconstructRoot(m_store, *this, canonicalDest);
+    if (!root) {
+        plan.invalid = inPaths;
+        return plan;
+    }
+    plan.localRootHash = hashLevelState(*root);
+    for (auto const& path : inPaths) {
+        auto pkg = readGdgePackage(path);
+        if (!pkg || pkg->metadata.rootHash.empty()) {
+            plan.invalid.push_back(path);
+            continue;
+        }
+        if (!reconstructPackageHead(*pkg)) {
+            plan.invalid.push_back(path);
+            continue;
+        }
+        if (pkg->metadata.rootHash == plan.localRootHash) {
+            plan.smart.push_back(path);
+        } else {
+            plan.sequential.push_back(path);
+        }
+    }
+    return plan;
+}
+
+ImportPlan GitService::planImport(
+    LevelKey const& dest,
+    std::vector<std::filesystem::path> const& inPaths
+) {
+    if (inPaths.empty()) return {};
+    auto const canonicalDest = m_store.resolveOrCreateCanonicalKey(dest);
+    return this->classifyImports(canonicalDest, inPaths);
+}
+
 ImportManyGdgeOutcome GitService::importManyFromGdge(
     LevelKey const& dest,
     std::vector<std::filesystem::path> const& inPaths
@@ -553,9 +693,27 @@ ImportManyGdgeOutcome GitService::importManyFromGdge(
     }
 
     auto const canonicalDest = m_store.resolveOrCreateCanonicalKey(dest);
+    auto plan = this->classifyImports(canonicalDest, inPaths);
+    out.skippedCount += static_cast<int>(plan.invalid.size());
+
     bool anyMerged = false;
     std::string lastError;
-    for (auto const& path : inPaths) {
+
+    if (!plan.smart.empty()) {
+        auto smart = this->smartMergeMany(canonicalDest, plan.smart);
+        if (!smart.ok) {
+            out.skippedCount += static_cast<int>(plan.smart.size());
+            if (lastError.empty()) lastError = smart.error;
+        } else {
+            anyMerged = true;
+            out.smartCount = static_cast<int>(plan.smart.size());
+            out.mergedCount += out.smartCount;
+            out.conflictCount += smart.conflictCount;
+            out.state = std::move(smart.state);
+        }
+    }
+
+    for (auto const& path : plan.sequential) {
         auto merged = this->mergeSingleGdge(canonicalDest, path);
         if (!merged.ok) {
             out.skippedCount++;
@@ -565,6 +723,7 @@ ImportManyGdgeOutcome GitService::importManyFromGdge(
             continue;
         }
         anyMerged = true;
+        out.sequentialCount++;
         out.mergedCount++;
         out.conflictCount += merged.conflictCount;
         out.state = std::move(merged.state);

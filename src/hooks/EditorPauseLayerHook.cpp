@@ -5,11 +5,13 @@
 #include "../ui/LevelBrowserLayer.hpp"
 #include "../util/AsyncQueue.hpp"
 #include "../util/LevelKey.hpp"
+#include "../util/UiText.hpp"
 
 #include <Geode/Geode.hpp>
 #include <Geode/binding/ButtonSprite.hpp>
 #include <Geode/binding/CCMenuItemSpriteExtra.hpp>
 #include <Geode/binding/EditorPauseLayer.hpp>
+#include <Geode/binding/FLAlertLayer.hpp>
 #include <Geode/binding/GJGameLevel.hpp>
 #include <Geode/binding/LevelEditorLayer.hpp>
 #include <Geode/loader/Loader.hpp>
@@ -34,6 +36,46 @@ std::string currentLevelKey(LevelEditorLayer* editor) {
 
 bool isInvalidLevelKey(std::string const& levelKey) {
     return levelKey.rfind("invalid:", 0) == 0;
+}
+
+std::string escapePopupText(std::string s) {
+    auto replaceAll = [](std::string& text, std::string const& from, std::string const& to) {
+        std::size_t pos = 0;
+        while ((pos = text.find(from, pos)) != std::string::npos) {
+            text.replace(pos, from.size(), to);
+            pos += to.size();
+        }
+    };
+    replaceAll(s, "&", "&amp;");
+    replaceAll(s, "<", "&lt;");
+    replaceAll(s, ">", "&gt;");
+    replaceAll(s, "\"", "&quot;");
+    replaceAll(s, "'", "&#39;");
+    return s;
+}
+
+std::string planBody(git_editor::ImportPlan const& plan) {
+    std::string body;
+    if (plan.noLocalCommits) {
+        body += "WARNING: this level has no commits. Import will overwrite level state from selected .gdge file(s).";
+    }
+    auto addBucket = [&](char const* title, std::vector<std::filesystem::path> const& paths) {
+        if (paths.empty()) return;
+        if (!body.empty()) body += "\n\n";
+        body += title;
+        body += ":\n";
+        for (auto const& p : paths) {
+            auto name = escapePopupText(git_editor::shorten(p.filename().string(), 48));
+            body += "- ";
+            body += name;
+            body += "\n";
+        }
+    };
+    addBucket("Smart merge (shared root)", plan.smart);
+    addBucket("Sequential fallback (different root)", plan.sequential);
+    addBucket("Skipped (unreadable)", plan.invalid);
+    if (!body.empty()) body += "\nProceed?";
+    return body;
 }
 
 } // namespace
@@ -255,39 +297,67 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
                 std::vector<std::filesystem::path> paths;
                 paths.reserve(picks.size());
                 for (auto const& p : picks) paths.push_back(p);
-                auto* editorPtr = editorRef.data();
-                git_editor::postToGitWorker([alive, editorPtr, levelKey, paths = std::move(paths)]() mutable {
-                    auto outcome = git_editor::sharedGitService().importManyFromGdge(levelKey, paths);
-                    geode::queueInMainThread([alive, editorPtr, outcome = std::move(outcome)]() mutable {
-                        if (!alive || !editorPtr) return;
-                        if (!outcome.ok) {
-                            Notification::create(
-                                ("Multi-merge failed: " + outcome.error).c_str(),
-                                NotificationIcon::Error
-                            )->show();
-                            return;
+                git_editor::postToGitWorker([alive, editorRef, levelKey, paths = std::move(paths)]() mutable {
+                    auto plan = git_editor::sharedGitService().planImport(levelKey, paths);
+                    geode::queueInMainThread(
+                        [alive, editorRef, levelKey, paths = std::move(paths), plan = std::move(plan)]() mutable {
+                            auto* editorPtr = editorRef.data();
+                            if (!alive || !editorPtr) return;
+                            if (plan.smart.empty() && plan.sequential.empty()) {
+                                Notification::create(
+                                    "No valid .gdge files selected",
+                                    NotificationIcon::Error
+                                )->show();
+                                return;
+                            }
+                            createQuickPopup(
+                                "Import plan",
+                                planBody(plan).c_str(),
+                                "Cancel", "Merge",
+                                [alive, editorRef, levelKey, paths = std::move(paths)](FLAlertLayer*, bool yes) mutable {
+                                    auto* editorPtr = editorRef.data();
+                                    if (!yes || !alive || !editorPtr) return;
+                                    git_editor::postToGitWorker(
+                                        [alive, editorRef, levelKey, paths = std::move(paths)]() mutable {
+                                            auto outcome = git_editor::sharedGitService().importManyFromGdge(levelKey, paths);
+                                            geode::queueInMainThread([alive, editorRef, outcome = std::move(outcome)]() mutable {
+                                                auto* editorPtr = editorRef.data();
+                                                if (!alive || !editorPtr) return;
+                                                if (!outcome.ok) {
+                                                    Notification::create(
+                                                        ("Multi-merge failed: " + outcome.error).c_str(),
+                                                        NotificationIcon::Error
+                                                    )->show();
+                                                    return;
+                                                }
+                                                if (!editorPtr || !editorPtr->getParent()) {
+                                                    Notification::create(
+                                                        "Merge succeeded but editor is gone",
+                                                        NotificationIcon::Warning
+                                                    )->show();
+                                                    return;
+                                                }
+                                                if (!git_editor::applyLevelState(editorPtr, outcome.state)) {
+                                                    Notification::create(
+                                                        "Merge saved but editor apply failed",
+                                                        NotificationIcon::Warning
+                                                    )->show();
+                                                    return;
+                                                }
+                                                Notification::create(
+                                                    ("Merged " + std::to_string(outcome.smartCount)
+                                                     + " smart + " + std::to_string(outcome.sequentialCount)
+                                                     + " sequential, conflicts " + std::to_string(outcome.conflictCount)
+                                                     + ", skipped " + std::to_string(outcome.skippedCount)).c_str(),
+                                                    NotificationIcon::Success
+                                                )->show();
+                                            });
+                                        }
+                                    );
+                                }
+                            );
                         }
-                        if (!editorPtr || !editorPtr->getParent()) {
-                            Notification::create(
-                                "Merge succeeded but editor is gone",
-                                NotificationIcon::Warning
-                            )->show();
-                            return;
-                        }
-                        if (!git_editor::applyLevelState(editorPtr, outcome.state)) {
-                            Notification::create(
-                                "Merge saved but editor apply failed",
-                                NotificationIcon::Warning
-                            )->show();
-                            return;
-                        }
-                        Notification::create(
-                            ("Merged " + std::to_string(outcome.mergedCount)
-                             + " file(s), skipped " + std::to_string(outcome.skippedCount)
-                             + ", conflicts " + std::to_string(outcome.conflictCount)).c_str(),
-                            NotificationIcon::Success
-                        )->show();
-                    });
+                    );
                 });
             }
         );

@@ -59,8 +59,18 @@ struct ImportManyGdgeOutcome {
     int         mergedCount = 0;
     int         skippedCount = 0;
     int         conflictCount = 0;
+    int         smartCount = 0;
+    int         sequentialCount = 0;
     LevelState  state;
     std::string error;
+};
+
+struct ImportPlan {
+    std::vector<std::filesystem::path> smart;
+    std::vector<std::filesystem::path> sequential;
+    std::vector<std::filesystem::path> invalid;
+    std::string localRootHash;
+    bool noLocalCommits = false;
 };
 
 // Linear history, checkout adds forward commit to target state (no rewind HEAD). Persist then setHead then cache.
@@ -86,6 +96,8 @@ public:
     // Replaces dest history with a deep copy of src, then returns reconstructed HEAD for dest.
     ImportLevelOutcome importLevelFrom(LevelKey const& dest, LevelKey const& src);
     ExportGdgeOutcome exportLevelToGdge(LevelKey const& levelKey, std::filesystem::path const& outPath);
+    ImportPlan planImport(LevelKey const& dest,
+                          std::vector<std::filesystem::path> const& inPaths);
     ImportManyGdgeOutcome importManyFromGdge(LevelKey const& dest,
                                              std::vector<std::filesystem::path> const& inPaths);
 
@@ -102,6 +114,10 @@ private:
     };
     MergeSingleResult mergeSingleGdge(LevelKey const& canonicalDest,
                                       std::filesystem::path const& inPath);
+    MergeSingleResult smartMergeMany(LevelKey const& canonicalDest,
+                                     std::vector<std::filesystem::path> const& paths);
+    ImportPlan classifyImports(LevelKey const& canonicalDest,
+                               std::vector<std::filesystem::path> const& inPaths);
 
     void       cachePut(CommitId id, LevelState state);
     std::optional<LevelState> cacheGet(CommitId id);

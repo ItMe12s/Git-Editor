@@ -1,6 +1,6 @@
 # Git Editor
 
-CHECK CHANGELOG BEFORE UPDATING!!!
+CHECK CHANGELOG BEFORE UPDATING!!! Read at the bottom for collab guide.
 
 A real diff-based history for the editor.
 Every commit stores a delta against its parent,
@@ -27,7 +27,7 @@ All of these are in the editor pause menu at the top :3
 
 - **.gdge**: Geometry Dash Git Editor mod's custom file format.
 - **Export/Import buttons**: export current level history to `.gdge`, then import with override or merge mode.
-- **3-Way Merge**: The system understands the base of your level and resolves conflicts for you. (does NOT fix bad collab hosts giving out incorrect color channel and group id).
+- **3-Way Merge**: The mod understands the base of your level and resolves conflicts for you. (does NOT fix bad collab hosts giving out incorrect color channel and group id).
 
 Everything is saved offline as a SQLite database inside the mod save folder (`git-editor.db`).
 
@@ -44,3 +44,17 @@ Everything is saved offline as a SQLite database inside the mod save folder (`gi
   - This is a cost-of-matching trade-off, not a correctness issue.
 - **Commit messages**: capped at 120 characters.
 - **Breaking updates**: databases using an old format will be wiped if the mod updates with a new one (your actual level won't be deleted). So make sure to backup your database file first, this rarely happens unless there's a new massive feature.
+
+## Collab Guide
+
+1. Make a layout.
+2. Commit/Squash everything into one commit.
+3. Export the .gdge file and send it to your decorators.
+4. Decorator work and commit their changes.
+5. Have your decorators export and send back the .gdge files.
+6. Click import .gdge (all of them at once should work) and pray.
+7. ???
+8. Profit!
+
+Your layout will act as a base and when you import the files, all of the commits will apply to your layout.
+If you don't have the layout sent as a .gdge file then smart merge won't work.
