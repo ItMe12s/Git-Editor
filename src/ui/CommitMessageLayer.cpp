@@ -29,11 +29,13 @@ CommitMessageLayer* CommitMessageLayer::create(
     ConfirmFn onConfirm,
     std::string title,
     std::string buttonLabel,
-    std::string initialText
+    std::string initialText,
+    CloseFn onClose
 ) {
     auto ret = new CommitMessageLayer();
     if (ret && ret->init(
-        std::move(onConfirm), std::move(title), std::move(buttonLabel), std::move(initialText)
+        std::move(onConfirm), std::move(title), std::move(buttonLabel), std::move(initialText),
+        std::move(onClose)
     )) {
         ret->autorelease();
         return ret;
@@ -46,7 +48,8 @@ bool CommitMessageLayer::init(
     ConfirmFn onConfirm,
     std::string title,
     std::string buttonLabel,
-    std::string initialText
+    std::string initialText,
+    CloseFn onClose
 ) {
     constexpr float kWidth  = 340.f;
     constexpr float kHeight = 160.f;
@@ -54,6 +57,7 @@ bool CommitMessageLayer::init(
     if (!Popup::init(kWidth, kHeight)) return false;
 
     m_callback = std::move(onConfirm);
+    m_onClose = std::move(onClose);
 
     this->setTitle(title.c_str());
 
@@ -92,7 +96,15 @@ void CommitMessageLayer::onConfirmClicked(CCObject*) {
 
     if (m_callback) m_callback(message);
 
+    m_submitted = true;
     this->onClose(nullptr);
+}
+
+void CommitMessageLayer::onClose(CCObject* sender) {
+    if (!m_submitted && m_onClose) {
+        m_onClose();
+    }
+    Popup::onClose(sender);
 }
 
 } // namespace git_editor

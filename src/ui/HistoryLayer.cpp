@@ -584,7 +584,10 @@ void HistoryLayer::onSquashPressed() {
                 },
                 "Squash Commits",
                 "Squash",
-                defaultMsg
+                defaultMsg,
+                [self]() {
+                    if (self) finishBusyAction(self->m_busy);
+                }
             )) {
                 popup->show();
             }
