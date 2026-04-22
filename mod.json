@@ -11,6 +11,15 @@
 	"version": "v1.0.0",
 	"developer": "imes",
 	"description": "Per-level commit history for the GD editor: commit, browse, and checkout snapshots of your level locally.",
+	"links": {
+		"community": "https://discord.gg/E8f6D6XqbW"
+	},
+	"tags": [
+		"editor",
+		"offline",
+		"enhancement",
+		"utility"
+	],
 	"dependencies": {
 		"geode.node-ids": ">=v1.23.3"
 	},

@@ -11,16 +11,21 @@ All of these are in the editor pause menu at the top :3
 - **Commit**: name and save your changes into a delta snapshot in the history.
 - **History**: a list of all commits for the level you're in.
   - **Revert**: undo a commit without undoing other ones.
-  - **Checkout**: load a commit's state into the editor, you can revert this after you're done *checking out.* heh.
+  - **Checkout**: load a commit's state into the editor, you can revert this after you're done *checking out.* Heh.
 - **Levels**: a list of all levels with a commit history, you can delete the history of each level via this menu.
 
 Everything is saved offline as a SQLite database inside the mod save folder (`git-editor.db`).
 
-## Current limits
+## Some Examples
 
-- No branches, merges or rebasing yet...
-  - You can checkout -> copy objects -> revert checkout -> paste objects -> commit.
-- Object identity across very large edits (overlapping stacks, bulk rotations) can make add+remove pairs instead of modifies.
+- **Time travel**: you can checkout an earlier commit to go back in time, make a change, and commit it. Then you can revert the checkout to *rewrite history* with that new commit.
+- **Backup mod**: keep a full history of your levels while using significantly less disk space long term.
+
+## Current Limits
+
+- **No branches, merges or rebasing yet...**
+  - Tho you can checkout -> copy objects -> revert checkout -> paste objects -> commit.
+- **Object identity**: across very large edits (overlapping stacks, bulk rotations) can make add+remove pairs instead of modifies.
   - This is a cost-of-matching trade-off, not a correctness issue.
-- Commit messages capped at 120 characters.
-- Databases using an old format will be wiped if the mod updates with a new one (your level won't be deleted).
+- **Commit messages**: capped at 120 characters.
+- **Breaking updates**: databases using an old format will be wiped if the mod updates with a new one (your actual level won't be deleted).
