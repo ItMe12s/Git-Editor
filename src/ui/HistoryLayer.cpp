@@ -21,6 +21,7 @@
 #include <cerrno>
 #include <cstdio>
 #include <ctime>
+#include <thread>
 #include <vector>
 
 using namespace geode::prelude;
@@ -357,6 +358,10 @@ void HistoryLayer::rebuildList() {
         auto checkoutBtn = makeBtn(
             "Checkout", "GJ_button_02.png",
             [self, editor, pauseLayer, levelKey, commitId, commitMsg](CCMenuItemSpriteExtra*) {
+                if (self && self->m_busy) {
+                    Notification::create("Action already running", NotificationIcon::Info)->show();
+                    return;
+                }
                 createQuickPopup(
                     "Checkout",
                     ("Load state of commit \"" + shorten(commitMsg, 40) +
@@ -364,24 +369,35 @@ void HistoryLayer::rebuildList() {
                     "Cancel", "Checkout",
                     [self, editor, pauseLayer, levelKey, commitId](FLAlertLayer*, bool yes) {
                         if (!yes) return;
-                        auto outcome = sharedGitService().checkout(levelKey, commitId);
-                        if (!outcome.ok) {
-                            Notification::create(
-                                ("Checkout failed: " + outcome.error).c_str(),
-                                NotificationIcon::Error
-                            )->show();
-                            return;
-                        }
-                        if (!applyLevelState(editor, outcome.state)) {
-                            Notification::create(
-                                "Checkout applied to DB but editor refused",
-                                NotificationIcon::Warning
-                            )->show();
-                        } else {
-                            Notification::create("Checked out", NotificationIcon::Success)->show();
-                        }
-                        if (self) self->onClose(nullptr);
-                        if (pauseLayer) pauseLayer->onResume(nullptr);
+                        if (!self) return;
+                        self->m_busy = true;
+                        Ref<HistoryLayer> alive(self.data());
+                        std::thread([alive, editor, pauseLayer, levelKey, commitId]() {
+                            auto outcome = sharedGitService().checkout(levelKey, commitId);
+                            geode::queueInMainThread(
+                                [alive, editor, pauseLayer, outcome = std::move(outcome)]() mutable {
+                                    if (!alive) return;
+                                    alive->m_busy = false;
+                                    if (!outcome.ok) {
+                                        Notification::create(
+                                            ("Checkout failed: " + outcome.error).c_str(),
+                                            NotificationIcon::Error
+                                        )->show();
+                                        return;
+                                    }
+                                    if (!applyLevelState(editor, outcome.state)) {
+                                        Notification::create(
+                                            "Checkout applied to DB but editor refused",
+                                            NotificationIcon::Warning
+                                        )->show();
+                                    } else {
+                                        Notification::create("Checked out", NotificationIcon::Success)->show();
+                                    }
+                                    alive->onClose(nullptr);
+                                    if (pauseLayer) pauseLayer->onResume(nullptr);
+                                }
+                            );
+                        }).detach();
                     }
                 );
             }
@@ -391,6 +407,10 @@ void HistoryLayer::rebuildList() {
         auto revertBtn = makeBtn(
             "Revert", "GJ_button_06.png",
             [self, editor, pauseLayer, levelKey, commitId, commitMsg](CCMenuItemSpriteExtra*) {
+                if (self && self->m_busy) {
+                    Notification::create("Action already running", NotificationIcon::Info)->show();
+                    return;
+                }
                 createQuickPopup(
                     "Revert",
                     ("Undo just the changes from commit \"" + shorten(commitMsg, 40) +
@@ -398,29 +418,40 @@ void HistoryLayer::rebuildList() {
                     "Cancel", "Revert",
                     [self, editor, pauseLayer, levelKey, commitId](FLAlertLayer*, bool yes) {
                         if (!yes) return;
-                        auto outcome = sharedGitService().revert(levelKey, commitId);
-                        if (!outcome.ok) {
-                            Notification::create(
-                                ("Revert failed: " + outcome.error).c_str(),
-                                NotificationIcon::Error
-                            )->show();
-                            return;
-                        }
-                        if (!applyLevelState(editor, outcome.state)) {
-                            Notification::create(
-                                "Revert applied to DB but editor refused",
-                                NotificationIcon::Warning
-                            )->show();
-                        } else if (outcome.conflicts.empty()) {
-                            Notification::create("Reverted", NotificationIcon::Success)->show();
-                        } else {
-                            Notification::create(
-                                "Reverted with conflicts", NotificationIcon::Warning
-                            )->show();
-                        }
-                        if (self) self->onClose(nullptr);
-                        if (pauseLayer) pauseLayer->onResume(nullptr);
-                        showConflictSummary(outcome.conflicts);
+                        if (!self) return;
+                        self->m_busy = true;
+                        Ref<HistoryLayer> alive(self.data());
+                        std::thread([alive, editor, pauseLayer, levelKey, commitId]() {
+                            auto outcome = sharedGitService().revert(levelKey, commitId);
+                            geode::queueInMainThread(
+                                [alive, editor, pauseLayer, outcome = std::move(outcome)]() mutable {
+                                    if (!alive) return;
+                                    alive->m_busy = false;
+                                    if (!outcome.ok) {
+                                        Notification::create(
+                                            ("Revert failed: " + outcome.error).c_str(),
+                                            NotificationIcon::Error
+                                        )->show();
+                                        return;
+                                    }
+                                    if (!applyLevelState(editor, outcome.state)) {
+                                        Notification::create(
+                                            "Revert applied to DB but editor refused",
+                                            NotificationIcon::Warning
+                                        )->show();
+                                    } else if (outcome.conflicts.empty()) {
+                                        Notification::create("Reverted", NotificationIcon::Success)->show();
+                                    } else {
+                                        Notification::create(
+                                            "Reverted with conflicts", NotificationIcon::Warning
+                                        )->show();
+                                    }
+                                    alive->onClose(nullptr);
+                                    if (pauseLayer) pauseLayer->onResume(nullptr);
+                                    showConflictSummary(outcome.conflicts);
+                                }
+                            );
+                        }).detach();
                     }
                 );
             }
@@ -438,6 +469,10 @@ void HistoryLayer::rebuildList() {
 }
 
 void HistoryLayer::onSquashPressed() {
+    if (m_busy) {
+        Notification::create("Action already running", NotificationIcon::Info)->show();
+        return;
+    }
     if (m_selected.size() < 2) {
         Notification::create("Select at least 2 commits", NotificationIcon::Warning)->show();
         return;
@@ -487,29 +522,42 @@ void HistoryLayer::onSquashPressed() {
             if (!yes) return;
             if (auto popup = CommitMessageLayer::create(
                 [self, editor, pauseLayer, levelKey, idsOldestFirst](std::string const& msg) {
-                    auto outcome = sharedGitService().squash(levelKey, idsOldestFirst, msg);
-                    if (!outcome.ok) {
-                        Notification::create(
-                            ("Squash failed: " + outcome.error).c_str(),
-                            NotificationIcon::Error
-                        )->show();
+                    if (!self) return;
+                    if (self->m_busy) {
+                        Notification::create("Action already running", NotificationIcon::Info)->show();
                         return;
                     }
-                    if (!applyLevelState(editor, outcome.state)) {
-                        Notification::create(
-                            "Squash applied to DB but editor refused",
-                            NotificationIcon::Warning
-                        )->show();
-                    } else {
-                        Notification::create("Squashed", NotificationIcon::Success)->show();
-                    }
-                    if (self) {
-                        self->m_squashMode = false;
-                        self->m_selected.clear();
-                        self->rebuildHeader();
-                        self->rebuildList();
-                    }
-                    (void)pauseLayer;
+                    self->m_busy = true;
+                    Ref<HistoryLayer> alive(self.data());
+                    std::thread([alive, editor, pauseLayer, levelKey, idsOldestFirst, msg]() {
+                        auto outcome = sharedGitService().squash(levelKey, idsOldestFirst, msg);
+                        geode::queueInMainThread(
+                            [alive, editor, pauseLayer, outcome = std::move(outcome)]() mutable {
+                                if (!alive) return;
+                                alive->m_busy = false;
+                                if (!outcome.ok) {
+                                    Notification::create(
+                                        ("Squash failed: " + outcome.error).c_str(),
+                                        NotificationIcon::Error
+                                    )->show();
+                                    return;
+                                }
+                                if (!applyLevelState(editor, outcome.state)) {
+                                    Notification::create(
+                                        "Squash applied to DB but editor refused",
+                                        NotificationIcon::Warning
+                                    )->show();
+                                } else {
+                                    Notification::create("Squashed", NotificationIcon::Success)->show();
+                                }
+                                alive->m_squashMode = false;
+                                alive->m_selected.clear();
+                                alive->rebuildHeader();
+                                alive->rebuildList();
+                                (void)pauseLayer;
+                            }
+                        );
+                    }).detach();
                 },
                 "Squash Commits",
                 "Squash",

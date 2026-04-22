@@ -103,6 +103,10 @@ CheckoutOutcome GitService::checkout(LevelKey const& levelKey, CommitId target) 
     auto blob        = dumpDelta(revertDelta);
 
     auto targetRow = m_store.get(target);
+    if (targetRow && targetRow->levelKey != levelKey) {
+        out.error = "target commit belongs to a different level";
+        return out;
+    }
     std::string msg = "Checkout: " + (targetRow ? shortPreview(targetRow->message) : std::to_string(target));
 
     auto id = m_store.insert(levelKey, *head, target, msg, blob);
@@ -135,6 +139,10 @@ RevertOutcome GitService::revert(LevelKey const& levelKey, CommitId target) {
     auto targetRow = m_store.get(target);
     if (!targetRow) {
         out.error = "target commit not found";
+        return out;
+    }
+    if (targetRow->levelKey != levelKey) {
+        out.error = "target commit belongs to a different level";
         return out;
     }
     if (!targetRow->parent) {

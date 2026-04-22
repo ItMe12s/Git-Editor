@@ -17,6 +17,7 @@
 #include <Geode/ui/Layout.hpp>
 #include <Geode/ui/Notification.hpp>
 #include <Geode/utils/cocos.hpp>
+#include <thread>
 
 using namespace geode::prelude;
 
@@ -26,8 +27,11 @@ namespace {
 constexpr auto kTopMenuID = "top-menu"_spr;
 
 std::string currentLevelKey(LevelEditorLayer* editor) {
-    if (!editor || !editor->m_level) return "unknown:0";
-    return git_editor::levelKeyFor(editor->m_level);
+    return editor ? git_editor::levelKeyFor(editor->m_level) : "invalid:no-editor";
+}
+
+bool isInvalidLevelKey(std::string const& levelKey) {
+    return levelKey.rfind("invalid:", 0) == 0;
 }
 
 } // namespace
@@ -102,6 +106,10 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
         auto popup = git_editor::CommitMessageLayer::create(
             [editor](std::string const& message) {
                 auto levelKey = currentLevelKey(editor);
+                if (isInvalidLevelKey(levelKey)) {
+                    Notification::create("No valid level context", NotificationIcon::Error)->show();
+                    return;
+                }
                 auto levelStr = git_editor::captureLevelString(editor);
                 if (levelStr.empty()) {
                     Notification::create(
@@ -109,18 +117,21 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
                     )->show();
                     return;
                 }
-
-                auto outcome = git_editor::sharedGitService().commit(
-                    levelKey, message, levelStr
-                );
-                if (outcome.ok) {
-                    Notification::create("Committed", NotificationIcon::Success)->show();
-                } else {
-                    Notification::create(
-                        ("Commit failed: " + outcome.error).c_str(),
-                        NotificationIcon::Error
-                    )->show();
-                }
+                std::thread([levelKey, message, levelStr]() {
+                    auto outcome = git_editor::sharedGitService().commit(
+                        levelKey, message, levelStr
+                    );
+                    geode::queueInMainThread([outcome = std::move(outcome)]() {
+                        if (outcome.ok) {
+                            Notification::create("Committed", NotificationIcon::Success)->show();
+                        } else {
+                            Notification::create(
+                                ("Commit failed: " + outcome.error).c_str(),
+                                NotificationIcon::Error
+                            )->show();
+                        }
+                    });
+                }).detach();
             }
         );
         if (popup) popup->show();
@@ -133,6 +144,10 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
             return;
         }
         auto levelKey = currentLevelKey(editor);
+        if (isInvalidLevelKey(levelKey)) {
+            Notification::create("No valid level context", NotificationIcon::Error)->show();
+            return;
+        }
         if (auto popup = git_editor::HistoryLayer::create(levelKey, editor, this)) {
             popup->show();
         }

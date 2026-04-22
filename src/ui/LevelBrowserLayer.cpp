@@ -17,6 +17,7 @@
 
 #include <ctime>
 #include <string>
+#include <thread>
 
 using namespace geode::prelude;
 
@@ -180,6 +181,10 @@ void LevelBrowserLayer::rebuildList() {
 
         auto loadBtn = makeLoadBtn(
             [self, levelKey, destKey, count](CCMenuItemSpriteExtra*) {
+                if (self && self->m_busy) {
+                    Notification::create("Action already running", NotificationIcon::Info)->show();
+                    return;
+                }
                 if (levelKey == destKey) {
                     Notification::create("Already this level: nothing to load", NotificationIcon::Info)
                         ->show();
@@ -201,28 +206,39 @@ void LevelBrowserLayer::rebuildList() {
                     [self, levelKey, destKey](FLAlertLayer*, bool yes) {
                         if (!yes) return;
                         if (!self || !self->m_editor) return;
-                        auto* const pause = self->m_pauseLayer;
-                        auto          outcome
-                            = sharedGitService().importLevelFrom(destKey, levelKey);
-                        if (!outcome.ok) {
-                            Notification::create(
-                                ("Load failed: " + outcome.error).c_str(),
-                                NotificationIcon::Error
-                            )->show();
+                        if (self->m_busy) {
+                            Notification::create("Action already running", NotificationIcon::Info)->show();
                             return;
                         }
-                        if (!applyLevelState(self->m_editor, outcome.state)) {
-                            Notification::create(
-                                "Load saved to the mod, but the editor would not apply the level",
-                                NotificationIcon::Warning
-                            )->show();
-                        } else {
-                            Notification::create("Level loaded", NotificationIcon::Success)->show();
-                        }
-                        self->onClose(nullptr);
-                        if (pause) {
-                            pause->onResume(nullptr);
-                        }
+                        self->m_busy = true;
+                        Ref<LevelBrowserLayer> alive(self.data());
+                        std::thread([alive, levelKey, destKey]() {
+                            auto outcome = sharedGitService().importLevelFrom(destKey, levelKey);
+                            geode::queueInMainThread([alive, outcome = std::move(outcome)]() mutable {
+                                if (!alive || !alive->m_editor) return;
+                                alive->m_busy = false;
+                                auto* const pause = alive->m_pauseLayer;
+                                if (!outcome.ok) {
+                                    Notification::create(
+                                        ("Load failed: " + outcome.error).c_str(),
+                                        NotificationIcon::Error
+                                    )->show();
+                                    return;
+                                }
+                                if (!applyLevelState(alive->m_editor, outcome.state)) {
+                                    Notification::create(
+                                        "Load saved to the mod, but the editor would not apply the level",
+                                        NotificationIcon::Warning
+                                    )->show();
+                                } else {
+                                    Notification::create("Level loaded", NotificationIcon::Success)->show();
+                                }
+                                alive->onClose(nullptr);
+                                if (pause) {
+                                    pause->onResume(nullptr);
+                                }
+                            });
+                        }).detach();
                     }
                 );
             }
@@ -230,6 +246,10 @@ void LevelBrowserLayer::rebuildList() {
         menu->addChild(loadBtn);
 
         auto delBtn = makeDeleteBtn([self, levelKey, count](CCMenuItemSpriteExtra*) {
+            if (self && self->m_busy) {
+                Notification::create("Action already running", NotificationIcon::Info)->show();
+                return;
+            }
             createQuickPopup(
                 "ARE YOU SURE?",
                 ("PERMANENTLY DELETE all " + std::to_string(count) + " commits for \"" + shorten(levelKey, 48)
@@ -238,13 +258,27 @@ void LevelBrowserLayer::rebuildList() {
                 "Cancel", "Delete",
                 [self, levelKey](FLAlertLayer*, bool yes) {
                     if (!yes) return;
-                    if (!sharedCommitStore().deleteLevel(levelKey)) {
-                        Notification::create("Delete failed", NotificationIcon::Error)->show();
+                    if (!self) return;
+                    if (self->m_busy) {
+                        Notification::create("Action already running", NotificationIcon::Info)->show();
                         return;
                     }
-                    Notification::create("Level history removed", NotificationIcon::Success)
-                        ->show();
-                    if (self) self->rebuildList();
+                    self->m_busy = true;
+                    Ref<LevelBrowserLayer> alive(self.data());
+                    std::thread([alive, levelKey]() {
+                        bool const ok = sharedCommitStore().deleteLevel(levelKey);
+                        geode::queueInMainThread([alive, ok]() {
+                            if (!alive) return;
+                            alive->m_busy = false;
+                            if (!ok) {
+                                Notification::create("Delete failed", NotificationIcon::Error)->show();
+                                return;
+                            }
+                            Notification::create("Level history removed", NotificationIcon::Success)
+                                ->show();
+                            alive->rebuildList();
+                        });
+                    }).detach();
                 }
             );
         });

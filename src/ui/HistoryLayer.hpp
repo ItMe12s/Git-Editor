@@ -35,6 +35,7 @@ protected:
     geode::ScrollLayer*             m_scroll     = nullptr;
 
     bool                            m_squashMode = false;
+    bool                            m_busy       = false;
     std::set<CommitId>              m_selected;
     cocos2d::CCMenu*       m_headerMenu = nullptr;
     CCMenuItemSpriteExtra* m_squashBtn  = nullptr;

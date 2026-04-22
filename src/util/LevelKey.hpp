@@ -5,7 +5,8 @@
 
 namespace git_editor {
 
-// id:<n> when m_levelID is non-zero, else name:<fnv1a hex> (rename forks history).
+// id:<n> when m_levelID is non-zero, else local:<name-hash>:<session-hash>.
+// Null level returns invalid:no-level.
 std::string levelKeyFor(GJGameLevel* level);
 
 } // namespace git_editor

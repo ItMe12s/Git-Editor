@@ -22,6 +22,7 @@ protected:
     LevelEditorLayer*  m_editor     = nullptr;
     EditorPauseLayer*  m_pauseLayer = nullptr;
     geode::ScrollLayer* m_scroll     = nullptr;
+    bool               m_busy       = false;
 };
 
 } // namespace git_editor

@@ -33,7 +33,7 @@ std::string toHex16(std::uint64_t v) {
 
 std::string levelKeyFor(GJGameLevel* level) {
     if (!level) {
-        return "unknown:0";
+        return "invalid:no-level";
     }
 
     int id = static_cast<int>(level->m_levelID);
@@ -42,7 +42,9 @@ std::string levelKeyFor(GJGameLevel* level) {
     }
 
     std::string_view name(level->m_levelName.c_str(), level->m_levelName.size());
-    return "name:" + toHex16(fnv1a64(name));
+    auto const nameHash = toHex16(fnv1a64(name));
+    auto const ptrHash = toHex16(static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(level)));
+    return "local:" + nameHash + ":" + ptrHash;
 }
 
 } // namespace git_editor

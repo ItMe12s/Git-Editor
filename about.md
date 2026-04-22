@@ -8,14 +8,20 @@ so you can revert a change without reverting the whole level.
 
 All of these are in the editor pause menu at the top :3
 
-- **Commit**: name and save your changes into a delta snapshot in the history.
-- **History**: a list of all commits for the level you're in.
-  - **Revert**: undo a commit without undoing other ones.
-  - **Checkout**: load a commit's state into the editor, you can revert this after you're done *checking out.* Heh.
-  - **Squash**: Combine adjacent commits into a single commit.
-- **Levels**: a list of all levels with a commit history.
-  - **Load**: overwrite the current level data with the data and history from another level.
-  - **Delete**: permanently delete the history of the selected level.
+### Commit: name and save your changes into a delta snapshot in the history
+
+### History: a list of all commits for the level you're in
+
+- **Revert**: undo a commit without undoing other ones.
+- **Checkout**: load a commit's state into the editor, you can revert this after you're done *checking out.* Heh.
+- **Squash**: Combine adjacent commits into a single commit.
+
+### Levels: a list of all levels with a commit history
+
+- **Load**: overwrite the current level data with the data and history from another level.
+- **Delete**: permanently delete the history of the selected level.
+
+### Merge: (WIP) combine multiple databases with the same initial commit for a single level to automatically merge collab parts
 
 Everything is saved offline as a SQLite database inside the mod save folder (`git-editor.db`).
 
