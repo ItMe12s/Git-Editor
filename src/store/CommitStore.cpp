@@ -1,6 +1,5 @@
 #include "CommitStore.hpp"
 #include "CommitSchema.hpp"
-#include "LevelKeyResolver.hpp"
 
 #include <Geode/loader/Log.hpp>
 #include <Geode/loader/Mod.hpp>
@@ -313,8 +312,7 @@ std::vector<LevelSummary> CommitStore::listLevels() {
 }
 
 bool CommitStore::deleteCommitsAndRefsForKeyNoTransaction(
-    LevelKey const& levelKey,
-    bool            deleteAliases
+    LevelKey const& levelKey
 ) {
     if (!m_db) return false;
     auto const canonicalKey = this->resolveCanonicalKey(levelKey);
@@ -351,25 +349,6 @@ bool CommitStore::deleteCommitsAndRefsForKeyNoTransaction(
         );
         if (sqlite3_step(st) != SQLITE_DONE) {
             geode::log::error("deleteLevel commits step: {}", sqlite3_errmsg(m_db));
-            sqlite3_finalize(st);
-            return false;
-        }
-        sqlite3_finalize(st);
-    }
-
-    if (deleteAliases) {
-        constexpr char const* delAliases =
-            "DELETE FROM level_aliases WHERE canonical_key = ?;";
-        sqlite3_stmt* st = nullptr;
-        if (sqlite3_prepare_v2(m_db, delAliases, -1, &st, nullptr) != SQLITE_OK) {
-            geode::log::error("prepare deleteLevel aliases: {}", sqlite3_errmsg(m_db));
-            return false;
-        }
-        sqlite3_bind_text(
-            st, 1, canonicalKey.c_str(), static_cast<int>(canonicalKey.size()), SQLITE_TRANSIENT
-        );
-        if (sqlite3_step(st) != SQLITE_DONE) {
-            geode::log::error("deleteLevel aliases step: {}", sqlite3_errmsg(m_db));
             sqlite3_finalize(st);
             return false;
         }
@@ -473,7 +452,7 @@ bool CommitStore::replaceLevelHistoryFrom(LevelKey const& dest, LevelKey const& 
     commit_schema::DeferredFkTransaction tx(m_db);
     if (!tx.begin()) return false;
 
-    if (!this->deleteCommitsAndRefsForKeyNoTransaction(canonicalDest, false)) {
+    if (!this->deleteCommitsAndRefsForKeyNoTransaction(canonicalDest)) {
         tx.rollback();
         return false;
     }
@@ -555,28 +534,12 @@ bool CommitStore::setHead(LevelKey const& levelKey, CommitId head) {
     return ok;
 }
 
-bool CommitStore::isLocalObservedKey(LevelKey const& levelKey) const {
-    return level_key_resolver::isLocalObservedKey(levelKey);
-}
-
-bool CommitStore::upsertAlias(LevelKey const& observedKey, LevelKey const& canonicalKey) {
-    return level_key_resolver::upsertAlias(m_db, observedKey, canonicalKey);
-}
-
-std::optional<std::int64_t> CommitStore::nextCanonicalLocalId() {
-    return level_key_resolver::nextCanonicalLocalId(m_db);
-}
-
-LevelKey CommitStore::resolveCanonicalKeyImpl(LevelKey const& observedKey, bool createIfMissing) {
-    return level_key_resolver::resolveCanonicalKey(m_db, observedKey, createIfMissing);
-}
-
 LevelKey CommitStore::resolveCanonicalKey(LevelKey const& observedKey) {
-    return this->resolveCanonicalKeyImpl(observedKey, false);
+    return observedKey;
 }
 
 LevelKey CommitStore::resolveOrCreateCanonicalKey(LevelKey const& observedKey) {
-    return this->resolveCanonicalKeyImpl(observedKey, true);
+    return observedKey;
 }
 
 CommitStore& sharedCommitStore() {

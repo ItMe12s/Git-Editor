@@ -5,7 +5,7 @@
 
 namespace git_editor {
 
-// id:<n> when m_levelID is non-zero, else local:<name-hash>:<session-hash>.
+// id:<n> for editor levels via cvolton.level-id-api.
 // Null level returns invalid:no-level.
 std::string levelKeyFor(GJGameLevel* level);
 

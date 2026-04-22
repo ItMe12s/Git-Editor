@@ -32,10 +32,8 @@ int readSchemaVersion(sqlite3* db) {
 bool dropSchemaObjects(sqlite3* db) {
     if (!execOrLog(db, "DROP TABLE IF EXISTS refs;")) return false;
     if (!execOrLog(db, "DROP TABLE IF EXISTS commits;")) return false;
-    if (!execOrLog(db, "DROP TABLE IF EXISTS level_aliases;")) return false;
     if (!execOrLog(db, "DROP TABLE IF EXISTS schema_meta;")) return false;
     execOrLog(db, "DROP INDEX IF EXISTS idx_commits_level;");
-    execOrLog(db, "DROP INDEX IF EXISTS idx_level_aliases_canonical;");
     return true;
 }
 
@@ -57,15 +55,6 @@ bool createSchemaObjects(sqlite3* db) {
             level_key TEXT PRIMARY KEY,
             head_id   INTEGER NOT NULL REFERENCES commits(id)
         );
-
-        CREATE TABLE IF NOT EXISTS level_aliases (
-            observed_key TEXT PRIMARY KEY,
-            canonical_key TEXT NOT NULL,
-            created_at INTEGER NOT NULL,
-            last_seen_at INTEGER NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS idx_level_aliases_canonical
-            ON level_aliases(canonical_key);
 
         CREATE TABLE IF NOT EXISTS schema_meta (
             k TEXT PRIMARY KEY,

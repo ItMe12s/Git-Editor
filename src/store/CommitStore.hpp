@@ -31,10 +31,10 @@ struct CommitRow {
 };
 
 // SQLite store used through a serialized worker queue. If schema_meta.version < kSchemaVersion:
-// drop commits/refs/aliases, no migration.
+// drop commits/refs, no migration.
 class CommitStore {
 public:
-    static constexpr int kSchemaVersion = 3;
+    static constexpr int kSchemaVersion = 4;
 
     CommitStore()  = default;
     ~CommitStore();
@@ -94,14 +94,7 @@ private:
         std::string const&      deltaBlob
     );
 
-    bool deleteCommitsAndRefsForKeyNoTransaction(
-        LevelKey const& levelKey,
-        bool            deleteAliases = true
-    );
-    bool upsertAlias(LevelKey const& observedKey, LevelKey const& canonicalKey);
-    std::optional<std::int64_t> nextCanonicalLocalId();
-    bool isLocalObservedKey(LevelKey const& levelKey) const;
-    LevelKey resolveCanonicalKeyImpl(LevelKey const& observedKey, bool createIfMissing);
+    bool deleteCommitsAndRefsForKeyNoTransaction(LevelKey const& levelKey);
 
     sqlite3* m_db = nullptr;
 };
