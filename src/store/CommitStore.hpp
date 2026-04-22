@@ -30,6 +30,15 @@ struct CommitRow {
     std::string              deltaBlob;
 };
 
+struct ImportedCommit {
+    std::int64_t                importIndex = 0;
+    std::optional<std::int64_t> parentIndex;
+    std::optional<std::int64_t> revertsIndex;
+    std::string                 message;
+    std::int64_t                createdAt = 0;
+    std::string                 deltaBlob;
+};
+
 // SQLite store used through a serialized worker queue. If schema_meta.version < kSchemaVersion:
 // drop commits/refs/aliases, no migration.
 class CommitStore {
@@ -75,6 +84,9 @@ public:
     // parent_id/reverts_id). Preserves created_at, message, delta. Sets HEAD to copy of src HEAD.
     // Single transaction. Returns false on failure or if dest == src.
     bool replaceLevelHistoryFrom(LevelKey const& dest, LevelKey const& src);
+    bool replaceLevelHistoryFromImport(LevelKey const& dest,
+                                       std::vector<ImportedCommit> const& commits,
+                                       std::optional<std::int64_t> importHeadIndex);
 
     std::optional<CommitId> getHead(LevelKey const& levelKey);
     bool                    setHead(LevelKey const& levelKey, CommitId head);

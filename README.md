@@ -14,6 +14,8 @@ A mod that tries to implement git into the level editor
 - `Commit`: parse live level, UUID-match objects, store delta, message max 120 chars.
 - `History`: inspect (`?`), rename, checkout, revert, squash.
 - `Levels`: list level histories, load selected history into current level, or delete selected level history.
+- `Export .gdge`: save one level history into a portable single-level SQLite package.
+- `Import .gdge`: load a package into current level with `Override`, or `Merge` when root commit matches.
 
 ## Semantics
 
@@ -26,11 +28,12 @@ A mod that tries to implement git into the level editor
 
 - Object UUID assignment uses fingerprint + nearest match (32-unit radius, same type).
 - Saved level key: `m_levelID`.
-- Unsaved level key: `name:<fnv1a64-hex>` (rename => new key).
+- Unsaved observed keys are mapped to stable canonical aliases (`localid:<n>`) for persistent history.
 
 ## Limits / ops notes
 
 - No merge/rebase/branch flow.
+- `.gdge` merge requires same initial commit/root snapshot hash.
 - Large edits can degrade matching into add/remove pairs.
 - Schema version bump can wipe commit DB data (not GD level files).
 

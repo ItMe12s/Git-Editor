@@ -6,6 +6,7 @@
 #include "../store/CommitStore.hpp"
 
 #include <cstddef>
+#include <filesystem>
 #include <list>
 #include <optional>
 #include <string>
@@ -48,6 +49,36 @@ struct ImportLevelOutcome {
     std::string error;
 };
 
+struct ExportGdgeOutcome {
+    bool        ok = false;
+    std::string error;
+};
+
+struct ImportGdgePreviewOutcome {
+    bool        ok = false;
+    bool        canMerge = false;
+    int         commitCount = 0;
+    std::string sourceLevelKey;
+    std::string error;
+};
+
+struct ImportGdgeOutcome {
+    bool        ok = false;
+    bool        merged = false;
+    int         conflictCount = 0;
+    LevelState  state;
+    std::string error;
+};
+
+struct ImportManyGdgeOutcome {
+    bool        ok = false;
+    int         mergedCount = 0;
+    int         skippedCount = 0;
+    int         conflictCount = 0;
+    LevelState  state;
+    std::string error;
+};
+
 // Linear history, checkout adds forward commit to target state (no rewind HEAD). Persist then setHead then cache.
 class GitService {
 public:
@@ -70,6 +101,13 @@ public:
 
     // Replaces dest history with a deep copy of src, then returns reconstructed HEAD for dest.
     ImportLevelOutcome importLevelFrom(LevelKey const& dest, LevelKey const& src);
+    ExportGdgeOutcome exportLevelToGdge(LevelKey const& levelKey, std::filesystem::path const& outPath);
+    ImportGdgePreviewOutcome inspectGdgeImport(LevelKey const& dest, std::filesystem::path const& inPath);
+    ImportGdgeOutcome importFromGdge(LevelKey const& dest,
+                                     std::filesystem::path const& inPath,
+                                     bool merge);
+    ImportManyGdgeOutcome importManyFromGdge(LevelKey const& dest,
+                                             std::vector<std::filesystem::path> const& inPaths);
 
     void             clearReconstructCache();
 

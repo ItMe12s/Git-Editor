@@ -23,7 +23,11 @@ All of these are in the editor pause menu at the top :3
 - **Load**: overwrite the current level data with the data and history from another level.
 - **Delete**: permanently delete the history of the selected level.
 
-### Merge: (WIP) combine multiple databases with the same initial commit for a single level to automatically merge collab parts
+### Merge: combine multiple databases with the same initial commit for a single level to automatically merge collab parts
+
+- **.gdge**: Geometry Dash Git Editor mod's custom file format.
+- **Export/Import buttons**: export current level history to `.gdge`, then import with override or merge mode.
+- **3-Way Merge**: The system understands the base of your level and resolves conflicts for you. (does NOT fix bad collab hosts giving out incorrect color channel and group id).
 
 Everything is saved offline as a SQLite database inside the mod save folder (`git-editor.db`).
 
@@ -34,8 +38,8 @@ Everything is saved offline as a SQLite database inside the mod save folder (`gi
 
 ## Current Limits
 
-- **No branches, merges or rebasing yet...**
-  - Tho you can checkout -> copy objects -> revert checkout -> paste objects -> commit.
+- **No branches, or rebasing yet...**
+  - Tho you can checkout -> copy objects -> revert checkout -> paste objects -> commit, this is a manual merge.
 - **Object identity**: across very large edits (overlapping stacks, bulk rotations) may create add+remove pairs instead of modifies.
   - This is a cost-of-matching trade-off, not a correctness issue.
 - **Commit messages**: capped at 120 characters.

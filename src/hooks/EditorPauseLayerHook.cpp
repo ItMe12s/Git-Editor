@@ -15,6 +15,8 @@
 #include <Geode/loader/Loader.hpp>
 #include <Geode/loader/Mod.hpp>
 #include <Geode/modify/EditorPauseLayer.hpp>
+#include <Geode/utils/async.hpp>
+#include <Geode/utils/file.hpp>
 #include <Geode/ui/Layout.hpp>
 #include <Geode/ui/Notification.hpp>
 #include <Geode/utils/cocos.hpp>
@@ -58,7 +60,7 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
 
         auto menu = CCMenu::create();
         menu->setID(kTopMenuID);
-        menu->setContentSize({220.f, 26.f});
+        menu->setContentSize({360.f, 26.f});
         menu->setPosition({ winSize.width / 2.f, winSize.height - 14.f });
         menu->setLayout(
             RowLayout::create()
@@ -91,6 +93,22 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
         });
         levelsBtn->setID("levels-button"_spr);
         menu->addChild(levelsBtn);
+
+        auto exportSpr = ButtonSprite::create("Export .gdge", "bigFont.fnt", "GJ_button_06.png", .7f);
+        exportSpr->setScale(.5f);
+        auto exportBtn = CCMenuItemExt::createSpriteExtra(exportSpr, [this](CCMenuItemSpriteExtra*) {
+            this->onGitExportGdge();
+        });
+        exportBtn->setID("export-gdge-button"_spr);
+        menu->addChild(exportBtn);
+
+        auto importSpr = ButtonSprite::create("Import .gdge", "bigFont.fnt", "GJ_button_02.png", .7f);
+        importSpr->setScale(.5f);
+        auto importBtn = CCMenuItemExt::createSpriteExtra(importSpr, [this](CCMenuItemSpriteExtra*) {
+            this->onGitImportGdge();
+        });
+        importBtn->setID("import-gdge-button"_spr);
+        menu->addChild(importBtn);
 
         menu->updateLayout();
         this->addChild(menu);
@@ -162,5 +180,116 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
         if (auto popup = git_editor::LevelBrowserLayer::create(editor, this)) {
             popup->show();
         }
+    }
+
+    void onGitExportGdge() {
+        auto* editor = m_editorLayer;
+        if (!editor) {
+            Notification::create("No active editor", NotificationIcon::Error)->show();
+            return;
+        }
+        auto levelKey = currentLevelKey(editor);
+        if (isInvalidLevelKey(levelKey)) {
+            Notification::create("No valid level context", NotificationIcon::Error)->show();
+            return;
+        }
+
+        geode::utils::file::FilePickOptions options;
+        options.defaultPath = geode::Mod::get()->getSaveDir() / "level-export.gdge";
+        options.filters.push_back({ "Git Editor Level Package", { "*.gdge" } });
+        geode::async::spawn(
+            geode::utils::file::pick(geode::utils::file::PickMode::SaveFile, options),
+            [levelKey](geode::utils::file::PickResult picked) {
+                if (picked.isErr()) {
+                    Notification::create("Export picker failed", NotificationIcon::Error)->show();
+                    return;
+                }
+                auto pickedPath = picked.unwrap();
+                if (!pickedPath) return;
+                auto path = *pickedPath;
+                git_editor::postToGitWorker([levelKey, path]() {
+                    auto outcome = git_editor::sharedGitService().exportLevelToGdge(levelKey, path);
+                    geode::queueInMainThread([outcome = std::move(outcome)]() {
+                        if (!outcome.ok) {
+                            Notification::create(
+                                ("Export failed: " + outcome.error).c_str(),
+                                NotificationIcon::Error
+                            )->show();
+                            return;
+                        }
+                        Notification::create("Exported .gdge", NotificationIcon::Success)->show();
+                    });
+                });
+            }
+        );
+    }
+
+    void onGitImportGdge() {
+        auto* editor = m_editorLayer;
+        if (!editor) {
+            Notification::create("No active editor", NotificationIcon::Error)->show();
+            return;
+        }
+        auto levelKey = currentLevelKey(editor);
+        if (isInvalidLevelKey(levelKey)) {
+            Notification::create("No valid level context", NotificationIcon::Error)->show();
+            return;
+        }
+
+        geode::utils::file::FilePickOptions options;
+        options.defaultPath = geode::Mod::get()->getSaveDir();
+        options.filters.push_back({ "Git Editor Level Package", { "*.gdge" } });
+        Ref<GitEditorPauseHook> alive(this);
+        Ref<LevelEditorLayer> editorRef(editor);
+
+        geode::async::spawn(
+            geode::utils::file::pickMany(options),
+            [alive, editorRef, levelKey](geode::utils::file::PickManyResult picked) {
+                if (!alive) return;
+                if (picked.isErr()) {
+                    Notification::create("Import picker failed", NotificationIcon::Error)->show();
+                    return;
+                }
+                auto picks = picked.unwrap();
+                if (picks.empty()) return;
+                std::vector<std::filesystem::path> paths;
+                paths.reserve(picks.size());
+                for (auto const& p : picks) paths.push_back(p);
+                auto* editorPtr = editorRef.data();
+                git_editor::postToGitWorker([alive, editorPtr, levelKey, paths = std::move(paths)]() mutable {
+                    auto outcome = git_editor::sharedGitService().importManyFromGdge(levelKey, paths);
+                    geode::queueInMainThread([alive, editorPtr, outcome = std::move(outcome)]() mutable {
+                        if (!alive || !editorPtr) return;
+                        if (!outcome.ok) {
+                            Notification::create(
+                                ("Multi-merge failed: " + outcome.error).c_str(),
+                                NotificationIcon::Error
+                            )->show();
+                            return;
+                        }
+                        if (!editorPtr || !editorPtr->getParent()) {
+                            Notification::create(
+                                "Merge succeeded but editor is gone",
+                                NotificationIcon::Warning
+                            )->show();
+                            return;
+                        }
+                        if (!git_editor::applyLevelState(editorPtr, outcome.state)) {
+                            Notification::create(
+                                "Merge saved but editor apply failed",
+                                NotificationIcon::Warning
+                            )->show();
+                            return;
+                        }
+                        Notification::create(
+                            ("Merged " + std::to_string(outcome.mergedCount)
+                             + " file(s), skipped " + std::to_string(outcome.skippedCount)
+                             + ", conflicts " + std::to_string(outcome.conflictCount)).c_str(),
+                            NotificationIcon::Success
+                        )->show();
+                    });
+                });
+            }
+        );
     }
 };
