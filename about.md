@@ -39,4 +39,4 @@ Everything is saved offline as a SQLite database inside the mod save folder (`gi
 - **Object identity**: across very large edits (overlapping stacks, bulk rotations) may create add+remove pairs instead of modifies.
   - This is a cost-of-matching trade-off, not a correctness issue.
 - **Commit messages**: capped at 120 characters.
-- **Breaking updates**: databases using an old format will be wiped if the mod updates with a new one (your actual level won't be deleted). So make sure to backup your database file first.
+- **Breaking updates**: databases using an old format will be wiped if the mod updates with a new one (your actual level won't be deleted). So make sure to backup your database file first, this rarely happens unless there's a new massive feature.

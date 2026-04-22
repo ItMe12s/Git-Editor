@@ -460,6 +460,26 @@ bool CommitStore::deleteCommitsAndRefsForKeyNoTransaction(LevelKey const& levelK
         }
         sqlite3_finalize(st);
     }
+
+    {
+        constexpr char const* delAliases =
+            "DELETE FROM level_aliases WHERE canonical_key = ?;";
+        sqlite3_stmt* st = nullptr;
+        if (sqlite3_prepare_v2(m_db, delAliases, -1, &st, nullptr) != SQLITE_OK) {
+            geode::log::error("prepare deleteLevel aliases: {}", sqlite3_errmsg(m_db));
+            return false;
+        }
+        sqlite3_bind_text(
+            st, 1, canonicalKey.c_str(), static_cast<int>(canonicalKey.size()), SQLITE_TRANSIENT
+        );
+        if (sqlite3_step(st) != SQLITE_DONE) {
+            geode::log::error("deleteLevel aliases step: {}", sqlite3_errmsg(m_db));
+            sqlite3_finalize(st);
+            return false;
+        }
+        sqlite3_finalize(st);
+    }
+
     return true;
 }
 
@@ -704,8 +724,9 @@ std::optional<std::int64_t> CommitStore::nextCanonicalLocalId() {
         geode::log::error("prepare nextCanonicalLocalId failed: {}", sqlite3_errmsg(m_db));
         return std::nullopt;
     }
-    std::int64_t maxId = 0;
-    while (sqlite3_step(st) == SQLITE_ROW) {
+    std::unordered_set<std::int64_t> usedIds;
+    int rc = SQLITE_ROW;
+    while ((rc = sqlite3_step(st)) == SQLITE_ROW) {
         auto const* text = reinterpret_cast<char const*>(sqlite3_column_text(st, 0));
         if (!text) continue;
         std::string_view key(text);
@@ -713,10 +734,20 @@ std::optional<std::int64_t> CommitStore::nextCanonicalLocalId() {
         std::int64_t value = 0;
         auto [ptr, ec] = std::from_chars(key.data() + 8, key.data() + key.size(), value);
         if (ec != std::errc() || ptr != key.data() + key.size() || value <= 0) continue;
-        if (value > maxId) maxId = value;
+        usedIds.insert(value);
+    }
+    if (rc != SQLITE_DONE) {
+        geode::log::error("nextCanonicalLocalId step failed: {}", sqlite3_errmsg(m_db));
+        sqlite3_finalize(st);
+        return std::nullopt;
     }
     sqlite3_finalize(st);
-    return maxId + 1;
+
+    std::int64_t candidate = 1;
+    while (usedIds.contains(candidate)) {
+        ++candidate;
+    }
+    return candidate;
 }
 
 LevelKey CommitStore::resolveCanonicalKeyImpl(LevelKey const& observedKey, bool createIfMissing) {
