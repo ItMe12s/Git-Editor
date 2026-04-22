@@ -188,6 +188,9 @@ std::string dumpDelta(Delta const& d) {
     auto root = matjson::Value::object();
 
     root.set("h", headerChangesToJson(d.headerChanges));
+    if (d.rawHeaderChange.has_value()) {
+        root.set("hr", fieldChangeToJson(*d.rawHeaderChange));
+    }
 
     auto adds = matjson::Value::array();
     for (auto const& o : d.adds) adds.push(objectToJson(o));
@@ -222,6 +225,9 @@ std::optional<Delta> parseDelta(std::string const& blob) {
     Delta out;
     if (auto r = root.get("h"); r.isOk()) {
         out.headerChanges = headerChangesFromJson(r.unwrap());
+    }
+    if (auto r = root.get("hr"); r.isOk()) {
+        out.rawHeaderChange = fieldChangeFromJson(r.unwrap());
     }
     if (auto r = root.get("+"); r.isOk()) {
         auto const& arr = r.unwrap();
@@ -261,7 +267,8 @@ DeltaStats computeStats(Delta const& d) {
 std::string describeDeltaText(Delta const& d) {
     constexpr std::size_t kMaxField = 160;
     constexpr std::size_t kMaxOut  = 32000;
-    if (d.headerChanges.empty() && d.adds.empty() && d.removes.empty() && d.modifies.empty()) {
+    if (d.headerChanges.empty() && !d.rawHeaderChange.has_value()
+        && d.adds.empty() && d.removes.empty() && d.modifies.empty()) {
         return "No recorded changes (empty delta).\n";
     }
     std::string out;
@@ -279,6 +286,10 @@ std::string describeDeltaText(Delta const& d) {
         if (truncated) break;
         appendStr("Header " + fieldKeyName(k) + ": " + truncForDisplay(ch.before, kMaxField) + " -> "
             + truncForDisplay(ch.after, kMaxField));
+    }
+    if (d.rawHeaderChange.has_value() && !truncated) {
+        appendStr("Header raw: " + truncForDisplay(d.rawHeaderChange->before, kMaxField) + " -> "
+            + truncForDisplay(d.rawHeaderChange->after, kMaxField));
     }
     for (auto const& o : d.adds) {
         if (truncated) break;

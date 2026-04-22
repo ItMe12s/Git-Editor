@@ -27,6 +27,8 @@ struct Object {
 };
 
 struct LevelState {
+    // Raw GD header chunk (before first ';'), preserved verbatim for lossless settings roundtrip.
+    std::string rawHeader;
     FieldMap header;
     std::unordered_map<ObjectUuid, Object> objects;
 };

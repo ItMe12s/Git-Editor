@@ -19,6 +19,7 @@ struct FieldChange {
 // adds/removes: full objects (for inverse). modifies: uuid + changed fields only.
 struct Delta {
     std::map<int, FieldChange> headerChanges;
+    std::optional<FieldChange> rawHeaderChange;
 
     std::vector<Object> adds;
     std::vector<Object> removes;

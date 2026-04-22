@@ -34,6 +34,9 @@ std::map<int, FieldChange> diffFields(FieldMap const& a, FieldMap const& b) {
 Delta diff(LevelState const& prev, LevelState const& next) {
     Delta d;
     d.headerChanges = diffFields(prev.header, next.header);
+    if (prev.rawHeader != next.rawHeader) {
+        d.rawHeaderChange = FieldChange{ prev.rawHeader, next.rawHeader };
+    }
 
     for (auto const& [uuid, prevObj] : prev.objects) {
         auto it = next.objects.find(uuid);
@@ -61,6 +64,9 @@ Delta inverse(Delta const& d) {
 
     for (auto const& [k, c] : d.headerChanges) {
         out.headerChanges.emplace(k, FieldChange{ c.after, c.before });
+    }
+    if (d.rawHeaderChange.has_value()) {
+        out.rawHeaderChange = FieldChange{ d.rawHeaderChange->after, d.rawHeaderChange->before };
     }
 
     out.removes = d.adds;
@@ -93,6 +99,12 @@ LevelState apply(LevelState base, Delta const& d, std::vector<Conflict>* out) {
         }
         if (c.after.empty()) base.header.erase(k);
         else                 base.header[k] = c.after;
+    }
+    if (d.rawHeaderChange.has_value()) {
+        if (base.rawHeader != d.rawHeaderChange->before) {
+            report({ Conflict::Kind::ModifyStale, 0, 0, "raw header drifted" });
+        }
+        base.rawHeader = d.rawHeaderChange->after;
     }
 
     for (auto const& o : d.adds) {

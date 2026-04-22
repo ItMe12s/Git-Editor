@@ -6,6 +6,29 @@
 
 namespace git_editor {
 
+namespace {
+
+void refreshEditorVisualState(LevelEditorLayer* editor) {
+    if (!editor) return;
+
+    editor->loadLevelSettings();
+    editor->updateLevelColors();
+    editor->syncBGTextures();
+
+    editor->levelSettingsUpdated();
+    editor->updateOptions();
+    editor->updateEditorMode();
+    editor->updateGameObjects();
+    editor->updateBlendValues();
+    editor->updateArt(0.f);
+
+    if (auto* objects = editor->getAllObjects()) {
+        editor->updateObjectColors(objects);
+    }
+}
+
+} // namespace
+
 std::string captureLevelString(LevelEditorLayer* editor) {
     if (!editor) {
         geode::log::warn("captureLevelString called with null editor");
@@ -25,26 +48,26 @@ bool applyLevelString(LevelEditorLayer* editor, std::string const& levelString) 
         return false;
     }
 
-    auto const parsedIncoming = parseLevelString(levelString);
-    if (parsedIncoming.header.empty() && parsedIncoming.objects.empty()) {
-        geode::log::warn("applyLevelString rejected unparseable level string");
+    if (levelString.find(';') == std::string::npos) {
+        geode::log::warn("applyLevelString rejected string without level delimiter");
         return false;
     }
-
-    auto const normalized = serializeLevelString(parsedIncoming);
-    if (normalized.empty()) {
-        geode::log::warn("applyLevelString rejected after normalization");
-        return false;
-    }
+    auto const normalized = levelString;
 
     editor->removeAllObjects();
 
+    if (editor->m_level) {
+        editor->m_level->m_levelString = normalized;
+        editor->m_level->levelWasAltered();
+    }
+
     gd::string s(normalized.c_str(), normalized.size()); // copy: createObjectsFromSetup mutates
     editor->createObjectsFromSetup(s);
+    refreshEditorVisualState(editor);
 
-    auto const roundTrip = parseLevelString(captureLevelString(editor));
-    if (roundTrip.header.empty() && roundTrip.objects.empty()) {
-        geode::log::warn("applyLevelString failed to apply setup");
+    auto const applied = captureLevelString(editor);
+    if (applied.empty()) {
+        geode::log::warn("applyLevelString failed: editor returned empty level string");
         return false;
     }
     return true;

@@ -54,6 +54,7 @@ LevelState parseLevelString(std::string_view raw) {
     auto chunks = splitView(raw, ';');
     if (chunks.empty()) return state;
 
+    state.rawHeader = std::string(chunks.front());
     state.header = readKvChunk(chunks.front());
 
     for (std::size_t i = 1; i < chunks.size(); ++i) {
@@ -84,7 +85,15 @@ std::string serializeLevelString(LevelState const& state) {
         }
     };
 
-    appendFields(state.header);
+    if (!state.rawHeader.empty()) {
+        auto const parsedRawHeader = readKvChunk(state.rawHeader);
+        // If header does not parse as numeric k,v pairs (typical GD kS/kA format),
+        // preserve the exact raw chunk instead of dropping it.
+        if (parsedRawHeader.empty()) out.append(state.rawHeader);
+        else                         appendFields(parsedRawHeader);
+    } else {
+        appendFields(state.header);
+    }
     out.push_back(';');
 
     std::vector<ObjectUuid> ids;
