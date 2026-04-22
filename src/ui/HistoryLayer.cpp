@@ -289,20 +289,17 @@ void HistoryLayer::rebuildList() {
 
         if (m_squashMode) {
             bool const checked = m_selected.count(commitId) > 0;
-            auto tickSpr = ButtonSprite::create(
-                checked ? "X" : " ", "bigFont.fnt",
-                checked ? "GJ_button_01.png" : "GJ_button_05.png", .8f
-            );
-            tickSpr->setScale(.5f);
-            auto tickBtn = CCMenuItemExt::createSpriteExtra(tickSpr,
-                [self, commitId](CCMenuItemSpriteExtra*) {
+            auto tickBtn = CCMenuItemExt::createTogglerWithStandardSprites(
+                .6f,
+                [self, commitId](CCMenuItemToggler*) {
                     if (!self) return;
+                    // Track state via m_selected, not isToggled() (GD / binding mismatch).
                     if (self->m_selected.count(commitId)) self->m_selected.erase(commitId);
                     else                                  self->m_selected.insert(commitId);
                     self->rebuildHeader();
-                    self->rebuildList();
                 }
             );
+            tickBtn->toggle(checked);
             menu->addChild(tickBtn);
 
             menu->updateLayout();
@@ -448,7 +445,7 @@ void HistoryLayer::onSquashPressed() {
 
     auto commits = sharedCommitStore().list(m_levelKey);
 
-    // commits is DESC by createdAt; build oldest-first selected list.
+    // commits is DESC by createdAt, build oldest-first selected list.
     std::vector<CommitId>    idsOldestFirst;
     std::vector<std::string> messagesOldestFirst;
     idsOldestFirst.reserve(m_selected.size());
@@ -481,38 +478,47 @@ void HistoryLayer::onSquashPressed() {
     std::string levelKey = m_levelKey;
     Ref<HistoryLayer> self(this);
 
-    if (auto popup = CommitMessageLayer::create(
-        [self, editor, pauseLayer, levelKey, idsOldestFirst](std::string const& msg) {
-            auto outcome = sharedGitService().squash(levelKey, idsOldestFirst, msg);
-            if (!outcome.ok) {
-                Notification::create(
-                    ("Squash failed: " + outcome.error).c_str(),
-                    NotificationIcon::Error
-                )->show();
-                return;
+    createQuickPopup(
+        "ARE YOU SURE?",
+        "This will combind the selected commit range into a single commit.\nThis CANNOT be undone.",
+        "Cancel", "Squash",
+        [self, editor, pauseLayer, levelKey, idsOldestFirst, defaultMsg](
+            FLAlertLayer*, bool yes) {
+            if (!yes) return;
+            if (auto popup = CommitMessageLayer::create(
+                [self, editor, pauseLayer, levelKey, idsOldestFirst](std::string const& msg) {
+                    auto outcome = sharedGitService().squash(levelKey, idsOldestFirst, msg);
+                    if (!outcome.ok) {
+                        Notification::create(
+                            ("Squash failed: " + outcome.error).c_str(),
+                            NotificationIcon::Error
+                        )->show();
+                        return;
+                    }
+                    if (!applyLevelState(editor, outcome.state)) {
+                        Notification::create(
+                            "Squash applied to DB but editor refused",
+                            NotificationIcon::Warning
+                        )->show();
+                    } else {
+                        Notification::create("Squashed", NotificationIcon::Success)->show();
+                    }
+                    if (self) {
+                        self->m_squashMode = false;
+                        self->m_selected.clear();
+                        self->rebuildHeader();
+                        self->rebuildList();
+                    }
+                    (void)pauseLayer;
+                },
+                "Squash Commits",
+                "Squash",
+                defaultMsg
+            )) {
+                popup->show();
             }
-            if (!applyLevelState(editor, outcome.state)) {
-                Notification::create(
-                    "Squash applied to DB but editor refused",
-                    NotificationIcon::Warning
-                )->show();
-            } else {
-                Notification::create("Squashed", NotificationIcon::Success)->show();
-            }
-            if (self) {
-                self->m_squashMode = false;
-                self->m_selected.clear();
-                self->rebuildHeader();
-                self->rebuildList();
-            }
-            (void)pauseLayer;
-        },
-        "Squash Commits",
-        "Squash",
-        defaultMsg
-    )) {
-        popup->show();
-    }
+        }
+    );
 }
 
 } // namespace git_editor

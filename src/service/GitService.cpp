@@ -36,7 +36,7 @@ CommitOutcome GitService::commit(
     if (parent) {
         auto recon = this->reconstruct(*parent);
         if (!recon) {
-            out.error = "failed to reconstruct HEAD; refusing to commit";
+            out.error = "failed to reconstruct HEAD, refusing to commit";
             geode::log::error("{}", out.error);
             return out;
         }

@@ -98,7 +98,7 @@ LevelState apply(LevelState base, Delta const& d, std::vector<Conflict>* out) {
     for (auto const& o : d.adds) {
         if (base.objects.contains(o.uuid)) {
             report({ Conflict::Kind::AddAlreadyExists, o.uuid, 0,
-                "object already present; add skipped" });
+                "object already present, add skipped" });
             continue;
         }
         base.objects.emplace(o.uuid, o);
@@ -108,7 +108,7 @@ LevelState apply(LevelState base, Delta const& d, std::vector<Conflict>* out) {
         auto it = base.objects.find(o.uuid);
         if (it == base.objects.end()) {
             report({ Conflict::Kind::RemoveMissing, o.uuid, 0,
-                "object already removed; remove skipped" });
+                "object already removed, remove skipped" });
             continue;
         }
         base.objects.erase(it);
@@ -118,7 +118,7 @@ LevelState apply(LevelState base, Delta const& d, std::vector<Conflict>* out) {
         auto it = base.objects.find(m.uuid);
         if (it == base.objects.end()) {
             report({ Conflict::Kind::ModifyMissing, m.uuid, 0,
-                "target of modify is gone; modify skipped" });
+                "target of modify is gone, modify skipped" });
             continue;
         }
         auto& fields = it->second.fields;

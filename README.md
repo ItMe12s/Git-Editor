@@ -36,7 +36,7 @@ Effect: small moves are `~` (field changes), not add+remove. Duplicating yields 
 ## Checkout vs revert
 
 - **Checkout** - New commit, delta = `diff(HEAD, target)`.
-- **Revert (single commit)** - Apply `diff(target, target.parent)` to HEAD; see conflict / re-derive behavior above.
+- **Revert (single commit)** - Apply `diff(target, target.parent)` to HEAD, see conflict / re-derive behavior above.
 
 ## Level keys
 

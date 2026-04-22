@@ -38,7 +38,7 @@ struct DeltaStats {
 
 std::string dumpDelta(Delta const& d);
 
-// Human-readable description for UI; bounded length.
+// Human-readable description for UI, bounded length.
 std::string describeDeltaText(Delta const& d);
 
 // std::nullopt on parse failure, callers must not substitute empty delta (corrupts state).
