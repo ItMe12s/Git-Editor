@@ -7,6 +7,7 @@
 #include "../service/GitService.hpp"
 #include "../store/CommitStore.hpp"
 #include "../util/AsyncQueue.hpp"
+#include "../util/LevelKey.hpp"
 #include "../util/UiAction.hpp"
 #include "../util/UiText.hpp"
 
@@ -177,13 +178,33 @@ void HistoryLayer::rebuildHeader() {
 void HistoryLayer::rebuildList() {
     if (!m_scroll) return;
 
-    // Squash/revert/merge can reassign commit ids with fresh deltas; stale stats would mislead.
+    // Squash/revert/merge can reassign commit ids with fresh deltas, stale stats would mislead.
     m_statsCache.clear();
 
     auto* content = m_scroll->m_contentLayer;
     content->removeAllChildren();
 
     auto commits = sharedCommitStore().list(m_levelKey);
+    if (commits.empty()) {
+        auto const repairedKey = sharedCommitStore().resolveOrCreateCanonicalKey(m_levelKey);
+        if (repairedKey != m_levelKey) {
+            auto repairedCommits = sharedCommitStore().list(repairedKey);
+            if (!repairedCommits.empty()) {
+                m_levelKey = repairedKey;
+                commits = std::move(repairedCommits);
+            }
+        }
+    }
+    if (commits.empty() && m_editor && m_editor->m_level) {
+        auto const activeKey = levelKeyFor(m_editor->m_level);
+        if (activeKey != m_levelKey) {
+            auto activeCommits = sharedCommitStore().list(activeKey);
+            if (!activeCommits.empty()) {
+                m_levelKey = activeKey;
+                commits = std::move(activeCommits);
+            }
+        }
+    }
 
     float const rowWidth = content->getContentSize().width;
 

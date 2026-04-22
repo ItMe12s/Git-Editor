@@ -459,7 +459,10 @@ std::vector<LevelSummary> CommitStore::listLevels() {
     return out;
 }
 
-bool CommitStore::deleteCommitsAndRefsForKeyNoTransaction(LevelKey const& levelKey) {
+bool CommitStore::deleteCommitsAndRefsForKeyNoTransaction(
+    LevelKey const& levelKey,
+    bool            deleteAliases
+) {
     if (!m_db) return false;
     auto const canonicalKey = this->resolveCanonicalKey(levelKey);
 
@@ -501,7 +504,7 @@ bool CommitStore::deleteCommitsAndRefsForKeyNoTransaction(LevelKey const& levelK
         sqlite3_finalize(st);
     }
 
-    {
+    if (deleteAliases) {
         constexpr char const* delAliases =
             "DELETE FROM level_aliases WHERE canonical_key = ?;";
         sqlite3_stmt* st = nullptr;
@@ -617,7 +620,7 @@ bool CommitStore::replaceLevelHistoryFrom(LevelKey const& dest, LevelKey const& 
     DeferredFkTransaction tx(m_db);
     if (!tx.begin()) return false;
 
-    if (!this->deleteCommitsAndRefsForKeyNoTransaction(canonicalDest)) {
+    if (!this->deleteCommitsAndRefsForKeyNoTransaction(canonicalDest, false)) {
         tx.rollback();
         return false;
     }
@@ -655,6 +658,7 @@ bool CommitStore::replaceLevelHistoryFrom(LevelKey const& dest, LevelKey const& 
             return false;
         }
     }
+
     return tx.commit();
 }
 

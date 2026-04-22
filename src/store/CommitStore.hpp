@@ -94,7 +94,10 @@ private:
         std::string const&      deltaBlob
     );
 
-    bool deleteCommitsAndRefsForKeyNoTransaction(LevelKey const& levelKey);
+    bool deleteCommitsAndRefsForKeyNoTransaction(
+        LevelKey const& levelKey,
+        bool            deleteAliases = true
+    );
     bool upsertAlias(LevelKey const& observedKey, LevelKey const& canonicalKey);
     std::optional<std::int64_t> nextCanonicalLocalId();
     bool isLocalObservedKey(LevelKey const& levelKey) const;
