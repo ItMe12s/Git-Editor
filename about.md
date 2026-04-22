@@ -16,18 +16,18 @@ All of these are in the editor pause menu at the top :3
 
 - **Revert**: undo a commit without undoing other ones.
 - **Checkout**: load a commit's state into the editor, you can revert this after you're done *checking out.* Heh.
-- **Squash**: Combine adjacent commits into a single commit.
+- **Squash**: combine adjacent commits into a single commit.
 
 ### Levels: a list of all levels with a commit history
 
 - **Load**: overwrite the current level data with the data and history from another level.
 - **Delete**: permanently delete the history of the selected level.
 
-### Merge: combine multiple databases with the same initial commit for a single level to automatically merge collab parts
+### Merge: combine multiple databases (levels)
 
 - **.gdge**: Geometry Dash Git Editor mod's custom file format.
-- **Export/Import buttons**: export current level history to `.gdge`, then import with override or merge mode.
-- **3-Way Merge**: The mod understands the base of your level and resolves conflicts for you. (does NOT fix bad collab hosts giving out incorrect color channel and group id).
+- **Export/Import**: export current level history to `.gdge` and import the same `.gdge` but modified and it will try to use smart merge.
+- **3-Way Merge**: the mod understands the base of your level and resolves conflicts for you. (does NOT fix bad collab hosts giving out incorrect color channel and group id).
 
 Everything is saved offline as a SQLite database inside the mod save folder (`git-editor.db`).
 
@@ -43,7 +43,7 @@ Everything is saved offline as a SQLite database inside the mod save folder (`gi
 - **Object identity**: across very large edits (overlapping stacks, bulk rotations) may create add+remove pairs instead of modifies.
   - This is a cost-of-matching trade-off, not a correctness issue.
 - **Commit messages**: capped at 120 characters.
-- **Breaking updates**: databases using an old format will be wiped if the mod updates with a new one (your actual level won't be deleted). So make sure to backup your database file first, this rarely happens unless there's a new massive feature.
+- **Breaking updates**: databases using an old format will be wiped if the mod updates with a new one (your actual level won't be deleted). So make sure to backup your database file first, this rarely happens unless there's a new massive feature. This is because I don't wanna make a migration script.
 
 ## Collab Guide
 

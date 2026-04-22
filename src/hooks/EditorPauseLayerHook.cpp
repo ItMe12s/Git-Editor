@@ -23,6 +23,8 @@
 #include <Geode/ui/Notification.hpp>
 #include <Geode/utils/cocos.hpp>
 
+#include <optional>
+
 using namespace geode::prelude;
 
 namespace {
@@ -36,6 +38,20 @@ std::string currentLevelKey(LevelEditorLayer* editor) {
 
 bool isInvalidLevelKey(std::string const& levelKey) {
     return levelKey.rfind("invalid:", 0) == 0;
+}
+
+bool requireActiveEditor(LevelEditorLayer* editor) {
+    if (editor) return true;
+    Notification::create("No active editor", NotificationIcon::Error)->show();
+    return false;
+}
+
+std::optional<std::string> requireValidLevelKey(LevelEditorLayer* editor) {
+    if (!requireActiveEditor(editor)) return std::nullopt;
+    auto levelKey = currentLevelKey(editor);
+    if (!isInvalidLevelKey(levelKey)) return levelKey;
+    Notification::create("No valid level context", NotificationIcon::Error)->show();
+    return std::nullopt;
 }
 
 std::string escapePopupText(std::string s) {
@@ -158,18 +174,12 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
 
     void onGitCommit() {
         auto editor = m_editorLayer;
-        if (!editor) {
-            Notification::create("No active editor", NotificationIcon::Error)->show();
-            return;
-        }
+        if (!requireActiveEditor(editor)) return;
 
         auto popup = git_editor::CommitMessageLayer::create(
             [editor](std::string const& message) {
-                auto levelKey = currentLevelKey(editor);
-                if (isInvalidLevelKey(levelKey)) {
-                    Notification::create("No valid level context", NotificationIcon::Error)->show();
-                    return;
-                }
+                auto levelKey = requireValidLevelKey(editor);
+                if (!levelKey) return;
                 auto levelStr = git_editor::captureLevelString(editor);
                 if (levelStr.empty()) {
                     Notification::create(
@@ -177,7 +187,7 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
                     )->show();
                     return;
                 }
-                git_editor::postToGitWorker([levelKey, message, levelStr]() {
+                git_editor::postToGitWorker([levelKey = *levelKey, message, levelStr]() {
                     auto outcome = git_editor::sharedGitService().commit(
                         levelKey, message, levelStr
                     );
@@ -199,26 +209,16 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
 
     void onGitHistory() {
         auto editor = m_editorLayer;
-        if (!editor) {
-            Notification::create("No active editor", NotificationIcon::Error)->show();
-            return;
-        }
-        auto levelKey = currentLevelKey(editor);
-        if (isInvalidLevelKey(levelKey)) {
-            Notification::create("No valid level context", NotificationIcon::Error)->show();
-            return;
-        }
-        if (auto popup = git_editor::HistoryLayer::create(levelKey, editor, this)) {
+        auto levelKey = requireValidLevelKey(editor);
+        if (!levelKey) return;
+        if (auto popup = git_editor::HistoryLayer::create(*levelKey, editor, this)) {
             popup->show();
         }
     }
 
     void onGitLevels() {
         auto* editor = m_editorLayer;
-        if (!editor) {
-            Notification::create("No active editor", NotificationIcon::Error)->show();
-            return;
-        }
+        if (!requireActiveEditor(editor)) return;
         if (auto popup = git_editor::LevelBrowserLayer::create(editor, this)) {
             popup->show();
         }
@@ -226,22 +226,15 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
 
     void onGitExportGdge() {
         auto* editor = m_editorLayer;
-        if (!editor) {
-            Notification::create("No active editor", NotificationIcon::Error)->show();
-            return;
-        }
-        auto levelKey = currentLevelKey(editor);
-        if (isInvalidLevelKey(levelKey)) {
-            Notification::create("No valid level context", NotificationIcon::Error)->show();
-            return;
-        }
+        auto levelKey = requireValidLevelKey(editor);
+        if (!levelKey) return;
 
         geode::utils::file::FilePickOptions options;
         options.defaultPath = geode::Mod::get()->getSaveDir() / "level-export.gdge";
         options.filters.push_back({ "Git Editor Level Package", { "*.gdge" } });
         geode::async::spawn(
             geode::utils::file::pick(geode::utils::file::PickMode::SaveFile, options),
-            [levelKey](geode::utils::file::PickResult picked) {
+            [levelKey = *levelKey](geode::utils::file::PickResult picked) {
                 if (picked.isErr()) {
                     Notification::create("Export picker failed", NotificationIcon::Error)->show();
                     return;
@@ -268,15 +261,8 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
 
     void onGitImportGdge() {
         auto* editor = m_editorLayer;
-        if (!editor) {
-            Notification::create("No active editor", NotificationIcon::Error)->show();
-            return;
-        }
-        auto levelKey = currentLevelKey(editor);
-        if (isInvalidLevelKey(levelKey)) {
-            Notification::create("No valid level context", NotificationIcon::Error)->show();
-            return;
-        }
+        auto levelKey = requireValidLevelKey(editor);
+        if (!levelKey) return;
 
         geode::utils::file::FilePickOptions options;
         options.defaultPath = geode::Mod::get()->getSaveDir();
@@ -286,7 +272,7 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
 
         geode::async::spawn(
             geode::utils::file::pickMany(options),
-            [alive, editorRef, levelKey](geode::utils::file::PickManyResult picked) {
+            [alive, editorRef, levelKey = *levelKey](geode::utils::file::PickManyResult picked) {
                 if (!alive) return;
                 if (picked.isErr()) {
                     Notification::create("Import picker failed", NotificationIcon::Error)->show();

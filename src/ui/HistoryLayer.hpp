@@ -30,6 +30,8 @@ protected:
     void rebuildList();
     void rebuildHeader();
     void onSquashPressed();
+    void startCheckoutFlow(CommitId commitId, std::string const& commitMsg);
+    void startRevertFlow(CommitId commitId, std::string const& commitMsg);
 
     std::string                     m_levelKey;
     LevelEditorLayer*               m_editor     = nullptr;

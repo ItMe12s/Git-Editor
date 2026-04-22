@@ -7,6 +7,7 @@
 
 #include <chrono>
 #include <charconv>
+#include <cstdlib>
 #include <queue>
 #include <unordered_map>
 #include <unordered_set>
@@ -51,6 +52,109 @@ bool execOrLog(sqlite3* db, char const* sql) {
     }
     return true;
 }
+
+bool dropSchemaObjects(sqlite3* db) {
+    if (!execOrLog(db, "DROP TABLE IF EXISTS refs;")) return false;
+    if (!execOrLog(db, "DROP TABLE IF EXISTS commits;")) return false;
+    if (!execOrLog(db, "DROP TABLE IF EXISTS level_aliases;")) return false;
+    if (!execOrLog(db, "DROP TABLE IF EXISTS schema_meta;")) return false;
+    execOrLog(db, "DROP INDEX IF EXISTS idx_commits_level;");
+    execOrLog(db, "DROP INDEX IF EXISTS idx_level_aliases_canonical;");
+    return true;
+}
+
+bool createSchemaObjects(sqlite3* db) {
+    constexpr char const* createSchema = R"sql(
+        CREATE TABLE IF NOT EXISTS commits (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            level_key  TEXT    NOT NULL,
+            parent_id  INTEGER REFERENCES commits(id),
+            reverts_id INTEGER REFERENCES commits(id),
+            message    TEXT    NOT NULL,
+            created_at INTEGER NOT NULL,
+            delta_blob BLOB    NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_commits_level
+            ON commits(level_key, created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS refs (
+            level_key TEXT PRIMARY KEY,
+            head_id   INTEGER NOT NULL REFERENCES commits(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS level_aliases (
+            observed_key TEXT PRIMARY KEY,
+            canonical_key TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            last_seen_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_level_aliases_canonical
+            ON level_aliases(canonical_key);
+
+        CREATE TABLE IF NOT EXISTS schema_meta (
+            k TEXT PRIMARY KEY,
+            v TEXT NOT NULL
+        );
+    )sql";
+    return execOrLog(db, createSchema);
+}
+
+bool upsertSchemaVersion(sqlite3* db, int version) {
+    sqlite3_stmt* st = nullptr;
+    constexpr char const* upsert =
+        "INSERT INTO schema_meta(k, v) VALUES('version', ?) "
+        "ON CONFLICT(k) DO UPDATE SET v = excluded.v;";
+    if (sqlite3_prepare_v2(db, upsert, -1, &st, nullptr) != SQLITE_OK) {
+        geode::log::error("prepare meta upsert: {}", sqlite3_errmsg(db));
+        return false;
+    }
+    auto const vs = std::to_string(version);
+    sqlite3_bind_text(st, 1, vs.c_str(), static_cast<int>(vs.size()), SQLITE_TRANSIENT);
+    bool ok = (sqlite3_step(st) == SQLITE_DONE);
+    sqlite3_finalize(st);
+    return ok;
+}
+
+class DeferredFkTransaction final {
+public:
+    explicit DeferredFkTransaction(sqlite3* db) : m_db(db) {}
+
+    bool begin() {
+        if (!execOrLog(m_db, "BEGIN IMMEDIATE;")) return false;
+        if (!execOrLog(m_db, "PRAGMA defer_foreign_keys = ON;")) {
+            execOrLog(m_db, "ROLLBACK;");
+            return false;
+        }
+        m_open = true;
+        return true;
+    }
+
+    bool commit() {
+        if (!m_open) return false;
+        if (!execOrLog(m_db, "COMMIT;")) {
+            this->rollback();
+            return false;
+        }
+        execOrLog(m_db, "PRAGMA defer_foreign_keys = OFF;");
+        m_open = false;
+        return true;
+    }
+
+    void rollback() {
+        if (!m_open) return;
+        execOrLog(m_db, "ROLLBACK;");
+        execOrLog(m_db, "PRAGMA defer_foreign_keys = OFF;");
+        m_open = false;
+    }
+
+    ~DeferredFkTransaction() {
+        this->rollback();
+    }
+
+private:
+    sqlite3* m_db = nullptr;
+    bool m_open = false;
+};
 
 } // namespace
 
@@ -101,61 +205,10 @@ bool CommitStore::ensureSchema() {
             "wiping DB (found schema {}, need {})",
             current, kSchemaVersion
         );
-        if (!execOrLog(m_db, "DROP TABLE IF EXISTS refs;"))         return false;
-        if (!execOrLog(m_db, "DROP TABLE IF EXISTS commits;"))      return false;
-        if (!execOrLog(m_db, "DROP TABLE IF EXISTS level_aliases;")) return false;
-        if (!execOrLog(m_db, "DROP TABLE IF EXISTS schema_meta;"))  return false;
-        execOrLog(m_db, "DROP INDEX IF EXISTS idx_commits_level;");
-        execOrLog(m_db, "DROP INDEX IF EXISTS idx_level_aliases_canonical;");
+        if (!dropSchemaObjects(m_db)) return false;
     }
-
-    constexpr char const* createSchema = R"sql(
-        CREATE TABLE IF NOT EXISTS commits (
-            id         INTEGER PRIMARY KEY AUTOINCREMENT,
-            level_key  TEXT    NOT NULL,
-            parent_id  INTEGER REFERENCES commits(id),
-            reverts_id INTEGER REFERENCES commits(id),
-            message    TEXT    NOT NULL,
-            created_at INTEGER NOT NULL,
-            delta_blob BLOB    NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS idx_commits_level
-            ON commits(level_key, created_at DESC);
-
-        CREATE TABLE IF NOT EXISTS refs (
-            level_key TEXT PRIMARY KEY,
-            head_id   INTEGER NOT NULL REFERENCES commits(id)
-        );
-
-        CREATE TABLE IF NOT EXISTS level_aliases (
-            observed_key TEXT PRIMARY KEY,
-            canonical_key TEXT NOT NULL,
-            created_at INTEGER NOT NULL,
-            last_seen_at INTEGER NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS idx_level_aliases_canonical
-            ON level_aliases(canonical_key);
-
-        CREATE TABLE IF NOT EXISTS schema_meta (
-            k TEXT PRIMARY KEY,
-            v TEXT NOT NULL
-        );
-    )sql";
-    if (!execOrLog(m_db, createSchema)) return false;
-
-    sqlite3_stmt* st = nullptr;
-    constexpr char const* upsert =
-        "INSERT INTO schema_meta(k, v) VALUES('version', ?) "
-        "ON CONFLICT(k) DO UPDATE SET v = excluded.v;";
-    if (sqlite3_prepare_v2(m_db, upsert, -1, &st, nullptr) != SQLITE_OK) {
-        geode::log::error("prepare meta upsert: {}", sqlite3_errmsg(m_db));
-        return false;
-    }
-    auto vs = std::to_string(kSchemaVersion);
-    sqlite3_bind_text(st, 1, vs.c_str(), static_cast<int>(vs.size()), SQLITE_TRANSIENT);
-    bool ok = (sqlite3_step(st) == SQLITE_DONE);
-    sqlite3_finalize(st);
-    return ok;
+    if (!createSchemaObjects(m_db)) return false;
+    return upsertSchemaVersion(m_db, kSchemaVersion);
 }
 
 std::optional<CommitId> CommitStore::insertAt(
@@ -325,22 +378,14 @@ std::optional<CommitId> CommitStore::squash(
         idList += std::to_string(idsOldestFirst[i]);
     }
 
-    if (!execOrLog(m_db, "BEGIN IMMEDIATE;")) return std::nullopt;
-    if (!execOrLog(m_db, "PRAGMA defer_foreign_keys = ON;")) {
-        execOrLog(m_db, "ROLLBACK;");
-        return std::nullopt;
-    }
-
-    auto rollback = [this]() {
-        execOrLog(m_db, "ROLLBACK;");
-        execOrLog(m_db, "PRAGMA defer_foreign_keys = OFF;");
-    };
+    DeferredFkTransaction tx(m_db);
+    if (!tx.begin()) return std::nullopt;
 
     auto const newId = this->insertAt(
         canonicalKey, parentOfOldest, std::nullopt, message, squashCreatedAt, deltaBlob
     );
     if (!newId) {
-        rollback();
+        tx.rollback();
         return std::nullopt;
     }
 
@@ -369,28 +414,23 @@ std::optional<CommitId> CommitStore::squash(
         "UPDATE commits SET parent_id = ? WHERE parent_id = ? AND level_key = ? AND id != ?;",
         {{1, *newId}, {2, newest}, {4, *newId}},
         {{3, &canonicalKey}}
-    )) { rollback(); return std::nullopt; }
+    )) { tx.rollback(); return std::nullopt; }
 
     if (!runSql(
         "UPDATE commits SET reverts_id = NULL WHERE reverts_id IN (" + idList + ");"
-    )) { rollback(); return std::nullopt; }
+    )) { tx.rollback(); return std::nullopt; }
 
     if (!runStmt(
         ("UPDATE refs SET head_id = ? WHERE head_id IN (" + idList + ") AND level_key = ?;").c_str(),
         {{1, *newId}},
         {{2, &canonicalKey}}
-    )) { rollback(); return std::nullopt; }
+    )) { tx.rollback(); return std::nullopt; }
 
     if (!runSql("DELETE FROM commits WHERE id IN (" + idList + ");")) {
-        rollback();
+        tx.rollback();
         return std::nullopt;
     }
-
-    if (!execOrLog(m_db, "COMMIT;")) {
-        rollback();
-        return std::nullopt;
-    }
-    execOrLog(m_db, "PRAGMA defer_foreign_keys = OFF;");
+    if (!tx.commit()) return std::nullopt;
     return newId;
 }
 
@@ -486,25 +526,14 @@ bool CommitStore::deleteCommitsAndRefsForKeyNoTransaction(LevelKey const& levelK
 bool CommitStore::deleteLevel(LevelKey const& levelKey) {
     if (!m_db) return false;
 
-    if (!execOrLog(m_db, "BEGIN IMMEDIATE;")) return false;
-    if (!execOrLog(m_db, "PRAGMA defer_foreign_keys = ON;")) {
-        execOrLog(m_db, "ROLLBACK;");
-        return false;
-    }
+    DeferredFkTransaction tx(m_db);
+    if (!tx.begin()) return false;
 
     if (!this->deleteCommitsAndRefsForKeyNoTransaction(levelKey)) {
-        execOrLog(m_db, "ROLLBACK;");
-        execOrLog(m_db, "PRAGMA defer_foreign_keys = OFF;");
+        tx.rollback();
         return false;
     }
-
-    if (!execOrLog(m_db, "COMMIT;")) {
-        execOrLog(m_db, "ROLLBACK;");
-        execOrLog(m_db, "PRAGMA defer_foreign_keys = OFF;");
-        return false;
-    }
-    execOrLog(m_db, "PRAGMA defer_foreign_keys = OFF;");
-    return true;
+    return tx.commit();
 }
 
 bool CommitStore::replaceLevelHistoryFrom(LevelKey const& dest, LevelKey const& src) {
@@ -585,17 +614,11 @@ bool CommitStore::replaceLevelHistoryFrom(LevelKey const& dest, LevelKey const& 
         return false;
     }
 
-    if (!execOrLog(m_db, "BEGIN IMMEDIATE;")) {
-        return false;
-    }
-    if (!execOrLog(m_db, "PRAGMA defer_foreign_keys = ON;")) {
-        execOrLog(m_db, "ROLLBACK;");
-        return false;
-    }
+    DeferredFkTransaction tx(m_db);
+    if (!tx.begin()) return false;
 
     if (!this->deleteCommitsAndRefsForKeyNoTransaction(canonicalDest)) {
-        execOrLog(m_db, "ROLLBACK;");
-        execOrLog(m_db, "PRAGMA defer_foreign_keys = OFF;");
+        tx.rollback();
         return false;
     }
 
@@ -615,8 +638,7 @@ bool CommitStore::replaceLevelHistoryFrom(LevelKey const& dest, LevelKey const& 
         );
         if (!newId) {
             geode::log::error("replaceLevelHistoryFrom: insert failed at old id {}", oldId);
-            execOrLog(m_db, "ROLLBACK;");
-            execOrLog(m_db, "PRAGMA defer_foreign_keys = OFF;");
+            tx.rollback();
             return false;
         }
         idMap[oldId] = *newId;
@@ -624,25 +646,16 @@ bool CommitStore::replaceLevelHistoryFrom(LevelKey const& dest, LevelKey const& 
 
     if (auto it = idMap.find(*headOld); it == idMap.end()) {
         geode::log::error("replaceLevelHistoryFrom: head not in map");
-        execOrLog(m_db, "ROLLBACK;");
-        execOrLog(m_db, "PRAGMA defer_foreign_keys = OFF;");
+        tx.rollback();
         return false;
     } else {
         if (!this->setHead(canonicalDest, it->second)) {
             geode::log::error("replaceLevelHistoryFrom: setHead failed");
-            execOrLog(m_db, "ROLLBACK;");
-            execOrLog(m_db, "PRAGMA defer_foreign_keys = OFF;");
+            tx.rollback();
             return false;
         }
     }
-
-    if (!execOrLog(m_db, "COMMIT;")) {
-        execOrLog(m_db, "ROLLBACK;");
-        execOrLog(m_db, "PRAGMA defer_foreign_keys = OFF;");
-        return false;
-    }
-    execOrLog(m_db, "PRAGMA defer_foreign_keys = OFF;");
-    return true;
+    return tx.commit();
 }
 
 std::optional<CommitId> CommitStore::getHead(LevelKey const& levelKey) {

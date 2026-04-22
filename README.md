@@ -9,20 +9,11 @@ A mod that tries to implement git into the level editor
 - Delta keys: `h` (header), `+` (adds), `-` (removes), `~` (modifies).
 - State reconstruction replays root -> HEAD, with LRU cache (default 16 states).
 
-## Editor UI (pause menu top row)
-
-- `Commit`: parse live level, UUID-match objects, store delta, message max 120 chars.
-- `History`: inspect (`?`), rename, checkout, revert, squash.
-- `Levels`: list level histories, load selected history into current level, or delete selected level history.
-- `Export .gdge`: save one level history into a portable single-level SQLite package.
-- `Import .gdge`: load a package into current level with `Override`, or `Merge` when root commit matches.
-
-## Semantics
+## Other info not in about.md
 
 - Checkout is forward-only: inserts new commit with `diff(HEAD, target)`.
 - Revert applies `diff(target, target.parent)` onto current HEAD, reports conflicts.
 - Squash requires 2+ contiguous selected commits.
-- Load is destructive for current level objects/history (explicit warning in UI).
 
 ## Identity + keys
 
@@ -30,13 +21,11 @@ A mod that tries to implement git into the level editor
 - Saved level key: `m_levelID`.
 - Unsaved observed keys are mapped to stable canonical aliases (`localid:<n>`) for persistent history.
 
-## Limits / ops notes
+## TO-DO
 
-- No merge/rebase/branch flow.
-- `.gdge` merge requires same initial commit/root snapshot hash.
-- Large edits can degrade matching into add/remove pairs.
-- Schema version bump can wipe commit DB data (not GD level files).
+- Actually none, waiting for bug reports rn.
 
 ## Build
 
 - SQLite via CPM in `CMakeLists.txt`.
+- Manual testing: `testing-checklist.md`.
