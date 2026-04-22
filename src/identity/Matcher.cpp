@@ -1,8 +1,9 @@
 #include "Matcher.hpp"
 
 #include <algorithm>
-#include <charconv>
+#include <cerrno>
 #include <cmath>
+#include <cstdlib>
 #include <deque>
 #include <random>
 #include <string_view>
@@ -34,11 +35,15 @@ ObjectUuid freshUuid() {
 double parseDoubleOr(FieldMap const& m, int key, double fallback) {
     auto it = m.find(key);
     if (it == m.end() || it->second.empty()) return fallback;
-    double out = fallback;
     auto const& s = it->second;
-    auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), out);
-    (void)ptr;
-    return (ec == std::errc()) ? out : fallback;
+    char* end = nullptr;
+    errno = 0;
+    double out = std::strtod(s.c_str(), &end);
+    if (end == s.c_str()) return fallback;
+    if (end != s.c_str() + s.size()) return fallback;
+    if (errno == ERANGE) return fallback;
+    if (!std::isfinite(out)) return fallback;
+    return out;
 }
 
 std::string fieldOrEmpty(FieldMap const& m, int key) {
