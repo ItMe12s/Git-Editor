@@ -6,6 +6,7 @@
 #include <sqlite3.h>
 
 #include <chrono>
+#include <charconv>
 #include <queue>
 #include <unordered_map>
 #include <unordered_set>
@@ -100,10 +101,12 @@ bool CommitStore::ensureSchema() {
             "wiping DB (found schema {}, need {})",
             current, kSchemaVersion
         );
-        if (!execOrLog(m_db, "DROP TABLE IF EXISTS commits;"))      return false;
         if (!execOrLog(m_db, "DROP TABLE IF EXISTS refs;"))         return false;
+        if (!execOrLog(m_db, "DROP TABLE IF EXISTS commits;"))      return false;
+        if (!execOrLog(m_db, "DROP TABLE IF EXISTS level_aliases;")) return false;
         if (!execOrLog(m_db, "DROP TABLE IF EXISTS schema_meta;"))  return false;
         execOrLog(m_db, "DROP INDEX IF EXISTS idx_commits_level;");
+        execOrLog(m_db, "DROP INDEX IF EXISTS idx_level_aliases_canonical;");
     }
 
     constexpr char const* createSchema = R"sql(
@@ -123,6 +126,15 @@ bool CommitStore::ensureSchema() {
             level_key TEXT PRIMARY KEY,
             head_id   INTEGER NOT NULL REFERENCES commits(id)
         );
+
+        CREATE TABLE IF NOT EXISTS level_aliases (
+            observed_key TEXT PRIMARY KEY,
+            canonical_key TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            last_seen_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_level_aliases_canonical
+            ON level_aliases(canonical_key);
 
         CREATE TABLE IF NOT EXISTS schema_meta (
             k TEXT PRIMARY KEY,
@@ -155,6 +167,7 @@ std::optional<CommitId> CommitStore::insertAt(
     std::string const&      deltaBlob
 ) {
     if (!m_db) return std::nullopt;
+    auto const canonicalKey = this->resolveOrCreateCanonicalKey(levelKey);
 
     constexpr char const* sql =
         "INSERT INTO commits(level_key, parent_id, reverts_id, message, created_at, delta_blob) "
@@ -166,7 +179,7 @@ std::optional<CommitId> CommitStore::insertAt(
         return std::nullopt;
     }
 
-    sqlite3_bind_text(st, 1, levelKey.c_str(), static_cast<int>(levelKey.size()), SQLITE_TRANSIENT);
+    sqlite3_bind_text(st, 1, canonicalKey.c_str(), static_cast<int>(canonicalKey.size()), SQLITE_TRANSIENT);
     if (parent)  sqlite3_bind_int64(st, 2, *parent);   else sqlite3_bind_null(st, 2);
     if (reverts) sqlite3_bind_int64(st, 3, *reverts);  else sqlite3_bind_null(st, 3);
     sqlite3_bind_text(st, 4, message.c_str(), static_cast<int>(message.size()), SQLITE_TRANSIENT);
@@ -244,6 +257,7 @@ std::optional<CommitRow> CommitStore::get(CommitId id) {
 std::vector<CommitRow> CommitStore::list(LevelKey const& levelKey) {
     std::vector<CommitRow> out;
     if (!m_db) return out;
+    auto const canonicalKey = this->resolveCanonicalKey(levelKey);
 
     constexpr char const* sql =
         "SELECT id, level_key, parent_id, reverts_id, message, created_at, delta_blob "
@@ -255,7 +269,7 @@ std::vector<CommitRow> CommitStore::list(LevelKey const& levelKey) {
         geode::log::error("prepare list failed: {}", sqlite3_errmsg(m_db));
         return out;
     }
-    sqlite3_bind_text(st, 1, levelKey.c_str(), static_cast<int>(levelKey.size()), SQLITE_TRANSIENT);
+    sqlite3_bind_text(st, 1, canonicalKey.c_str(), static_cast<int>(canonicalKey.size()), SQLITE_TRANSIENT);
 
     while (sqlite3_step(st) == SQLITE_ROW) {
         out.push_back(rowFromStatement(st, /*includeBlob*/ true));
@@ -291,6 +305,7 @@ std::optional<CommitId> CommitStore::squash(
 ) {
     if (!m_db) return std::nullopt;
     if (idsOldestFirst.size() < 2) return std::nullopt;
+    auto const canonicalKey = this->resolveCanonicalKey(levelKey);
 
     auto const newest = idsOldestFirst.back();
 
@@ -322,7 +337,7 @@ std::optional<CommitId> CommitStore::squash(
     };
 
     auto const newId = this->insertAt(
-        levelKey, parentOfOldest, std::nullopt, message, squashCreatedAt, deltaBlob
+        canonicalKey, parentOfOldest, std::nullopt, message, squashCreatedAt, deltaBlob
     );
     if (!newId) {
         rollback();
@@ -353,7 +368,7 @@ std::optional<CommitId> CommitStore::squash(
     if (!runStmt(
         "UPDATE commits SET parent_id = ? WHERE parent_id = ? AND level_key = ? AND id != ?;",
         {{1, *newId}, {2, newest}, {4, *newId}},
-        {{3, &levelKey}}
+        {{3, &canonicalKey}}
     )) { rollback(); return std::nullopt; }
 
     if (!runSql(
@@ -363,7 +378,7 @@ std::optional<CommitId> CommitStore::squash(
     if (!runStmt(
         ("UPDATE refs SET head_id = ? WHERE head_id IN (" + idList + ") AND level_key = ?;").c_str(),
         {{1, *newId}},
-        {{2, &levelKey}}
+        {{2, &canonicalKey}}
     )) { rollback(); return std::nullopt; }
 
     if (!runSql("DELETE FROM commits WHERE id IN (" + idList + ");")) {
@@ -406,6 +421,7 @@ std::vector<LevelSummary> CommitStore::listLevels() {
 
 bool CommitStore::deleteCommitsAndRefsForKeyNoTransaction(LevelKey const& levelKey) {
     if (!m_db) return false;
+    auto const canonicalKey = this->resolveCanonicalKey(levelKey);
 
     {
         constexpr char const* delRefs =
@@ -416,7 +432,7 @@ bool CommitStore::deleteCommitsAndRefsForKeyNoTransaction(LevelKey const& levelK
             return false;
         }
         sqlite3_bind_text(
-            st, 1, levelKey.c_str(), static_cast<int>(levelKey.size()), SQLITE_TRANSIENT
+            st, 1, canonicalKey.c_str(), static_cast<int>(canonicalKey.size()), SQLITE_TRANSIENT
         );
         if (sqlite3_step(st) != SQLITE_DONE) {
             geode::log::error("deleteLevel refs step: {}", sqlite3_errmsg(m_db));
@@ -435,7 +451,7 @@ bool CommitStore::deleteCommitsAndRefsForKeyNoTransaction(LevelKey const& levelK
             return false;
         }
         sqlite3_bind_text(
-            st, 1, levelKey.c_str(), static_cast<int>(levelKey.size()), SQLITE_TRANSIENT
+            st, 1, canonicalKey.c_str(), static_cast<int>(canonicalKey.size()), SQLITE_TRANSIENT
         );
         if (sqlite3_step(st) != SQLITE_DONE) {
             geode::log::error("deleteLevel commits step: {}", sqlite3_errmsg(m_db));
@@ -473,18 +489,20 @@ bool CommitStore::deleteLevel(LevelKey const& levelKey) {
 
 bool CommitStore::replaceLevelHistoryFrom(LevelKey const& dest, LevelKey const& src) {
     if (!m_db) return false;
-    if (dest == src) {
+    auto const canonicalDest = this->resolveCanonicalKey(dest);
+    auto const canonicalSrc  = this->resolveCanonicalKey(src);
+    if (canonicalDest == canonicalSrc) {
         geode::log::warn("replaceLevelHistoryFrom: dest == src");
         return false;
     }
 
-    auto const headOld = this->getHead(src);
+    auto const headOld = this->getHead(canonicalSrc);
     if (!headOld) {
         geode::log::error("replaceLevelHistoryFrom: no HEAD for src");
         return false;
     }
 
-    auto const rows = this->list(src);
+    auto const rows = this->list(canonicalSrc);
     if (rows.empty()) {
         geode::log::error("replaceLevelHistoryFrom: empty list for src");
         return false;
@@ -555,7 +573,7 @@ bool CommitStore::replaceLevelHistoryFrom(LevelKey const& dest, LevelKey const& 
         return false;
     }
 
-    if (!this->deleteCommitsAndRefsForKeyNoTransaction(dest)) {
+    if (!this->deleteCommitsAndRefsForKeyNoTransaction(canonicalDest)) {
         execOrLog(m_db, "ROLLBACK;");
         execOrLog(m_db, "PRAGMA defer_foreign_keys = OFF;");
         return false;
@@ -573,7 +591,7 @@ bool CommitStore::replaceLevelHistoryFrom(LevelKey const& dest, LevelKey const& 
             newReverts = idMap.at(*row.reverts);
         }
         auto const newId = this->insertAt(
-            dest, newParent, newReverts, row.message, row.createdAt, row.deltaBlob
+            canonicalDest, newParent, newReverts, row.message, row.createdAt, row.deltaBlob
         );
         if (!newId) {
             geode::log::error("replaceLevelHistoryFrom: insert failed at old id {}", oldId);
@@ -590,7 +608,7 @@ bool CommitStore::replaceLevelHistoryFrom(LevelKey const& dest, LevelKey const& 
         execOrLog(m_db, "PRAGMA defer_foreign_keys = OFF;");
         return false;
     } else {
-        if (!this->setHead(dest, it->second)) {
+        if (!this->setHead(canonicalDest, it->second)) {
             geode::log::error("replaceLevelHistoryFrom: setHead failed");
             execOrLog(m_db, "ROLLBACK;");
             execOrLog(m_db, "PRAGMA defer_foreign_keys = OFF;");
@@ -609,6 +627,7 @@ bool CommitStore::replaceLevelHistoryFrom(LevelKey const& dest, LevelKey const& 
 
 std::optional<CommitId> CommitStore::getHead(LevelKey const& levelKey) {
     if (!m_db) return std::nullopt;
+    auto const canonicalKey = this->resolveCanonicalKey(levelKey);
 
     constexpr char const* sql = "SELECT head_id FROM refs WHERE level_key = ?;";
     sqlite3_stmt* st = nullptr;
@@ -616,7 +635,7 @@ std::optional<CommitId> CommitStore::getHead(LevelKey const& levelKey) {
         geode::log::error("prepare getHead failed: {}", sqlite3_errmsg(m_db));
         return std::nullopt;
     }
-    sqlite3_bind_text(st, 1, levelKey.c_str(), static_cast<int>(levelKey.size()), SQLITE_TRANSIENT);
+    sqlite3_bind_text(st, 1, canonicalKey.c_str(), static_cast<int>(canonicalKey.size()), SQLITE_TRANSIENT);
 
     std::optional<CommitId> out;
     if (sqlite3_step(st) == SQLITE_ROW) {
@@ -628,6 +647,7 @@ std::optional<CommitId> CommitStore::getHead(LevelKey const& levelKey) {
 
 bool CommitStore::setHead(LevelKey const& levelKey, CommitId head) {
     if (!m_db) return false;
+    auto const canonicalKey = this->resolveOrCreateCanonicalKey(levelKey);
 
     constexpr char const* sql =
         "INSERT INTO refs(level_key, head_id) VALUES(?, ?) "
@@ -637,12 +657,113 @@ bool CommitStore::setHead(LevelKey const& levelKey, CommitId head) {
         geode::log::error("prepare setHead failed: {}", sqlite3_errmsg(m_db));
         return false;
     }
-    sqlite3_bind_text(st, 1, levelKey.c_str(), static_cast<int>(levelKey.size()), SQLITE_TRANSIENT);
+    sqlite3_bind_text(st, 1, canonicalKey.c_str(), static_cast<int>(canonicalKey.size()), SQLITE_TRANSIENT);
     sqlite3_bind_int64(st, 2, head);
 
     bool ok = (sqlite3_step(st) == SQLITE_DONE);
     sqlite3_finalize(st);
     return ok;
+}
+
+bool CommitStore::isLocalObservedKey(LevelKey const& levelKey) const {
+    return levelKey.rfind("local:", 0) == 0;
+}
+
+bool CommitStore::upsertAlias(LevelKey const& observedKey, LevelKey const& canonicalKey) {
+    if (!m_db) return false;
+    sqlite3_stmt* st = nullptr;
+    constexpr char const* sql =
+        "INSERT INTO level_aliases(observed_key, canonical_key, created_at, last_seen_at) "
+        "VALUES (?, ?, ?, ?) "
+        "ON CONFLICT(observed_key) DO UPDATE SET "
+        "canonical_key = excluded.canonical_key, "
+        "last_seen_at = excluded.last_seen_at;";
+    if (sqlite3_prepare_v2(m_db, sql, -1, &st, nullptr) != SQLITE_OK) {
+        geode::log::error("prepare upsertAlias failed: {}", sqlite3_errmsg(m_db));
+        return false;
+    }
+    auto const now = nowSeconds();
+    sqlite3_bind_text(st, 1, observedKey.c_str(), static_cast<int>(observedKey.size()), SQLITE_TRANSIENT);
+    sqlite3_bind_text(st, 2, canonicalKey.c_str(), static_cast<int>(canonicalKey.size()), SQLITE_TRANSIENT);
+    sqlite3_bind_int64(st, 3, now);
+    sqlite3_bind_int64(st, 4, now);
+    bool const ok = (sqlite3_step(st) == SQLITE_DONE);
+    if (!ok) {
+        geode::log::error("upsertAlias step failed: {}", sqlite3_errmsg(m_db));
+    }
+    sqlite3_finalize(st);
+    return ok;
+}
+
+std::optional<std::int64_t> CommitStore::nextCanonicalLocalId() {
+    if (!m_db) return std::nullopt;
+    sqlite3_stmt* st = nullptr;
+    constexpr char const* sql =
+        "SELECT canonical_key FROM level_aliases WHERE canonical_key LIKE 'localid:%';";
+    if (sqlite3_prepare_v2(m_db, sql, -1, &st, nullptr) != SQLITE_OK) {
+        geode::log::error("prepare nextCanonicalLocalId failed: {}", sqlite3_errmsg(m_db));
+        return std::nullopt;
+    }
+    std::int64_t maxId = 0;
+    while (sqlite3_step(st) == SQLITE_ROW) {
+        auto const* text = reinterpret_cast<char const*>(sqlite3_column_text(st, 0));
+        if (!text) continue;
+        std::string_view key(text);
+        if (key.rfind("localid:", 0) != 0 || key.size() <= 8) continue;
+        std::int64_t value = 0;
+        auto [ptr, ec] = std::from_chars(key.data() + 8, key.data() + key.size(), value);
+        if (ec != std::errc() || ptr != key.data() + key.size() || value <= 0) continue;
+        if (value > maxId) maxId = value;
+    }
+    sqlite3_finalize(st);
+    return maxId + 1;
+}
+
+LevelKey CommitStore::resolveCanonicalKeyImpl(LevelKey const& observedKey, bool createIfMissing) {
+    if (!m_db) return observedKey;
+    if (observedKey.rfind("id:", 0) == 0) return observedKey;
+    if (observedKey.rfind("localid:", 0) == 0) return observedKey;
+    if (!this->isLocalObservedKey(observedKey)) return observedKey;
+
+    sqlite3_stmt* st = nullptr;
+    constexpr char const* lookup =
+        "SELECT canonical_key FROM level_aliases WHERE observed_key = ?;";
+    if (sqlite3_prepare_v2(m_db, lookup, -1, &st, nullptr) != SQLITE_OK) {
+        geode::log::error("prepare resolveCanonicalKey lookup failed: {}", sqlite3_errmsg(m_db));
+        return observedKey;
+    }
+    sqlite3_bind_text(st, 1, observedKey.c_str(), static_cast<int>(observedKey.size()), SQLITE_TRANSIENT);
+
+    LevelKey canonical;
+    if (sqlite3_step(st) == SQLITE_ROW) {
+        auto const* text = reinterpret_cast<char const*>(sqlite3_column_text(st, 0));
+        if (text) canonical = text;
+    }
+    sqlite3_finalize(st);
+
+    if (!canonical.empty()) {
+        if (createIfMissing) {
+            this->upsertAlias(observedKey, canonical);
+        }
+        return canonical;
+    }
+
+    if (!createIfMissing) return observedKey;
+
+    auto next = this->nextCanonicalLocalId();
+    if (!next) return observedKey;
+
+    canonical = "localid:" + std::to_string(*next);
+    if (!this->upsertAlias(observedKey, canonical)) return observedKey;
+    return canonical;
+}
+
+LevelKey CommitStore::resolveCanonicalKey(LevelKey const& observedKey) {
+    return this->resolveCanonicalKeyImpl(observedKey, false);
+}
+
+LevelKey CommitStore::resolveOrCreateCanonicalKey(LevelKey const& observedKey) {
+    return this->resolveCanonicalKeyImpl(observedKey, true);
 }
 
 CommitStore& sharedCommitStore() {

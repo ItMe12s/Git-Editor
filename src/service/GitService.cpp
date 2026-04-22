@@ -30,9 +30,10 @@ CommitOutcome GitService::commit(
     std::string const& liveLevelStr
 ) {
     CommitOutcome out;
+    auto const canonicalKey = m_store.resolveOrCreateCanonicalKey(levelKey);
 
     LevelState headState;
-    std::optional<CommitId> parent = m_store.getHead(levelKey);
+    std::optional<CommitId> parent = m_store.getHead(canonicalKey);
     if (parent) {
         auto recon = this->reconstruct(*parent);
         if (!recon) {
@@ -56,13 +57,13 @@ CommitOutcome GitService::commit(
 
     auto blob = dumpDelta(delta);
 
-    auto id = m_store.insert(levelKey, parent, std::nullopt, message, blob);
+    auto id = m_store.insert(canonicalKey, parent, std::nullopt, message, blob);
     if (!id) {
         out.error = "DB insert failed";
         geode::log::error("{}", out.error);
         return out;
     }
-    if (!m_store.setHead(levelKey, *id)) {
+    if (!m_store.setHead(canonicalKey, *id)) {
         out.error = "DB setHead failed (stranded commit " + std::to_string(*id) + ")";
         geode::log::error("{}", out.error);
         return out;
@@ -77,8 +78,9 @@ CommitOutcome GitService::commit(
 
 CheckoutOutcome GitService::checkout(LevelKey const& levelKey, CommitId target) {
     CheckoutOutcome out;
+    auto const canonicalKey = m_store.resolveCanonicalKey(levelKey);
 
-    auto head = m_store.getHead(levelKey);
+    auto head = m_store.getHead(canonicalKey);
     if (!head) {
         out.error = "no HEAD for this level";
         return out;
@@ -103,18 +105,18 @@ CheckoutOutcome GitService::checkout(LevelKey const& levelKey, CommitId target) 
     auto blob        = dumpDelta(revertDelta);
 
     auto targetRow = m_store.get(target);
-    if (targetRow && targetRow->levelKey != levelKey) {
+    if (targetRow && targetRow->levelKey != canonicalKey) {
         out.error = "target commit belongs to a different level";
         return out;
     }
     std::string msg = "Checkout: " + (targetRow ? shortPreview(targetRow->message) : std::to_string(target));
 
-    auto id = m_store.insert(levelKey, *head, target, msg, blob);
+    auto id = m_store.insert(canonicalKey, *head, target, msg, blob);
     if (!id) {
         out.error = "DB insert failed";
         return out;
     }
-    if (!m_store.setHead(levelKey, *id)) {
+    if (!m_store.setHead(canonicalKey, *id)) {
         out.error = "DB setHead failed";
         return out;
     }
@@ -129,8 +131,9 @@ CheckoutOutcome GitService::checkout(LevelKey const& levelKey, CommitId target) 
 
 RevertOutcome GitService::revert(LevelKey const& levelKey, CommitId target) {
     RevertOutcome out;
+    auto const canonicalKey = m_store.resolveCanonicalKey(levelKey);
 
-    auto head = m_store.getHead(levelKey);
+    auto head = m_store.getHead(canonicalKey);
     if (!head) {
         out.error = "no HEAD for this level";
         return out;
@@ -141,7 +144,7 @@ RevertOutcome GitService::revert(LevelKey const& levelKey, CommitId target) {
         out.error = "target commit not found";
         return out;
     }
-    if (targetRow->levelKey != levelKey) {
+    if (targetRow->levelKey != canonicalKey) {
         out.error = "target commit belongs to a different level";
         return out;
     }
@@ -167,12 +170,12 @@ RevertOutcome GitService::revert(LevelKey const& levelKey, CommitId target) {
     auto blob           = dumpDelta(persistedDelta);
 
     std::string msg = "Revert: " + shortPreview(targetRow->message);
-    auto id = m_store.insert(levelKey, *head, target, msg, blob);
+    auto id = m_store.insert(canonicalKey, *head, target, msg, blob);
     if (!id) {
         out.error = "DB insert failed";
         return out;
     }
-    if (!m_store.setHead(levelKey, *id)) {
+    if (!m_store.setHead(canonicalKey, *id)) {
         out.error = "DB setHead failed";
         return out;
     }
@@ -191,6 +194,7 @@ SquashOutcome GitService::squash(
     std::string const&           message
 ) {
     SquashOutcome out;
+    auto const canonicalKey = m_store.resolveCanonicalKey(levelKey);
 
     if (idsOldestFirst.size() < 2) {
         out.error = "Squash needs at least 2 commits";
@@ -205,7 +209,7 @@ SquashOutcome GitService::squash(
             out.error = "Commit " + std::to_string(id) + " not found";
             return out;
         }
-        if (row->levelKey != levelKey) {
+        if (row->levelKey != canonicalKey) {
             out.error = "Commit " + std::to_string(id) + " belongs to a different level";
             return out;
         }
@@ -234,7 +238,7 @@ SquashOutcome GitService::squash(
     auto combined = diff(base, *target);
     auto blob     = dumpDelta(combined);
 
-    auto newId = m_store.squash(levelKey, idsOldestFirst, parentOfOldest, message, blob);
+    auto newId = m_store.squash(canonicalKey, idsOldestFirst, parentOfOldest, message, blob);
     if (!newId) {
         out.error = "DB squash failed";
         return out;
@@ -250,16 +254,18 @@ SquashOutcome GitService::squash(
 
 ImportLevelOutcome GitService::importLevelFrom(LevelKey const& dest, LevelKey const& src) {
     ImportLevelOutcome out;
-    if (dest == src) {
+    auto const canonicalDest = m_store.resolveOrCreateCanonicalKey(dest);
+    auto const canonicalSrc  = m_store.resolveCanonicalKey(src);
+    if (canonicalDest == canonicalSrc) {
         out.error = "source and destination are the same";
         return out;
     }
-    if (!m_store.replaceLevelHistoryFrom(dest, src)) {
+    if (!m_store.replaceLevelHistoryFrom(canonicalDest, canonicalSrc)) {
         out.error = "failed to copy level history";
         return out;
     }
     this->clearReconstructCache();
-    auto const head = m_store.getHead(dest);
+    auto const head = m_store.getHead(canonicalDest);
     if (!head) {
         out.error = "no HEAD after import";
         return out;
