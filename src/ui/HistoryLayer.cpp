@@ -1,6 +1,7 @@
 #include "HistoryLayer.hpp"
 
 #include "CommitMessageLayer.hpp"
+#include "DeltaInfoLayer.hpp"
 #include "../diff/Delta.hpp"
 #include "../editor/LevelStateIO.hpp"
 #include "../service/GitService.hpp"
@@ -126,7 +127,7 @@ bool HistoryLayer::init(
 
     m_mainLayer->addChildAtPosition(
         m_scroll, Anchor::Center,
-        { -innerW / 2.f, -innerH / 2.f + 2.f },
+        { -innerW * .5f, -innerH * .55f },
         /* useAnchorLayout */ false
     );
 
@@ -223,7 +224,7 @@ void HistoryLayer::rebuildList() {
         row->addChildAtPosition(msgLbl, Anchor::Left, {6.f, -8.f});
 
         auto menu = CCMenu::create();
-        menu->setContentSize({170.f, kRowHeight});
+        menu->setContentSize({210.f, kRowHeight});
         menu->setAnchorPoint({1.f, .5f});
         menu->setLayout(
             RowLayout::create()
@@ -232,8 +233,33 @@ void HistoryLayer::rebuildList() {
                 ->setCrossAxisOverflow(true)
         );
 
-        auto const commitId = c.id;
+        auto const commitId  = c.id;
         auto const commitMsg = c.message;
+        auto const deltaBlob = c.deltaBlob;
+
+        auto helpBtn = makeBtn(
+            "?", "GJ_button_04.png",
+            [deltaBlob, commitMsg](CCMenuItemSpriteExtra*) {
+                if (auto opt = parseDelta(deltaBlob)) {
+                    std::string body  = describeDeltaText(*opt);
+                    std::string title = "What changed";
+                    if (!commitMsg.empty()) {
+                        title += " - ";
+                        title += shorten(commitMsg, 24);
+                    }
+                    if (auto* p = DeltaInfoLayer::create(std::move(title), std::move(body))) {
+                        p->show();
+                    }
+                } else {
+                    FLAlertLayer::create(
+                        "Error",
+                        "Could not read this commit's delta.",
+                        "OK"
+                    )->show();
+                }
+            }
+        );
+        menu->addChild(helpBtn);
 
         auto renameBtn = makeBtn(
             "Rename", "GJ_button_04.png",

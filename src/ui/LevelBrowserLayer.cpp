@@ -79,7 +79,7 @@ bool LevelBrowserLayer::init() {
 
     m_mainLayer->addChildAtPosition(
         m_scroll, Anchor::Center,
-        {-innerW / 2.f, -innerH / 2.f + 2.f},
+        {-innerW * .5f, -innerH * .55f},
         false
     );
 
