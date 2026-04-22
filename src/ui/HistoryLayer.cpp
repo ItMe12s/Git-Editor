@@ -2,11 +2,13 @@
 
 #include "CommitMessageLayer.hpp"
 #include "DeltaInfoLayer.hpp"
+#include "common/GitUiActionRunner.hpp"
+#include "history/HistoryDataSource.hpp"
+#include "history/HistorySelectionModel.hpp"
 #include "../diff/Delta.hpp"
 #include "../editor/LevelStateIO.hpp"
 #include "../service/GitService.hpp"
 #include "../store/CommitStore.hpp"
-#include "../util/AsyncQueue.hpp"
 #include "../util/LevelKey.hpp"
 #include "../util/UiAction.hpp"
 #include "../util/UiText.hpp"
@@ -23,6 +25,7 @@
 #include <Geode/utils/cocos.hpp>
 
 #include <cerrno>
+#include <algorithm>
 #include <cstdio>
 #include <vector>
 
@@ -184,27 +187,10 @@ void HistoryLayer::rebuildList() {
     auto* content = m_scroll->m_contentLayer;
     content->removeAllChildren();
 
-    auto commits = sharedCommitStore().list(m_levelKey);
-    if (commits.empty()) {
-        auto const repairedKey = sharedCommitStore().resolveOrCreateCanonicalKey(m_levelKey);
-        if (repairedKey != m_levelKey) {
-            auto repairedCommits = sharedCommitStore().list(repairedKey);
-            if (!repairedCommits.empty()) {
-                m_levelKey = repairedKey;
-                commits = std::move(repairedCommits);
-            }
-        }
-    }
-    if (commits.empty() && m_editor && m_editor->m_level) {
-        auto const activeKey = levelKeyFor(m_editor->m_level);
-        if (activeKey != m_levelKey) {
-            auto activeCommits = sharedCommitStore().list(activeKey);
-            if (!activeCommits.empty()) {
-                m_levelKey = activeKey;
-                commits = std::move(activeCommits);
-            }
-        }
-    }
+    auto const activeKey = (m_editor && m_editor->m_level) ? levelKeyFor(m_editor->m_level) : "";
+    auto loaded = history_data_source::loadHistory(m_levelKey, activeKey);
+    m_levelKey = loaded.levelKey;
+    auto commits = std::move(loaded.commits);
 
     float const rowWidth = content->getContentSize().width;
 
@@ -419,9 +405,11 @@ void HistoryLayer::startCheckoutFlow(CommitId commitId, std::string const& commi
             }
             if (!self) return;
             Ref<HistoryLayer> alive(self.data());
-            postToGitWorker([alive, editorRef, pauseRef, levelKey, commitId]() {
-                auto outcome = sharedGitService().checkout(levelKey, commitId);
-                geode::queueInMainThread([alive, editorRef, pauseRef, outcome = std::move(outcome)]() mutable {
+            ui_action_runner::runWorkerResult<CheckoutOutcome>(
+                [levelKey, commitId]() {
+                    return sharedGitService().checkout(levelKey, commitId);
+                },
+                [alive, editorRef, pauseRef](CheckoutOutcome outcome) mutable {
                     if (!alive) return;
                     finishBusyAction(alive->m_busy);
                     if (!outcome.ok) {
@@ -450,8 +438,8 @@ void HistoryLayer::startCheckoutFlow(CommitId commitId, std::string const& commi
                     }
                     alive->onClose(nullptr);
                     if (pauseLayer) pauseLayer->onResume(nullptr);
-                });
-            });
+                }
+            );
         }
     );
 }
@@ -474,9 +462,11 @@ void HistoryLayer::startRevertFlow(CommitId commitId, std::string const& commitM
             }
             if (!self) return;
             Ref<HistoryLayer> alive(self.data());
-            postToGitWorker([alive, editorRef, pauseRef, levelKey, commitId]() {
-                auto outcome = sharedGitService().revert(levelKey, commitId);
-                geode::queueInMainThread([alive, editorRef, pauseRef, outcome = std::move(outcome)]() mutable {
+            ui_action_runner::runWorkerResult<RevertOutcome>(
+                [levelKey, commitId]() {
+                    return sharedGitService().revert(levelKey, commitId);
+                },
+                [alive, editorRef, pauseRef](RevertOutcome outcome) mutable {
                     if (!alive) return;
                     finishBusyAction(alive->m_busy);
                     if (!outcome.ok) {
@@ -510,8 +500,8 @@ void HistoryLayer::startRevertFlow(CommitId commitId, std::string const& commitM
                     alive->onClose(nullptr);
                     if (pauseLayer) pauseLayer->onResume(nullptr);
                     showConflictSummary(outcome.conflicts);
-                });
-            });
+                }
+            );
         }
     );
 }
@@ -529,13 +519,11 @@ void HistoryLayer::onSquashPressed() {
     // commits is DESC by createdAt, build oldest-first selected list.
     std::vector<CommitId>    idsOldestFirst;
     std::vector<std::string> messagesOldestFirst;
-    idsOldestFirst.reserve(m_selected.size());
     messagesOldestFirst.reserve(m_selected.size());
-    for (auto it = commits.rbegin(); it != commits.rend(); ++it) {
-        if (m_selected.count(it->id)) {
-            idsOldestFirst.push_back(it->id);
-            messagesOldestFirst.push_back(it->message);
-        }
+    idsOldestFirst = history_selection_model::selectedOldestFirst(commits, m_selected);
+    for (auto id : idsOldestFirst) {
+        auto it = std::find_if(commits.begin(), commits.end(), [id](CommitRow const& row) { return row.id == id; });
+        if (it != commits.end()) messagesOldestFirst.push_back(it->message);
     }
 
     if (idsOldestFirst.size() != m_selected.size()) {
@@ -576,10 +564,11 @@ void HistoryLayer::onSquashPressed() {
                 [self, editorRef, pauseRef, levelKey, idsOldestFirst](std::string const& msg) {
                     if (!self) return;
                     Ref<HistoryLayer> alive(self.data());
-                    postToGitWorker([alive, editorRef, pauseRef, levelKey, idsOldestFirst, msg]() {
-                        auto outcome = sharedGitService().squash(levelKey, idsOldestFirst, msg);
-                        geode::queueInMainThread(
-                            [alive, editorRef, pauseRef, outcome = std::move(outcome)]() mutable {
+                    ui_action_runner::runWorkerResult<SquashOutcome>(
+                        [levelKey, idsOldestFirst, msg]() {
+                            return sharedGitService().squash(levelKey, idsOldestFirst, msg);
+                        },
+                        [alive, editorRef, pauseRef](SquashOutcome outcome) mutable {
                                 if (!alive) return;
                                 finishBusyAction(alive->m_busy);
                                 if (!outcome.ok) {
@@ -611,9 +600,8 @@ void HistoryLayer::onSquashPressed() {
                                 alive->rebuildHeader();
                                 alive->rebuildList();
                                 (void)pauseLayer;
-                            }
-                        );
-                    });
+                        }
+                    );
                 },
                 "Squash Commits",
                 "Squash",

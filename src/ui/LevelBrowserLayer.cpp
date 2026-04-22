@@ -7,6 +7,7 @@
 #include "../util/UiAction.hpp"
 #include "../util/LevelKey.hpp"
 #include "../util/UiText.hpp"
+#include "common/GitUiActionRunner.hpp"
 
 #include <Geode/Geode.hpp>
 #include <Geode/binding/ButtonSprite.hpp>
@@ -200,9 +201,11 @@ void LevelBrowserLayer::rebuildList() {
                         Ref<LevelEditorLayer> editorRef(self->m_editor);
                         Ref<EditorPauseLayer> pauseRef(self->m_pauseLayer);
                         Ref<LevelBrowserLayer> alive(self.data());
-                        postToGitWorker([alive, editorRef, pauseRef, levelKey, destKey]() {
-                            auto outcome = sharedGitService().importLevelFrom(destKey, levelKey);
-                            geode::queueInMainThread([alive, editorRef, pauseRef, outcome = std::move(outcome)]() mutable {
+                        ui_action_runner::runWorkerResult<ImportLevelOutcome>(
+                            [levelKey, destKey]() {
+                                return sharedGitService().importLevelFrom(destKey, levelKey);
+                            },
+                            [alive, editorRef, pauseRef](ImportLevelOutcome outcome) mutable {
                                 if (!alive) return;
                                 finishBusyAction(alive->m_busy);
                                 auto* editor = editorRef.data();
@@ -233,8 +236,8 @@ void LevelBrowserLayer::rebuildList() {
                                 if (pause) {
                                     pause->onResume(nullptr);
                                 }
-                            });
-                        });
+                            }
+                        );
                     }
                 );
             }
@@ -256,9 +259,11 @@ void LevelBrowserLayer::rebuildList() {
                     }
                     if (!self) return;
                     Ref<LevelBrowserLayer> alive(self.data());
-                    postToGitWorker([alive, levelKey]() {
-                        bool const ok = sharedCommitStore().deleteLevel(levelKey);
-                        geode::queueInMainThread([alive, ok]() {
+                    ui_action_runner::runWorkerResult<bool>(
+                        [levelKey]() {
+                            return sharedCommitStore().deleteLevel(levelKey);
+                        },
+                        [alive](bool ok) {
                             if (!alive) return;
                             finishBusyAction(alive->m_busy);
                             if (!ok) {
@@ -268,8 +273,8 @@ void LevelBrowserLayer::rebuildList() {
                             Notification::create("Level history removed", NotificationIcon::Success)
                                 ->show();
                             alive->rebuildList();
-                        });
-                    });
+                        }
+                    );
                 }
             );
         });

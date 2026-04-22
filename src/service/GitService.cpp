@@ -1,5 +1,7 @@
 #include "GitService.hpp"
+#include "GdgeImportPlanner.hpp"
 #include "MergeService.hpp"
+#include "ReconstructionService.hpp"
 
 #include "../diff/Delta.hpp"
 #include "../diff/Differ.hpp"
@@ -71,7 +73,7 @@ std::optional<LevelState> reconstructPackageHead(GdgePackageData const& pkg) {
 } // namespace
 
 GitService::GitService(CommitStore& store, std::size_t cacheCapacity)
-    : m_store(store), m_cap(cacheCapacity == 0 ? 1 : cacheCapacity) {}
+    : m_store(store), m_cache(cacheCapacity) {}
 
 CommitOutcome GitService::commit(
     LevelKey const& levelKey,
@@ -534,27 +536,11 @@ ImportPlan GitService::classifyImports(
     ImportPlan plan;
     plan.noLocalCommits = !m_store.getHead(canonicalDest).has_value();
     auto root = reconstructRoot(m_store, *this, canonicalDest);
-    if (!root) {
-        plan.invalid = inPaths;
-        return plan;
-    }
-    plan.localRootHash = hashLevelState(*root);
-    for (auto const& path : inPaths) {
-        auto pkg = readGdgePackage(path);
-        if (!pkg || pkg->metadata.rootHash.empty()) {
-            plan.invalid.push_back(path);
-            continue;
-        }
-        if (!reconstructPackageHead(*pkg)) {
-            plan.invalid.push_back(path);
-            continue;
-        }
-        if (pkg->metadata.rootHash == plan.localRootHash) {
-            plan.smart.push_back(path);
-        } else {
-            plan.sequential.push_back(path);
-        }
-    }
+    auto classified = gdge_import_planner::classifyImports(m_store, root, inPaths);
+    plan.localRootHash = std::move(classified.localRootHash);
+    plan.smart = std::move(classified.smart);
+    plan.sequential = std::move(classified.sequential);
+    plan.invalid = std::move(classified.invalid);
     return plan;
 }
 
@@ -623,74 +609,24 @@ ImportManyGdgeOutcome GitService::importManyFromGdge(
 }
 
 void GitService::clearReconstructCache() {
-    m_lru.clear();
-    m_index.clear();
+    m_cache.clear();
 }
 
 std::optional<LevelState> GitService::reconstruct(CommitId commitId) {
-    if (auto hit = this->cacheGet(commitId)) {
-        return hit;
-    }
-
-    // Collect chain root to tip, cache hit on ancestor ends walk early.
-    std::vector<CommitRow> chain;
-    chain.reserve(32);
-
-    CommitId cur = commitId;
-    LevelState baseState;
-
-    while (true) {
-        if (auto hit = this->cacheGet(cur)) {
-            baseState = std::move(*hit);
-            break;
-        }
-        auto row = m_store.get(cur);
-        if (!row) {
-            geode::log::error("missing commit {} in chain", cur);
-            return std::nullopt;
-        }
-        chain.push_back(*row);
-        if (!row->parent) break;
-        cur = *row->parent;
-    }
-
-    for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
-        auto delta = parseDelta(it->deltaBlob);
-        if (!delta) {
-            geode::log::error("delta for commit {} failed to parse; "
-                              "reconstruct aborted", it->id);
-            return std::nullopt;
-        }
-        baseState = apply(std::move(baseState), *delta, nullptr);
-        this->cachePut(it->id, baseState);
-    }
-
-    return baseState;
+    return reconstruction_service::reconstructCommitChain(
+        m_store,
+        commitId,
+        [this](CommitId id) { return this->cacheGet(id); },
+        [this](CommitId id, LevelState const& state) { this->cachePut(id, state); }
+    );
 }
 
 void GitService::cachePut(CommitId id, LevelState state) {
-    auto it = m_index.find(id);
-    if (it != m_index.end()) {
-        it->second->second = std::move(state);
-        m_lru.splice(m_lru.begin(), m_lru, it->second);
-        return;
-    }
-
-    m_lru.emplace_front(id, std::move(state));
-    m_index[id] = m_lru.begin();
-
-    while (m_lru.size() > m_cap) {
-        auto& victim = m_lru.back();
-        m_index.erase(victim.first);
-        m_lru.pop_back();
-    }
+    m_cache.put(id, std::move(state));
 }
 
 std::optional<LevelState> GitService::cacheGet(CommitId id) {
-    auto it = m_index.find(id);
-    if (it == m_index.end()) return std::nullopt;
-    m_lru.splice(m_lru.begin(), m_lru, it->second);
-    return it->second->second;
+    return m_cache.get(id);
 }
 
 GitService& sharedGitService() {

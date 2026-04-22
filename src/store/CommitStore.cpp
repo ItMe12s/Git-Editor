@@ -1,4 +1,6 @@
 #include "CommitStore.hpp"
+#include "CommitSchema.hpp"
+#include "LevelKeyResolver.hpp"
 
 #include <Geode/loader/Log.hpp>
 #include <Geode/loader/Mod.hpp>
@@ -6,8 +8,6 @@
 #include <sqlite3.h>
 
 #include <chrono>
-#include <charconv>
-#include <cstdlib>
 #include <queue>
 #include <unordered_map>
 #include <unordered_set>
@@ -20,141 +20,6 @@ std::int64_t nowSeconds() {
     using namespace std::chrono;
     return duration_cast<seconds>(system_clock::now().time_since_epoch()).count();
 }
-
-// -2 means no schema_meta, -1 no version row, else stored version int
-int readSchemaVersion(sqlite3* db) {
-    sqlite3_stmt* st = nullptr;
-    constexpr char const* check =
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_meta';";
-    if (sqlite3_prepare_v2(db, check, -1, &st, nullptr) != SQLITE_OK) return -2;
-    bool exists = (sqlite3_step(st) == SQLITE_ROW);
-    sqlite3_finalize(st);
-    if (!exists) return -2;
-
-    constexpr char const* sel = "SELECT v FROM schema_meta WHERE k='version';";
-    if (sqlite3_prepare_v2(db, sel, -1, &st, nullptr) != SQLITE_OK) return -1;
-    int ver = -1;
-    if (sqlite3_step(st) == SQLITE_ROW) {
-        auto const* text = reinterpret_cast<char const*>(sqlite3_column_text(st, 0));
-        if (text) ver = std::atoi(text);
-    }
-    sqlite3_finalize(st);
-    return ver;
-}
-
-bool execOrLog(sqlite3* db, char const* sql) {
-    char* err = nullptr;
-    int rc = sqlite3_exec(db, sql, nullptr, nullptr, &err);
-    if (rc != SQLITE_OK) {
-        geode::log::error("sql error: {}", err ? err : "?");
-        if (err) sqlite3_free(err);
-        return false;
-    }
-    return true;
-}
-
-bool dropSchemaObjects(sqlite3* db) {
-    if (!execOrLog(db, "DROP TABLE IF EXISTS refs;")) return false;
-    if (!execOrLog(db, "DROP TABLE IF EXISTS commits;")) return false;
-    if (!execOrLog(db, "DROP TABLE IF EXISTS level_aliases;")) return false;
-    if (!execOrLog(db, "DROP TABLE IF EXISTS schema_meta;")) return false;
-    execOrLog(db, "DROP INDEX IF EXISTS idx_commits_level;");
-    execOrLog(db, "DROP INDEX IF EXISTS idx_level_aliases_canonical;");
-    return true;
-}
-
-bool createSchemaObjects(sqlite3* db) {
-    constexpr char const* createSchema = R"sql(
-        CREATE TABLE IF NOT EXISTS commits (
-            id         INTEGER PRIMARY KEY AUTOINCREMENT,
-            level_key  TEXT    NOT NULL,
-            parent_id  INTEGER REFERENCES commits(id),
-            reverts_id INTEGER REFERENCES commits(id),
-            message    TEXT    NOT NULL,
-            created_at INTEGER NOT NULL,
-            delta_blob BLOB    NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS idx_commits_level
-            ON commits(level_key, created_at DESC);
-
-        CREATE TABLE IF NOT EXISTS refs (
-            level_key TEXT PRIMARY KEY,
-            head_id   INTEGER NOT NULL REFERENCES commits(id)
-        );
-
-        CREATE TABLE IF NOT EXISTS level_aliases (
-            observed_key TEXT PRIMARY KEY,
-            canonical_key TEXT NOT NULL,
-            created_at INTEGER NOT NULL,
-            last_seen_at INTEGER NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS idx_level_aliases_canonical
-            ON level_aliases(canonical_key);
-
-        CREATE TABLE IF NOT EXISTS schema_meta (
-            k TEXT PRIMARY KEY,
-            v TEXT NOT NULL
-        );
-    )sql";
-    return execOrLog(db, createSchema);
-}
-
-bool upsertSchemaVersion(sqlite3* db, int version) {
-    sqlite3_stmt* st = nullptr;
-    constexpr char const* upsert =
-        "INSERT INTO schema_meta(k, v) VALUES('version', ?) "
-        "ON CONFLICT(k) DO UPDATE SET v = excluded.v;";
-    if (sqlite3_prepare_v2(db, upsert, -1, &st, nullptr) != SQLITE_OK) {
-        geode::log::error("prepare meta upsert: {}", sqlite3_errmsg(db));
-        return false;
-    }
-    auto const vs = std::to_string(version);
-    sqlite3_bind_text(st, 1, vs.c_str(), static_cast<int>(vs.size()), SQLITE_TRANSIENT);
-    bool ok = (sqlite3_step(st) == SQLITE_DONE);
-    sqlite3_finalize(st);
-    return ok;
-}
-
-class DeferredFkTransaction final {
-public:
-    explicit DeferredFkTransaction(sqlite3* db) : m_db(db) {}
-
-    bool begin() {
-        if (!execOrLog(m_db, "BEGIN IMMEDIATE;")) return false;
-        if (!execOrLog(m_db, "PRAGMA defer_foreign_keys = ON;")) {
-            execOrLog(m_db, "ROLLBACK;");
-            return false;
-        }
-        m_open = true;
-        return true;
-    }
-
-    bool commit() {
-        if (!m_open) return false;
-        if (!execOrLog(m_db, "COMMIT;")) {
-            this->rollback();
-            return false;
-        }
-        execOrLog(m_db, "PRAGMA defer_foreign_keys = OFF;");
-        m_open = false;
-        return true;
-    }
-
-    void rollback() {
-        if (!m_open) return;
-        execOrLog(m_db, "ROLLBACK;");
-        execOrLog(m_db, "PRAGMA defer_foreign_keys = OFF;");
-        m_open = false;
-    }
-
-    ~DeferredFkTransaction() {
-        this->rollback();
-    }
-
-private:
-    sqlite3* m_db = nullptr;
-    bool m_open = false;
-};
 
 } // namespace
 
@@ -196,19 +61,7 @@ bool CommitStore::init(std::filesystem::path const& dbPath) {
 }
 
 bool CommitStore::ensureSchema() {
-    int const current = readSchemaVersion(m_db);
-
-    bool const needWipe = (current < kSchemaVersion);
-
-    if (needWipe) {
-        geode::log::info(
-            "wiping DB (found schema {}, need {})",
-            current, kSchemaVersion
-        );
-        if (!dropSchemaObjects(m_db)) return false;
-    }
-    if (!createSchemaObjects(m_db)) return false;
-    return upsertSchemaVersion(m_db, kSchemaVersion);
+    return commit_schema::ensureSchema(m_db, kSchemaVersion);
 }
 
 std::optional<CommitId> CommitStore::insertAt(
@@ -378,7 +231,7 @@ std::optional<CommitId> CommitStore::squash(
         idList += std::to_string(idsOldestFirst[i]);
     }
 
-    DeferredFkTransaction tx(m_db);
+    commit_schema::DeferredFkTransaction tx(m_db);
     if (!tx.begin()) return std::nullopt;
 
     auto const newId = this->insertAt(
@@ -407,7 +260,7 @@ std::optional<CommitId> CommitStore::squash(
     };
 
     auto runSql = [this](std::string const& sql) -> bool {
-        return execOrLog(m_db, sql.c_str());
+        return commit_schema::execOrLog(m_db, sql.c_str());
     };
 
     if (!runStmt(
@@ -529,7 +382,7 @@ bool CommitStore::deleteCommitsAndRefsForKeyNoTransaction(
 bool CommitStore::deleteLevel(LevelKey const& levelKey) {
     if (!m_db) return false;
 
-    DeferredFkTransaction tx(m_db);
+    commit_schema::DeferredFkTransaction tx(m_db);
     if (!tx.begin()) return false;
 
     if (!this->deleteCommitsAndRefsForKeyNoTransaction(levelKey)) {
@@ -617,7 +470,7 @@ bool CommitStore::replaceLevelHistoryFrom(LevelKey const& dest, LevelKey const& 
         return false;
     }
 
-    DeferredFkTransaction tx(m_db);
+    commit_schema::DeferredFkTransaction tx(m_db);
     if (!tx.begin()) return false;
 
     if (!this->deleteCommitsAndRefsForKeyNoTransaction(canonicalDest, false)) {
@@ -703,107 +556,19 @@ bool CommitStore::setHead(LevelKey const& levelKey, CommitId head) {
 }
 
 bool CommitStore::isLocalObservedKey(LevelKey const& levelKey) const {
-    return levelKey.rfind("local:", 0) == 0;
+    return level_key_resolver::isLocalObservedKey(levelKey);
 }
 
 bool CommitStore::upsertAlias(LevelKey const& observedKey, LevelKey const& canonicalKey) {
-    if (!m_db) return false;
-    sqlite3_stmt* st = nullptr;
-    constexpr char const* sql =
-        "INSERT INTO level_aliases(observed_key, canonical_key, created_at, last_seen_at) "
-        "VALUES (?, ?, ?, ?) "
-        "ON CONFLICT(observed_key) DO UPDATE SET "
-        "canonical_key = excluded.canonical_key, "
-        "last_seen_at = excluded.last_seen_at;";
-    if (sqlite3_prepare_v2(m_db, sql, -1, &st, nullptr) != SQLITE_OK) {
-        geode::log::error("prepare upsertAlias failed: {}", sqlite3_errmsg(m_db));
-        return false;
-    }
-    auto const now = nowSeconds();
-    sqlite3_bind_text(st, 1, observedKey.c_str(), static_cast<int>(observedKey.size()), SQLITE_TRANSIENT);
-    sqlite3_bind_text(st, 2, canonicalKey.c_str(), static_cast<int>(canonicalKey.size()), SQLITE_TRANSIENT);
-    sqlite3_bind_int64(st, 3, now);
-    sqlite3_bind_int64(st, 4, now);
-    bool const ok = (sqlite3_step(st) == SQLITE_DONE);
-    if (!ok) {
-        geode::log::error("upsertAlias step failed: {}", sqlite3_errmsg(m_db));
-    }
-    sqlite3_finalize(st);
-    return ok;
+    return level_key_resolver::upsertAlias(m_db, observedKey, canonicalKey);
 }
 
 std::optional<std::int64_t> CommitStore::nextCanonicalLocalId() {
-    if (!m_db) return std::nullopt;
-    sqlite3_stmt* st = nullptr;
-    constexpr char const* sql =
-        "SELECT canonical_key FROM level_aliases WHERE canonical_key LIKE 'localid:%';";
-    if (sqlite3_prepare_v2(m_db, sql, -1, &st, nullptr) != SQLITE_OK) {
-        geode::log::error("prepare nextCanonicalLocalId failed: {}", sqlite3_errmsg(m_db));
-        return std::nullopt;
-    }
-    std::unordered_set<std::int64_t> usedIds;
-    int rc = SQLITE_ROW;
-    while ((rc = sqlite3_step(st)) == SQLITE_ROW) {
-        auto const* text = reinterpret_cast<char const*>(sqlite3_column_text(st, 0));
-        if (!text) continue;
-        std::string_view key(text);
-        if (key.rfind("localid:", 0) != 0 || key.size() <= 8) continue;
-        std::int64_t value = 0;
-        auto [ptr, ec] = std::from_chars(key.data() + 8, key.data() + key.size(), value);
-        if (ec != std::errc() || ptr != key.data() + key.size() || value <= 0) continue;
-        usedIds.insert(value);
-    }
-    if (rc != SQLITE_DONE) {
-        geode::log::error("nextCanonicalLocalId step failed: {}", sqlite3_errmsg(m_db));
-        sqlite3_finalize(st);
-        return std::nullopt;
-    }
-    sqlite3_finalize(st);
-
-    std::int64_t candidate = 1;
-    while (usedIds.contains(candidate)) {
-        ++candidate;
-    }
-    return candidate;
+    return level_key_resolver::nextCanonicalLocalId(m_db);
 }
 
 LevelKey CommitStore::resolveCanonicalKeyImpl(LevelKey const& observedKey, bool createIfMissing) {
-    if (!m_db) return observedKey;
-    if (observedKey.rfind("id:", 0) == 0) return observedKey;
-    if (observedKey.rfind("localid:", 0) == 0) return observedKey;
-    if (!this->isLocalObservedKey(observedKey)) return observedKey;
-
-    sqlite3_stmt* st = nullptr;
-    constexpr char const* lookup =
-        "SELECT canonical_key FROM level_aliases WHERE observed_key = ?;";
-    if (sqlite3_prepare_v2(m_db, lookup, -1, &st, nullptr) != SQLITE_OK) {
-        geode::log::error("prepare resolveCanonicalKey lookup failed: {}", sqlite3_errmsg(m_db));
-        return observedKey;
-    }
-    sqlite3_bind_text(st, 1, observedKey.c_str(), static_cast<int>(observedKey.size()), SQLITE_TRANSIENT);
-
-    LevelKey canonical;
-    if (sqlite3_step(st) == SQLITE_ROW) {
-        auto const* text = reinterpret_cast<char const*>(sqlite3_column_text(st, 0));
-        if (text) canonical = text;
-    }
-    sqlite3_finalize(st);
-
-    if (!canonical.empty()) {
-        if (createIfMissing) {
-            this->upsertAlias(observedKey, canonical);
-        }
-        return canonical;
-    }
-
-    if (!createIfMissing) return observedKey;
-
-    auto next = this->nextCanonicalLocalId();
-    if (!next) return observedKey;
-
-    canonical = "localid:" + std::to_string(*next);
-    if (!this->upsertAlias(observedKey, canonical)) return observedKey;
-    return canonical;
+    return level_key_resolver::resolveCanonicalKey(m_db, observedKey, createIfMissing);
 }
 
 LevelKey CommitStore::resolveCanonicalKey(LevelKey const& observedKey) {

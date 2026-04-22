@@ -1,3 +1,3 @@
-// Git Editor, Geode $modify hooks only, see README for module layout.
+// Git Editor, hihi, check the /ui/ folder first.
 
 #include <Geode/Geode.hpp>

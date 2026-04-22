@@ -4,13 +4,12 @@
 #include "../diff/Differ.hpp"
 #include "../model/LevelState.hpp"
 #include "../store/CommitStore.hpp"
+#include "StateCache.hpp"
 
 #include <cstddef>
 #include <filesystem>
-#include <list>
 #include <optional>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 namespace git_editor {
@@ -122,11 +121,8 @@ private:
     void       cachePut(CommitId id, LevelState state);
     std::optional<LevelState> cacheGet(CommitId id);
 
-    CommitStore&                                               m_store;
-    std::size_t                                                m_cap;
-    std::list<std::pair<CommitId, LevelState>>                 m_lru;
-    std::unordered_map<CommitId,
-        std::list<std::pair<CommitId, LevelState>>::iterator>  m_index;
+    CommitStore& m_store;
+    StateCache m_cache;
 };
 
 GitService& sharedGitService();
