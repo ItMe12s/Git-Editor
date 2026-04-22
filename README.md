@@ -1,48 +1,39 @@
 # Git Editor
 
-Linear, diff-based version history for the Geometry Dash editor. Each commit stores a JSON `Delta` against its parent, state is **replay** from root + apply chain. Data is local SQLite: `git-editor.db` in the mod save directory.
+A mod that tries to implement git into the level editor
 
-## Capabilities (pause menu, top center)
+## Core model
 
-- **`Commit`** - Parse live level, match objects to stable UUIDs, append delta vs previous HEAD: `+` / `-` / `~` / header `h`.
-- **`Checkout` (via History)** - Append commit whose delta equals `diff(HEAD, target)`, **HEAD only moves forward**, never destructive rewind.
-- **`Revert` (on a commit in History)** - Compute `diff(target, target.parent)` against current state, report conflicts, stored delta re-derived from actual before/after if some ops skip.
-- **`Levels`** - Enumerate level keys in DB, **delete history** for a key only. No checkout/revert from this screen.
+- Linear history per level key, no branches.
+- Commit stores JSON `Delta` against parent in `git-editor.db`.
+- Delta keys: `h` (header), `+` (adds), `-` (removes), `~` (modifies).
+- State reconstruction replays root -> HEAD, with LRU cache (default 16 states).
 
-Row: **Commit** , **History** , **Levels**. History lists commits for the **current** level, synthetic checkout/revert entries labeled in small text (no separate badge row).
+## Editor UI (pause menu top row)
 
-## Storage and replay
+- `Commit`: parse live level, UUID-match objects, store delta, message max 120 chars.
+- `History`: inspect (`?`), rename, checkout, revert, squash.
+- `Levels`: list level histories, load selected history into current level, or delete selected level history.
 
-Linear chain: `commit_N -> ... -> commit_1`, `commit_1` parent `null` (full state represented as adds).
+## Semantics
 
-`Delta` shape (JSON keys):
+- Checkout is forward-only: inserts new commit with `diff(HEAD, target)`.
+- Revert applies `diff(target, target.parent)` onto current HEAD, reports conflicts.
+- Squash requires 2+ contiguous selected commits.
+- Load is destructive for current level objects/history (explicit warning in UI).
 
-- `h` - level header: field before/after.
-- `+` / `-` - objects added or removed (uuid + fields).
-- `~` - per-object field before/after.
+## Identity + keys
 
-Reconstruction: walk from root, apply deltas. **LRU** cache of recent full-state builds.
+- Object UUID assignment uses fingerprint + nearest match (32-unit radius, same type).
+- Saved level key: `m_levelID`.
+- Unsaved level key: `name:<fnv1a64-hex>` (rename => new key).
 
-## Object identity
+## Limits / ops notes
 
-Editor objects have no native stable id. Mod assigns **64-bit random** UUID per object, stored in committed deltas. On each commit, matcher maps live level <-> previous HEAD:
-
-1. Fingerprint: `(type, rounded-x, rounded-y, rotation, groups)`.
-2. Nearest neighbor within **32** units, same type only.
-3. Unmatched → new UUID.
-
-Effect: small moves are `~` (field changes), not add+remove. Duplicating yields one `~` and one `+`.
-
-## Checkout vs revert
-
-- **Checkout** - New commit, delta = `diff(HEAD, target)`.
-- **Revert (single commit)** - Apply `diff(target, target.parent)` to HEAD, see conflict / re-derive behavior above.
-
-## Level keys
-
-- Saved: `m_levelID`.
-- Local/unsaved: `name:<fnv1a64-hex>`. **Rename = new key** = forked history.
+- No merge/rebase/branch flow.
+- Large edits can degrade matching into add/remove pairs.
+- Schema version bump can wipe commit DB data (not GD level files).
 
 ## Build
 
-SQLite is fetched by CPM.
+- SQLite via CPM in `CMakeLists.txt`.
