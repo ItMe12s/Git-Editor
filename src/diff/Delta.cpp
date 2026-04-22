@@ -3,9 +3,31 @@
 #include <Geode/loader/Log.hpp>
 #include <matjson.hpp>
 
+#include <charconv>
+#include <cstdint>
+#include <string_view>
+
 namespace git_editor {
 
 namespace {
+
+bool parseIntKey(std::string_view s, int& out) {
+    if (s.empty()) return false;
+    int value = 0;
+    auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), value);
+    if (ec != std::errc() || ptr != s.data() + s.size()) return false;
+    out = value;
+    return true;
+}
+
+bool parseUInt64Full(std::string_view s, std::uint64_t& out) {
+    if (s.empty()) return false;
+    std::uint64_t value = 0;
+    auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), value);
+    if (ec != std::errc() || ptr != s.data() + s.size()) return false;
+    out = value;
+    return true;
+}
 
 matjson::Value fieldMapToJson(FieldMap const& m) {
     auto obj = matjson::Value::object();
@@ -22,7 +44,9 @@ FieldMap fieldMapFromJson(matjson::Value const& v) {
         auto key = entry.getKey();
         if (!key) continue;
         int k = 0;
-        try { k = std::stoi(*key); } catch (...) { continue; }
+        if (!parseIntKey(std::string_view(key->data(), key->size()), k)) {
+            continue;
+        }
         auto asStr = entry.asString();
         if (asStr.isOk()) out.emplace(k, asStr.unwrap());
     }
@@ -41,7 +65,13 @@ Object objectFromJson(matjson::Value const& v) {
     if (auto r = v.get("uuid"); r.isOk()) {
         auto asStr = r.unwrap().asString();
         if (asStr.isOk()) {
-            try { o.uuid = std::stoull(asStr.unwrap()); } catch (...) { o.uuid = 0; }
+            auto const& us = asStr.unwrap();
+            std::uint64_t u = 0;
+            if (parseUInt64Full(std::string_view(us.data(), us.size()), u)) {
+                o.uuid = u;
+            } else {
+                o.uuid = 0;
+            }
         }
     }
     if (auto r = v.get("fields"); r.isOk()) {
@@ -85,7 +115,9 @@ std::map<int, FieldChange> headerChangesFromJson(matjson::Value const& v) {
         auto key = entry.getKey();
         if (!key) continue;
         int k = 0;
-        try { k = std::stoi(*key); } catch (...) { continue; }
+        if (!parseIntKey(std::string_view(key->data(), key->size()), k)) {
+            continue;
+        }
         out.emplace(k, fieldChangeFromJson(entry));
     }
     return out;
@@ -107,7 +139,13 @@ Delta::Modify modifyFromJson(matjson::Value const& v) {
     if (auto r = v.get("uuid"); r.isOk()) {
         auto s = r.unwrap().asString();
         if (s.isOk()) {
-            try { m.uuid = std::stoull(s.unwrap()); } catch (...) { m.uuid = 0; }
+            auto const& us = s.unwrap();
+            std::uint64_t u = 0;
+            if (parseUInt64Full(std::string_view(us.data(), us.size()), u)) {
+                m.uuid = u;
+            } else {
+                m.uuid = 0;
+            }
         }
     }
     if (auto r = v.get("fields"); r.isOk()) {
@@ -117,7 +155,9 @@ Delta::Modify modifyFromJson(matjson::Value const& v) {
                 auto key = entry.getKey();
                 if (!key) continue;
                 int k = 0;
-                try { k = std::stoi(*key); } catch (...) { continue; }
+                if (!parseIntKey(std::string_view(key->data(), key->size()), k)) {
+                    continue;
+                }
                 m.fields.emplace(k, fieldChangeFromJson(entry));
             }
         }
@@ -150,7 +190,10 @@ std::string dumpDelta(Delta const& d) {
 std::optional<Delta> parseDelta(std::string const& blob) {
     auto parsed = matjson::Value::parse(blob);
     if (parsed.isErr()) {
-        geode::log::error("parseDelta failed: {}", std::string(parsed.unwrapErr()));
+        geode::log::error(
+            "parseDelta failed: {}",
+            std::string(parsed.unwrapErr())
+        );
         return std::nullopt;
     }
     auto root = parsed.unwrap();
@@ -165,15 +208,27 @@ std::optional<Delta> parseDelta(std::string const& blob) {
     }
     if (auto r = root.get("+"); r.isOk()) {
         auto const& arr = r.unwrap();
-        if (arr.isArray()) for (auto const& v : arr) out.adds.push_back(objectFromJson(v));
+        if (arr.isArray()) {
+            for (auto const& v : arr) {
+                out.adds.push_back(objectFromJson(v));
+            }
+        }
     }
     if (auto r = root.get("-"); r.isOk()) {
         auto const& arr = r.unwrap();
-        if (arr.isArray()) for (auto const& v : arr) out.removes.push_back(objectFromJson(v));
+        if (arr.isArray()) {
+            for (auto const& v : arr) {
+                out.removes.push_back(objectFromJson(v));
+            }
+        }
     }
     if (auto r = root.get("~"); r.isOk()) {
         auto const& arr = r.unwrap();
-        if (arr.isArray()) for (auto const& v : arr) out.modifies.push_back(modifyFromJson(v));
+        if (arr.isArray()) {
+            for (auto const& v : arr) {
+                out.modifies.push_back(modifyFromJson(v));
+            }
+        }
     }
     return out;
 }
