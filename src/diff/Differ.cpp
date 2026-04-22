@@ -6,13 +6,7 @@ namespace git_editor {
 
 namespace {
 
-// Diff two FieldMaps. A field present in only one side is modeled with an
-// empty-string value on the missing side. GD treats absent keys as defaults
-// and the serializer never re-emits keys we didn't explicitly add, so this
-// collapses two states into one:
-//   (absent)  ==  (present with value "")
-// If GD ever grows a key that must distinguish "present-but-empty" from
-// "absent", Delta + apply would need a separate presence flag per field.
+// Missing key modeled as empty string, absent and empty-string merge. True presence distinction would need extra state.
 std::map<int, FieldChange> diffFields(FieldMap const& a, FieldMap const& b) {
     std::map<int, FieldChange> out;
 
@@ -41,8 +35,6 @@ Delta diff(LevelState const& prev, LevelState const& next) {
     Delta d;
     d.headerChanges = diffFields(prev.header, next.header);
 
-    // Walk `prev` first: anything missing from `next` is a remove, anything
-    // present in both becomes a potential modify.
     for (auto const& [uuid, prevObj] : prev.objects) {
         auto it = next.objects.find(uuid);
         if (it == next.objects.end()) {
@@ -55,7 +47,6 @@ Delta diff(LevelState const& prev, LevelState const& next) {
         }
     }
 
-    // Second pass picks up pure adds.
     for (auto const& [uuid, nextObj] : next.objects) {
         if (!prev.objects.contains(uuid)) {
             d.adds.push_back(nextObj);
@@ -72,9 +63,6 @@ Delta inverse(Delta const& d) {
         out.headerChanges.emplace(k, FieldChange{ c.after, c.before });
     }
 
-    // Swap adds <-> removes: an add in `d` becomes a remove in the inverse,
-    // and vice versa. Full Object records on both sides already carry the
-    // data we need.
     out.removes = d.adds;
     out.adds    = d.removes;
 
@@ -95,10 +83,7 @@ LevelState apply(LevelState base, Delta const& d, std::vector<Conflict>* out) {
         if (out) out->push_back(std::move(c));
     };
 
-    // Header: for every change, ensure the current "before" matches. If not,
-    // accept it anyway - headers are small and usually benign (song id,
-    // color channels, etc.), so we don't want to gate full checkout behind a
-    // mismatch here. Stale header fields still produce a log-worthy report.
+    // Header: apply even if before mismatches (avoid blocking checkout), still report stale.
     for (auto const& [k, c] : d.headerChanges) {
         auto it = base.header.find(k);
         std::string current = (it != base.header.end()) ? it->second : "";

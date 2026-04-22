@@ -16,11 +16,9 @@ std::int64_t nowSeconds() {
     return duration_cast<seconds>(system_clock::now().time_since_epoch()).count();
 }
 
-// Returns -1 if no version row, parsed int otherwise. -2 indicates the
-// schema_meta table itself does not exist yet.
+// -2 means no schema_meta, -1 no version row, else stored version int
 int readSchemaVersion(sqlite3* db) {
     sqlite3_stmt* st = nullptr;
-    // Does the meta table exist?
     constexpr char const* check =
         "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_meta';";
     if (sqlite3_prepare_v2(db, check, -1, &st, nullptr) != SQLITE_OK) return -2;
@@ -43,7 +41,7 @@ bool execOrLog(sqlite3* db, char const* sql) {
     char* err = nullptr;
     int rc = sqlite3_exec(db, sql, nullptr, nullptr, &err);
     if (rc != SQLITE_OK) {
-        geode::log::error("git-editor: sql error: {}", err ? err : "?");
+        geode::log::error("sql error: {}", err ? err : "?");
         if (err) sqlite3_free(err);
         return false;
     }
@@ -71,7 +69,7 @@ bool CommitStore::init(std::filesystem::path const& dbPath) {
         nullptr
     );
     if (rc != SQLITE_OK) {
-        geode::log::error("git-editor: sqlite3_open failed: {}",
+        geode::log::error("sqlite3_open failed: {}",
             m_db ? sqlite3_errmsg(m_db) : "<null>");
         if (m_db) { sqlite3_close(m_db); m_db = nullptr; }
         return false;
@@ -92,20 +90,16 @@ bool CommitStore::init(std::filesystem::path const& dbPath) {
 bool CommitStore::ensureSchema() {
     int const current = readSchemaVersion(m_db);
 
-    // Migration policy: we only support a hard wipe from any prior
-    // (snapshot-based) schema. The first real release using logical deltas
-    // is version 2; earlier data is intentionally discarded.
     bool const needWipe = (current < kSchemaVersion);
 
     if (needWipe) {
         geode::log::info(
-            "git-editor: wiping DB (found schema {}, need {})",
+            "wiping DB (found schema {}, need {})",
             current, kSchemaVersion
         );
         if (!execOrLog(m_db, "DROP TABLE IF EXISTS commits;"))      return false;
         if (!execOrLog(m_db, "DROP TABLE IF EXISTS refs;"))         return false;
         if (!execOrLog(m_db, "DROP TABLE IF EXISTS schema_meta;"))  return false;
-        // Drop legacy indices that were created by the old snapshot schema.
         execOrLog(m_db, "DROP INDEX IF EXISTS idx_commits_level;");
     }
 
@@ -134,13 +128,12 @@ bool CommitStore::ensureSchema() {
     )sql";
     if (!execOrLog(m_db, createSchema)) return false;
 
-    // Stamp the current schema version.
     sqlite3_stmt* st = nullptr;
     constexpr char const* upsert =
         "INSERT INTO schema_meta(k, v) VALUES('version', ?) "
         "ON CONFLICT(k) DO UPDATE SET v = excluded.v;";
     if (sqlite3_prepare_v2(m_db, upsert, -1, &st, nullptr) != SQLITE_OK) {
-        geode::log::error("git-editor: prepare meta upsert: {}", sqlite3_errmsg(m_db));
+        geode::log::error("prepare meta upsert: {}", sqlite3_errmsg(m_db));
         return false;
     }
     auto vs = std::to_string(kSchemaVersion);
@@ -165,7 +158,7 @@ std::optional<CommitId> CommitStore::insert(
 
     sqlite3_stmt* st = nullptr;
     if (sqlite3_prepare_v2(m_db, sql, -1, &st, nullptr) != SQLITE_OK) {
-        geode::log::error("git-editor: prepare insert failed: {}", sqlite3_errmsg(m_db));
+        geode::log::error("prepare insert failed: {}", sqlite3_errmsg(m_db));
         return std::nullopt;
     }
 
@@ -180,7 +173,7 @@ std::optional<CommitId> CommitStore::insert(
     if (sqlite3_step(st) == SQLITE_DONE) {
         out = sqlite3_last_insert_rowid(m_db);
     } else {
-        geode::log::error("git-editor: insert step failed: {}", sqlite3_errmsg(m_db));
+        geode::log::error("insert step failed: {}", sqlite3_errmsg(m_db));
     }
     sqlite3_finalize(st);
     return out;
@@ -221,7 +214,7 @@ std::optional<CommitRow> CommitStore::get(CommitId id) {
 
     sqlite3_stmt* st = nullptr;
     if (sqlite3_prepare_v2(m_db, sql, -1, &st, nullptr) != SQLITE_OK) {
-        geode::log::error("git-editor: prepare get failed: {}", sqlite3_errmsg(m_db));
+        geode::log::error("prepare get failed: {}", sqlite3_errmsg(m_db));
         return std::nullopt;
     }
     sqlite3_bind_int64(st, 1, id);
@@ -245,7 +238,7 @@ std::vector<CommitRow> CommitStore::list(LevelKey const& levelKey) {
 
     sqlite3_stmt* st = nullptr;
     if (sqlite3_prepare_v2(m_db, sql, -1, &st, nullptr) != SQLITE_OK) {
-        geode::log::error("git-editor: prepare list failed: {}", sqlite3_errmsg(m_db));
+        geode::log::error("prepare list failed: {}", sqlite3_errmsg(m_db));
         return out;
     }
     sqlite3_bind_text(st, 1, levelKey.c_str(), static_cast<int>(levelKey.size()), SQLITE_TRANSIENT);
@@ -263,7 +256,7 @@ std::optional<CommitId> CommitStore::getHead(LevelKey const& levelKey) {
     constexpr char const* sql = "SELECT head_id FROM refs WHERE level_key = ?;";
     sqlite3_stmt* st = nullptr;
     if (sqlite3_prepare_v2(m_db, sql, -1, &st, nullptr) != SQLITE_OK) {
-        geode::log::error("git-editor: prepare getHead failed: {}", sqlite3_errmsg(m_db));
+        geode::log::error("prepare getHead failed: {}", sqlite3_errmsg(m_db));
         return std::nullopt;
     }
     sqlite3_bind_text(st, 1, levelKey.c_str(), static_cast<int>(levelKey.size()), SQLITE_TRANSIENT);
@@ -284,7 +277,7 @@ bool CommitStore::setHead(LevelKey const& levelKey, CommitId head) {
         "ON CONFLICT(level_key) DO UPDATE SET head_id = excluded.head_id;";
     sqlite3_stmt* st = nullptr;
     if (sqlite3_prepare_v2(m_db, sql, -1, &st, nullptr) != SQLITE_OK) {
-        geode::log::error("git-editor: prepare setHead failed: {}", sqlite3_errmsg(m_db));
+        geode::log::error("prepare setHead failed: {}", sqlite3_errmsg(m_db));
         return false;
     }
     sqlite3_bind_text(st, 1, levelKey.c_str(), static_cast<int>(levelKey.size()), SQLITE_TRANSIENT);
@@ -305,7 +298,7 @@ CommitStore& sharedCommitStore() {
         std::filesystem::create_directories(dir, ec);
         auto dbPath = dir / "git-editor.db";
         if (!store.init(dbPath)) {
-            geode::log::error("git-editor: failed to open db at {}",
+            geode::log::error("failed to open db at {}",
                 reinterpret_cast<char const*>(dbPath.u8string().c_str()));
         }
     }

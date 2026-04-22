@@ -36,16 +36,11 @@ std::string levelKeyFor(GJGameLevel* level) {
         return "unknown:0";
     }
 
-    // Treat any non-zero id as a "real" level id. Negative shouldn't happen
-    // in practice, but we key by value rather than gating on > 0 so we don't
-    // silently bucket an exotic negative id in with unsaved locals.
     int id = static_cast<int>(level->m_levelID);
     if (id != 0) {
         return "id:" + std::to_string(id);
     }
 
-    // Unsaved / local levels: hash the name so the same level retains history
-    // across sessions, while rename deliberately forks history.
     std::string_view name(level->m_levelName.c_str(), level->m_levelName.size());
     return "name:" + toHex16(fnv1a64(name));
 }

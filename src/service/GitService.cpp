@@ -37,24 +37,21 @@ CommitOutcome GitService::commit(
         auto recon = this->reconstruct(*parent);
         if (!recon) {
             out.error = "failed to reconstruct HEAD; refusing to commit";
-            geode::log::error("git-editor: {}", out.error);
+            geode::log::error("{}", out.error);
             return out;
         }
         headState = std::move(*recon);
     }
 
-    // Parse + assign UUIDs (matches new objects against HEAD).
     auto incoming = parseLevelString(liveLevelStr);
     if (parent) assignUuids(headState, incoming);
     else        assignFreshUuids(incoming);
 
     auto delta = diff(headState, incoming);
 
-    // Empty delta is a no-op commit. We still allow it - a user may want a
-    // named milestone at the current state - but we log so it's obvious.
     if (delta.adds.empty() && delta.removes.empty()
         && delta.modifies.empty() && delta.headerChanges.empty()) {
-        geode::log::info("git-editor: empty commit '{}'", shortPreview(message));
+        geode::log::info("empty commit '{}'", shortPreview(message));
     }
 
     auto blob = dumpDelta(delta);
@@ -62,12 +59,12 @@ CommitOutcome GitService::commit(
     auto id = m_store.insert(levelKey, parent, std::nullopt, message, blob);
     if (!id) {
         out.error = "DB insert failed";
-        geode::log::error("git-editor: {}", out.error);
+        geode::log::error("{}", out.error);
         return out;
     }
     if (!m_store.setHead(levelKey, *id)) {
         out.error = "DB setHead failed (stranded commit " + std::to_string(*id) + ")";
-        geode::log::error("git-editor: {}", out.error);
+        geode::log::error("{}", out.error);
         return out;
     }
 
@@ -87,7 +84,6 @@ CheckoutOutcome GitService::checkout(LevelKey const& levelKey, CommitId target) 
         return out;
     }
     if (*head == target) {
-        // Already there. Load and return the current state, skip the commit.
         auto recon = this->reconstruct(target);
         if (!recon) { out.error = "reconstruct HEAD failed"; return out; }
         out.ok    = true;
@@ -99,7 +95,7 @@ CheckoutOutcome GitService::checkout(LevelKey const& levelKey, CommitId target) 
     auto targetState = this->reconstruct(target);
     if (!headState || !targetState) {
         out.error = "reconstruct failed";
-        geode::log::error("git-editor: checkout reconstruct failed");
+        geode::log::error("checkout reconstruct failed");
         return out;
     }
 
@@ -154,15 +150,9 @@ RevertOutcome GitService::revert(LevelKey const& levelKey, CommitId target) {
         return out;
     }
 
-    // "Undo commit C" = (target -> target.parent) delta, applied to HEAD
-    // with conflict reporting. We intentionally use diff(target, parent)
-    // rather than inverse(target.delta) so the op set reflects the current
-    // UUIDs in `targetState` (which, if the chain has drifted, may differ
-    // slightly from a literal inverse).
+    // diff(target, parent) not inverse(stored delta): ops use current UUIDs if chain drifted.
     auto undoDelta = diff(*targetState, *parentState);
 
-    // Keep a copy of the pre-apply HEAD state so we can derive a
-    // self-consistent persisted delta after apply() skips any conflicts.
     LevelState headCopy = *headState;
     auto newState       = apply(std::move(*headState), undoDelta, &out.conflicts);
     auto persistedDelta = diff(headCopy, newState);
@@ -192,15 +182,12 @@ std::optional<LevelState> GitService::reconstruct(CommitId commitId) {
         return hit;
     }
 
-    // Walk parents to the root, collecting the commit rows in top-down
-    // order (root first). Along the way, prefer cached states - any cache
-    // hit short-circuits the walk since everything older is already baked
-    // into the cached snapshot.
+    // Collect chain root to tip, cache hit on ancestor ends walk early.
     std::vector<CommitRow> chain;
     chain.reserve(32);
 
     CommitId cur = commitId;
-    LevelState baseState;  // starts empty; overwritten on cache hit
+    LevelState baseState;
 
     while (true) {
         if (auto hit = this->cacheGet(cur)) {
@@ -209,27 +196,22 @@ std::optional<LevelState> GitService::reconstruct(CommitId commitId) {
         }
         auto row = m_store.get(cur);
         if (!row) {
-            geode::log::error("git-editor: missing commit {} in chain", cur);
+            geode::log::error("missing commit {} in chain", cur);
             return std::nullopt;
         }
         chain.push_back(*row);
-        if (!row->parent) break;   // reached root
+        if (!row->parent) break;
         cur = *row->parent;
     }
 
-    // Apply deltas oldest-first. If we short-circuited on a cached ancestor
-    // we skip that cached state (it's already `baseState`), otherwise we
-    // start from the empty state at the root.
     for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
         auto delta = parseDelta(it->deltaBlob);
         if (!delta) {
-            // A corrupt delta would silently produce a wrong state and then
-            // infect the LRU cache. Bail loudly so the UI can surface it.
-            geode::log::error("git-editor: delta for commit {} failed to parse; "
+            geode::log::error("delta for commit {} failed to parse; "
                               "reconstruct aborted", it->id);
             return std::nullopt;
         }
-        baseState = apply(std::move(baseState), *delta, /*conflicts*/ nullptr);
+        baseState = apply(std::move(baseState), *delta, nullptr);
         this->cachePut(it->id, baseState);
     }
 

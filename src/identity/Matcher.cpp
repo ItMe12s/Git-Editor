@@ -15,23 +15,16 @@ namespace git_editor {
 
 namespace {
 
-// Any movement below this many GD units between two commits is treated as
-// "same object, slightly nudged" by the spatial fallback. Larger than one
-// grid cell to tolerate drag-nudge edits, smaller than typical object
-// dimensions to stay out of neighbors' territory.
+// Max center drift for spatial match (GD units): above one cell, below typical object size.
 constexpr double kSpatialThreshold = 32.0;
 
-// Process-wide RNG. 64-bit Mersenne twister seeded once from system entropy.
-// We only need these to not collide within a level's history, not to be
-// cryptographically strong.
 std::mt19937_64& rng() {
     static std::mt19937_64 gen{ std::random_device{}() };
     return gen;
 }
 
 ObjectUuid freshUuid() {
-    // Avoid 0 (we treat it as "unassigned placeholder" in LevelParser).
-    ObjectUuid v = 0;
+    ObjectUuid v = 0; // 0 reserved as placeholder in parser
     do {
         v = rng()();
     } while (v == 0);
@@ -53,9 +46,6 @@ std::string fieldOrEmpty(FieldMap const& m, int key) {
     return (it == m.end()) ? std::string{} : it->second;
 }
 
-// Fingerprint buckets aggressively collapse "same-shape" objects. Stacked
-// duplicates share a bucket; Matcher then hands them out in insertion order
-// so one-to-one pairing is consistent run to run.
 struct Fingerprint {
     std::string type;
     int         rx  = 0;
@@ -114,10 +104,6 @@ void assignUuids(LevelState const& previous, LevelState& incoming) {
         return;
     }
 
-    // 1) Fingerprint buckets over `previous`. Each bucket is a true FIFO
-    //    (std::deque) so repeated fingerprints pair up in their discovery
-    //    order, which stays stable because we iterate `previous` in
-    //    sorted-uuid order.
     std::unordered_map<Fingerprint, std::deque<ObjectUuid>, FpHash> buckets;
     std::unordered_map<std::string, std::vector<ObjectUuid>> byType;
     std::unordered_set<ObjectUuid> claimed;
@@ -135,10 +121,6 @@ void assignUuids(LevelState const& previous, LevelState& incoming) {
         }
     }
 
-    // 2) Walk incoming objects in a deterministic order (their placeholder
-    //    uuids from LevelParser, which encode the on-disk order). Note
-    //    we're modifying `incoming.objects` after matching so we need to
-    //    collect the old placeholder keys first.
     std::vector<ObjectUuid> orderedIncoming;
     orderedIncoming.reserve(incoming.objects.size());
     for (auto const& [u, _] : incoming.objects) orderedIncoming.push_back(u);
@@ -152,7 +134,6 @@ void assignUuids(LevelState const& previous, LevelState& incoming) {
 
         ObjectUuid matched = 0;
 
-        // 2a) Exact fingerprint: FIFO, oldest prev uuid wins.
         auto fp   = fingerprintOf(obj.fields);
         auto bkIt = buckets.find(fp);
         if (bkIt != buckets.end()) {
@@ -163,7 +144,6 @@ void assignUuids(LevelState const& previous, LevelState& incoming) {
             }
         }
 
-        // 2b) Spatial nearest-neighbor within type + threshold.
         if (matched == 0) {
             auto typeIt = byType.find(fieldOrEmpty(obj.fields, key::kType));
             if (typeIt != byType.end()) {
@@ -181,7 +161,6 @@ void assignUuids(LevelState const& previous, LevelState& incoming) {
             }
         }
 
-        // 2c) Nothing plausible - mint a new UUID.
         if (matched == 0) matched = freshUuid();
         claimed.insert(matched);
 

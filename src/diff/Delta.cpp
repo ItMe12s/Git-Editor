@@ -150,12 +150,12 @@ std::string dumpDelta(Delta const& d) {
 std::optional<Delta> parseDelta(std::string const& blob) {
     auto parsed = matjson::Value::parse(blob);
     if (parsed.isErr()) {
-        geode::log::error("git-editor: parseDelta failed: {}", std::string(parsed.unwrapErr()));
+        geode::log::error("parseDelta failed: {}", std::string(parsed.unwrapErr()));
         return std::nullopt;
     }
     auto root = parsed.unwrap();
     if (!root.isObject()) {
-        geode::log::error("git-editor: parseDelta: root is not an object");
+        geode::log::error("parseDelta: root is not an object");
         return std::nullopt;
     }
 

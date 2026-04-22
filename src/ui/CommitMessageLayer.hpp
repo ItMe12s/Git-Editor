@@ -10,8 +10,6 @@ namespace geode {
 
 namespace git_editor {
 
-// Popup: single-line message input + Commit / Cancel. Invokes `onConfirm`
-// with the validated message when the user confirms.
 class CommitMessageLayer : public geode::Popup {
 public:
     using ConfirmFn = geode::Function<void(std::string const&)>;

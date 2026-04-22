@@ -14,7 +14,6 @@ namespace git_editor {
 
 namespace {
 
-// Trim ASCII whitespace on both ends.
 std::string trim(std::string s) {
     auto isSpace = [](unsigned char c) { return std::isspace(c) != 0; };
     while (!s.empty() && isSpace(s.front())) s.erase(s.begin());
@@ -74,8 +73,6 @@ void CommitMessageLayer::onConfirmClicked(CCObject*) {
         message.resize(kMaxMessageLen);
     }
 
-    // Fire callback BEFORE closing so the caller sees a live popup if it
-    // needs to chain another (it currently doesn't).
     if (m_callback) m_callback(message);
 
     this->onClose(nullptr);

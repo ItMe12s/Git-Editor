@@ -50,9 +50,6 @@ std::string shorten(std::string const& s, std::size_t maxChars) {
     return s.substr(0, maxChars - 1) + "...";
 }
 
-// Build a small "revert" / "checkout" tag badge for rows whose reverts_id
-// is populated. Keeps the history list readable when many rows are
-// automatic state changes rather than manual edits.
 CCNode* makeBadge(char const* text) {
     auto bg = CCLayerColor::create({ 70, 110, 180, 200 }, 44.f, 12.f);
     bg->ignoreAnchorPointForPosition(false);
@@ -65,8 +62,6 @@ CCNode* makeBadge(char const* text) {
     return bg;
 }
 
-// Summary dialog shown after a revert that skipped any ops. We only surface
-// counts here - full details are in the log for dev inspection.
 void showConflictSummary(std::vector<Conflict> const& conflicts) {
     if (conflicts.empty()) return;
 
@@ -166,8 +161,6 @@ void HistoryLayer::rebuildList() {
         return;
     }
 
-    // Stable, non-owning snapshots for the row callbacks. Capturing `this`
-    // would risk dangling access if the popup is closed mid-confirm.
     auto* editor     = m_editor;
     auto* pauseLayer = m_pauseLayer;
     std::string levelKey = m_levelKey;
@@ -205,7 +198,6 @@ void HistoryLayer::rebuildList() {
         msgLbl->setAnchorPoint({0.f, .5f});
         row->addChildAtPosition(msgLbl, Anchor::Left, {6.f, -8.f});
 
-        // Badge for auto-commits produced by checkout / revert.
         if (c.reverts) {
             auto const* label = (c.message.rfind("Revert", 0) == 0) ? "revert" : "checkout";
             auto badge = makeBadge(label);

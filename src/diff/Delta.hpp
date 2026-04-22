@@ -10,21 +10,13 @@
 
 namespace git_editor {
 
-// Before/after value pair. Applied literally during inverse; `apply` uses
-// `before` to detect conflicts (3-way style) and `after` as the new value.
+// before and after, apply uses before for conflict check and after as new value.
 struct FieldChange {
     std::string before;
     std::string after;
 };
 
-// One pure delta between two LevelStates. Inverse + apply are defined over
-// this type (see Differ.hpp).
-//
-// Invariants:
-//   - `adds`     contains full objects (uuid + every field) so an inverse
-//                has enough data to reconstruct them as a "remove".
-//   - `removes`  contains full objects for the same reason.
-//   - `modifies` references an existing UUID and lists ONLY changed fields.
+// adds/removes: full objects (for inverse). modifies: uuid + changed fields only.
 struct Delta {
     std::map<int, FieldChange> headerChanges;
 
@@ -38,14 +30,9 @@ struct Delta {
     std::vector<Modify> modifies;
 };
 
-// Serialization is plain JSON via matjson. Kept as a free-function pair
-// (rather than matjson::Serialize<Delta>) because Delta transitively owns
-// FieldMap/Object which have their own well-defined on-disk shape here.
 std::string dumpDelta(Delta const& d);
 
-// Returns std::nullopt (and logs via geode::log::error) on parse failure.
-// Callers MUST treat a failed parse as fatal for the operation - silently
-// substituting an empty Delta would corrupt reconstructed state.
+// std::nullopt on parse failure, callers must not substitute empty delta (corrupts state).
 std::optional<Delta> parseDelta(std::string const& blob);
 
 } // namespace git_editor

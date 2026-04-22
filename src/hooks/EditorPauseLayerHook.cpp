@@ -20,9 +20,7 @@ using namespace geode::prelude;
 
 namespace {
 
-// String ID for our side menu. `_spr` auto-prefixes with the mod id, so the
-// final node id is "imes.git-editor/side-menu" - guaranteed not to collide
-// with vanilla or other mods' IDs.
+// "_spr" prefixes mod id (avoids ID collisions).
 constexpr auto kSideMenuID = "side-menu"_spr;
 
 std::string currentLevelKey(LevelEditorLayer* editor) {
@@ -38,11 +36,8 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
     void customSetup() {
         EditorPauseLayer::customSetup();
 
-        // Defer the menu injection to the next main-thread tick. This lets
-        // every other mod's customSetup / post-init work (including NodeIDs
-        // restructuring and BetterEdit's layout changes) finish BEFORE we
-        // perturb the child list.
         Ref<EditorPauseLayer> safeSelf(this);
+        // Defer one tick so other mods finish customSetup before we attach the menu.
         geode::queueInMainThread([safeSelf]() {
             auto* self = safeSelf.data();
             if (!self || !self->getParent()) return;
