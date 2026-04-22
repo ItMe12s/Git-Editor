@@ -282,6 +282,103 @@ bool CommitStore::updateMessage(CommitId id, std::string const& message) {
     return ok;
 }
 
+std::optional<CommitId> CommitStore::squash(
+    LevelKey const&              levelKey,
+    std::vector<CommitId> const& idsOldestFirst,
+    std::optional<CommitId>      parentOfOldest,
+    std::string const&           message,
+    std::string const&           deltaBlob
+) {
+    if (!m_db) return std::nullopt;
+    if (idsOldestFirst.size() < 2) return std::nullopt;
+
+    auto const newest = idsOldestFirst.back();
+
+    // Inherit newest squashed commit's createdAt so the squash row keeps its
+    // position in DESC-by-time list. Otherwise the squash jumps to the top
+    // and rows above it become misclickable (revert hits squash instead of
+    // intended newer commit).
+    std::int64_t squashCreatedAt = nowSeconds();
+    if (auto newestRow = this->get(newest)) {
+        squashCreatedAt = newestRow->createdAt;
+    }
+
+    std::string idList;
+    idList.reserve(idsOldestFirst.size() * 8);
+    for (std::size_t i = 0; i < idsOldestFirst.size(); ++i) {
+        if (i) idList += ',';
+        idList += std::to_string(idsOldestFirst[i]);
+    }
+
+    if (!execOrLog(m_db, "BEGIN IMMEDIATE;")) return std::nullopt;
+    if (!execOrLog(m_db, "PRAGMA defer_foreign_keys = ON;")) {
+        execOrLog(m_db, "ROLLBACK;");
+        return std::nullopt;
+    }
+
+    auto rollback = [this]() {
+        execOrLog(m_db, "ROLLBACK;");
+        execOrLog(m_db, "PRAGMA defer_foreign_keys = OFF;");
+    };
+
+    auto const newId = this->insertAt(
+        levelKey, parentOfOldest, std::nullopt, message, squashCreatedAt, deltaBlob
+    );
+    if (!newId) {
+        rollback();
+        return std::nullopt;
+    }
+
+    auto runStmt = [&](char const* sql,
+                       std::initializer_list<std::pair<int, std::int64_t>> intBinds,
+                       std::initializer_list<std::pair<int, std::string const*>> textBinds) -> bool {
+        sqlite3_stmt* st = nullptr;
+        if (sqlite3_prepare_v2(m_db, sql, -1, &st, nullptr) != SQLITE_OK) {
+            geode::log::error("prepare squash sql failed: {}", sqlite3_errmsg(m_db));
+            return false;
+        }
+        for (auto const& b : intBinds)  sqlite3_bind_int64(st, b.first, b.second);
+        for (auto const& b : textBinds) sqlite3_bind_text(st, b.first, b.second->c_str(),
+                                            static_cast<int>(b.second->size()), SQLITE_TRANSIENT);
+        bool ok = (sqlite3_step(st) == SQLITE_DONE);
+        if (!ok) geode::log::error("squash step failed: {}", sqlite3_errmsg(m_db));
+        sqlite3_finalize(st);
+        return ok;
+    };
+
+    auto runSql = [this](std::string const& sql) -> bool {
+        return execOrLog(m_db, sql.c_str());
+    };
+
+    if (!runStmt(
+        "UPDATE commits SET parent_id = ? WHERE parent_id = ? AND level_key = ? AND id != ?;",
+        {{1, *newId}, {2, newest}, {4, *newId}},
+        {{3, &levelKey}}
+    )) { rollback(); return std::nullopt; }
+
+    if (!runSql(
+        "UPDATE commits SET reverts_id = NULL WHERE reverts_id IN (" + idList + ");"
+    )) { rollback(); return std::nullopt; }
+
+    if (!runStmt(
+        ("UPDATE refs SET head_id = ? WHERE head_id IN (" + idList + ") AND level_key = ?;").c_str(),
+        {{1, *newId}},
+        {{2, &levelKey}}
+    )) { rollback(); return std::nullopt; }
+
+    if (!runSql("DELETE FROM commits WHERE id IN (" + idList + ");")) {
+        rollback();
+        return std::nullopt;
+    }
+
+    if (!execOrLog(m_db, "COMMIT;")) {
+        rollback();
+        return std::nullopt;
+    }
+    execOrLog(m_db, "PRAGMA defer_foreign_keys = OFF;");
+    return newId;
+}
+
 std::vector<LevelSummary> CommitStore::listLevels() {
     std::vector<LevelSummary> out;
     if (!m_db) return out;

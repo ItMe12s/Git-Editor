@@ -35,6 +35,13 @@ struct RevertOutcome {
     std::string             error;
 };
 
+struct SquashOutcome {
+    bool                    ok = false;
+    std::optional<CommitId> newCommitId;
+    LevelState              state;
+    std::string             error;
+};
+
 struct ImportLevelOutcome {
     bool        ok    = false;
     LevelState  state;
@@ -53,6 +60,13 @@ public:
     CheckoutOutcome checkout(LevelKey const& levelKey, CommitId target);
 
     RevertOutcome   revert(LevelKey const& levelKey, CommitId target);
+
+    // Collapse a contiguous range of commits into one. idsOldestFirst must form an unbroken
+    // parent chain (each id's parent equals the previous id). New commit's parent is the
+    // parent of the oldest. HEAD and any later commits are preserved.
+    SquashOutcome   squash(LevelKey const&              levelKey,
+                           std::vector<CommitId> const& idsOldestFirst,
+                           std::string const&           message);
 
     // Replaces dest history with a deep copy of src, then returns reconstructed HEAD for dest.
     ImportLevelOutcome importLevelFrom(LevelKey const& dest, LevelKey const& src);

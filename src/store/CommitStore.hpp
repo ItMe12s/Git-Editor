@@ -56,6 +56,17 @@ public:
     std::vector<CommitRow> list(LevelKey const& levelKey);
     bool                   updateMessage(CommitId id, std::string const& message);
 
+    // Atomically replaces a contiguous range [oldest..newest] (oldest-first ids) with one new
+    // commit. Re-parents children of newest, moves HEAD if it pointed at any squashed commit,
+    // clears reverts pointers into the squashed set. Returns new commit id or nullopt.
+    std::optional<CommitId> squash(
+        LevelKey const&              levelKey,
+        std::vector<CommitId> const& idsOldestFirst,
+        std::optional<CommitId>      parentOfOldest,
+        std::string const&           message,
+        std::string const&           deltaBlob
+    );
+
     std::vector<LevelSummary> listLevels();
     bool                      deleteLevel(LevelKey const& levelKey);
 

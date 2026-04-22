@@ -177,6 +177,69 @@ RevertOutcome GitService::revert(LevelKey const& levelKey, CommitId target) {
     return out;
 }
 
+SquashOutcome GitService::squash(
+    LevelKey const&              levelKey,
+    std::vector<CommitId> const& idsOldestFirst,
+    std::string const&           message
+) {
+    SquashOutcome out;
+
+    if (idsOldestFirst.size() < 2) {
+        out.error = "Squash needs at least 2 commits";
+        return out;
+    }
+
+    std::vector<CommitRow> rows;
+    rows.reserve(idsOldestFirst.size());
+    for (auto id : idsOldestFirst) {
+        auto row = m_store.get(id);
+        if (!row) {
+            out.error = "Commit " + std::to_string(id) + " not found";
+            return out;
+        }
+        if (row->levelKey != levelKey) {
+            out.error = "Commit " + std::to_string(id) + " belongs to a different level";
+            return out;
+        }
+        rows.push_back(std::move(*row));
+    }
+
+    for (std::size_t i = 1; i < rows.size(); ++i) {
+        if (!rows[i].parent || *rows[i].parent != rows[i - 1].id) {
+            out.error = "Selected commits are not contiguous";
+            return out;
+        }
+    }
+
+    auto const parentOfOldest = rows.front().parent;
+
+    LevelState base;
+    if (parentOfOldest) {
+        auto recon = this->reconstruct(*parentOfOldest);
+        if (!recon) { out.error = "reconstruct base failed"; return out; }
+        base = std::move(*recon);
+    }
+
+    auto target = this->reconstruct(rows.back().id);
+    if (!target) { out.error = "reconstruct target failed"; return out; }
+
+    auto combined = diff(base, *target);
+    auto blob     = dumpDelta(combined);
+
+    auto newId = m_store.squash(levelKey, idsOldestFirst, parentOfOldest, message, blob);
+    if (!newId) {
+        out.error = "DB squash failed";
+        return out;
+    }
+
+    this->clearReconstructCache();
+
+    out.ok          = true;
+    out.newCommitId = *newId;
+    out.state       = std::move(*target);
+    return out;
+}
+
 ImportLevelOutcome GitService::importLevelFrom(LevelKey const& dest, LevelKey const& src) {
     ImportLevelOutcome out;
     if (dest == src) {

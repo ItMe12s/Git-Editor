@@ -21,6 +21,7 @@
 #include <cerrno>
 #include <cstdio>
 #include <ctime>
+#include <vector>
 
 using namespace geode::prelude;
 
@@ -131,8 +132,57 @@ bool HistoryLayer::init(
         /* useAnchorLayout */ false
     );
 
+    m_headerMenu = CCMenu::create();
+    m_headerMenu->setContentSize({200.f, 26.f});
+    m_headerMenu->setAnchorPoint({1.f, .5f});
+    m_headerMenu->setLayout(
+        RowLayout::create()
+            ->setGap(6.f)
+            ->setAxisAlignment(AxisAlignment::End)
+            ->setCrossAxisOverflow(true)
+    );
+    m_mainLayer->addChildAtPosition(m_headerMenu, Anchor::TopRight, {-12.f, -16.f});
+
+    this->rebuildHeader();
     this->rebuildList();
     return true;
+}
+
+void HistoryLayer::rebuildHeader() {
+    if (!m_headerMenu) return;
+    m_headerMenu->removeAllChildren();
+    m_squashBtn = nullptr;
+
+    Ref<HistoryLayer> self(this);
+
+    auto modeLabel = m_squashMode ? "Exit Squash" : "Squash Mode";
+    auto modeTex   = m_squashMode ? "GJ_button_06.png" : "GJ_button_04.png";
+    auto modeSpr   = ButtonSprite::create(modeLabel, "bigFont.fnt", modeTex, .8f);
+    modeSpr->setScale(.45f);
+    auto modeBtn = CCMenuItemExt::createSpriteExtra(modeSpr,
+        [self](CCMenuItemSpriteExtra*) {
+            if (!self) return;
+            self->m_squashMode = !self->m_squashMode;
+            self->m_selected.clear();
+            self->rebuildHeader();
+            self->rebuildList();
+        }
+    );
+    m_headerMenu->addChild(modeBtn);
+
+    if (m_squashMode && m_selected.size() >= 2) {
+        auto label = std::string("Squash ") + std::to_string(m_selected.size());
+        auto spr   = ButtonSprite::create(label.c_str(), "bigFont.fnt", "GJ_button_01.png", .8f);
+        spr->setScale(.45f);
+        m_squashBtn = CCMenuItemExt::createSpriteExtra(spr,
+            [self](CCMenuItemSpriteExtra*) {
+                if (self) self->onSquashPressed();
+            }
+        );
+        m_headerMenu->addChild(m_squashBtn);
+    }
+
+    m_headerMenu->updateLayout();
 }
 
 void HistoryLayer::rebuildList() {
@@ -236,6 +286,30 @@ void HistoryLayer::rebuildList() {
         auto const commitId  = c.id;
         auto const commitMsg = c.message;
         auto const deltaBlob = c.deltaBlob;
+
+        if (m_squashMode) {
+            bool const checked = m_selected.count(commitId) > 0;
+            auto tickSpr = ButtonSprite::create(
+                checked ? "X" : " ", "bigFont.fnt",
+                checked ? "GJ_button_01.png" : "GJ_button_05.png", .8f
+            );
+            tickSpr->setScale(.5f);
+            auto tickBtn = CCMenuItemExt::createSpriteExtra(tickSpr,
+                [self, commitId](CCMenuItemSpriteExtra*) {
+                    if (!self) return;
+                    if (self->m_selected.count(commitId)) self->m_selected.erase(commitId);
+                    else                                  self->m_selected.insert(commitId);
+                    self->rebuildHeader();
+                    self->rebuildList();
+                }
+            );
+            menu->addChild(tickBtn);
+
+            menu->updateLayout();
+            row->addChildAtPosition(menu, Anchor::Right, {-6.f, 0.f});
+            content->addChild(row);
+            continue;
+        }
 
         auto helpBtn = makeBtn(
             "?", "GJ_button_04.png",
@@ -364,6 +438,81 @@ void HistoryLayer::rebuildList() {
 
     content->updateLayout();
     m_scroll->scrollToTop();
+}
+
+void HistoryLayer::onSquashPressed() {
+    if (m_selected.size() < 2) {
+        Notification::create("Select at least 2 commits", NotificationIcon::Warning)->show();
+        return;
+    }
+
+    auto commits = sharedCommitStore().list(m_levelKey);
+
+    // commits is DESC by createdAt; build oldest-first selected list.
+    std::vector<CommitId>    idsOldestFirst;
+    std::vector<std::string> messagesOldestFirst;
+    idsOldestFirst.reserve(m_selected.size());
+    messagesOldestFirst.reserve(m_selected.size());
+    for (auto it = commits.rbegin(); it != commits.rend(); ++it) {
+        if (m_selected.count(it->id)) {
+            idsOldestFirst.push_back(it->id);
+            messagesOldestFirst.push_back(it->message);
+        }
+    }
+
+    if (idsOldestFirst.size() != m_selected.size()) {
+        Notification::create("Selection mismatch", NotificationIcon::Error)->show();
+        return;
+    }
+
+    std::string defaultMsg = "Squash: ";
+    for (std::size_t i = 0; i < messagesOldestFirst.size(); ++i) {
+        if (i) defaultMsg += ", ";
+        defaultMsg += shorten(messagesOldestFirst[i], 20);
+        if (defaultMsg.size() > 110) {
+            defaultMsg += "...";
+            break;
+        }
+    }
+    if (defaultMsg.size() > 120) defaultMsg.resize(120);
+
+    auto* editor     = m_editor;
+    auto* pauseLayer = m_pauseLayer;
+    std::string levelKey = m_levelKey;
+    Ref<HistoryLayer> self(this);
+
+    if (auto popup = CommitMessageLayer::create(
+        [self, editor, pauseLayer, levelKey, idsOldestFirst](std::string const& msg) {
+            auto outcome = sharedGitService().squash(levelKey, idsOldestFirst, msg);
+            if (!outcome.ok) {
+                Notification::create(
+                    ("Squash failed: " + outcome.error).c_str(),
+                    NotificationIcon::Error
+                )->show();
+                return;
+            }
+            if (!applyLevelState(editor, outcome.state)) {
+                Notification::create(
+                    "Squash applied to DB but editor refused",
+                    NotificationIcon::Warning
+                )->show();
+            } else {
+                Notification::create("Squashed", NotificationIcon::Success)->show();
+            }
+            if (self) {
+                self->m_squashMode = false;
+                self->m_selected.clear();
+                self->rebuildHeader();
+                self->rebuildList();
+            }
+            (void)pauseLayer;
+        },
+        "Squash Commits",
+        "Squash",
+        defaultMsg
+    )) {
+        popup->show();
+    }
 }
 
 } // namespace git_editor
