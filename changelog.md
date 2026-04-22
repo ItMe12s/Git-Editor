@@ -5,6 +5,7 @@
 THIS UPDATE WIPES YOUR DATABASE
 
 - Switched level keying to Editor Level ID API (`cvolton.level-id-api`).
+- Switched to Geode's async runtime for background git and database work.
 - Removed legacy local/localid alias-key from runtime/store schema paths.
 - Bumped commit DB schema version.
 

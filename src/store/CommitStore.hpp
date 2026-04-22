@@ -30,7 +30,9 @@ struct CommitRow {
     std::string              deltaBlob;
 };
 
-// SQLite store used through a serialized worker queue. If schema_meta.version < kSchemaVersion:
+// One sqlite3* per process (sharedCommitStore). The UI may read on the main thread, mutating
+// paths often run on Geode's async blocking pool via postToGitWorker. That path mutex-serializes
+// only jobs posted to postToGitWorker, not all store access. If schema_meta.version < kSchemaVersion:
 // drop commits/refs, no migration.
 class CommitStore {
 public:

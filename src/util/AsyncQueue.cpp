@@ -11,6 +11,7 @@ namespace git_editor {
 
 namespace {
 
+// Serializes only postToGitWorker callbacks with each other (not main-thread DB reads).
 static std::mutex s_gitWorkerMutex;
 
 } // namespace
