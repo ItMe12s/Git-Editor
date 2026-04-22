@@ -46,6 +46,19 @@ FieldMap readKvChunk(std::string_view chunk) {
     return out;
 }
 
+std::string serializeFields(FieldMap const& m) {
+    std::string out;
+    bool first = true;
+    for (auto const& [k, v] : m) {
+        if (!first) out.push_back(',');
+        first = false;
+        out.append(std::to_string(k));
+        out.push_back(',');
+        out.append(v);
+    }
+    return out;
+}
+
 } // namespace
 
 LevelState parseLevelString(std::string_view raw) {
@@ -54,8 +67,15 @@ LevelState parseLevelString(std::string_view raw) {
     auto chunks = splitView(raw, ';');
     if (chunks.empty()) return state;
 
-    state.rawHeader = std::string(chunks.front());
     state.header = readKvChunk(chunks.front());
+    // rawHeader is residue: only populated when parse->serialize doesn't round-trip
+    // (e.g. GD kS/kA string-keyed headers). Normal numeric-keyed headers leave it empty
+    // so header edits merge granularly via header FieldMap.
+    if (serializeFields(state.header) == chunks.front()) {
+        state.rawHeader.clear();
+    } else {
+        state.rawHeader = std::string(chunks.front());
+    }
 
     for (std::size_t i = 1; i < chunks.size(); ++i) {
         if (chunks[i].empty()) continue;
@@ -74,25 +94,12 @@ std::string serializeLevelString(LevelState const& state) {
     std::string out;
     out.reserve(256 + state.objects.size() * 96);
 
-    auto appendFields = [&](FieldMap const& m) {
-        bool first = true;
-        for (auto const& [k, v] : m) {
-            if (!first) out.push_back(',');
-            first = false;
-            out.append(std::to_string(k));
-            out.push_back(',');
-            out.append(v);
-        }
-    };
-
+    // rawHeader is authoritative only when non-empty (residue path for non-round-trippable
+    // GD headers). Normal numeric-keyed headers serialize from state.header.
     if (!state.rawHeader.empty()) {
-        auto const parsedRawHeader = readKvChunk(state.rawHeader);
-        // If header does not parse as numeric k,v pairs (typical GD kS/kA format),
-        // preserve the exact raw chunk instead of dropping it.
-        if (parsedRawHeader.empty()) out.append(state.rawHeader);
-        else                         appendFields(parsedRawHeader);
+        out.append(state.rawHeader);
     } else {
-        appendFields(state.header);
+        out.append(serializeFields(state.header));
     }
     out.push_back(';');
 
@@ -103,7 +110,7 @@ std::string serializeLevelString(LevelState const& state) {
 
     for (auto id : ids) {
         auto const& obj = state.objects.at(id);
-        appendFields(obj.fields);
+        out.append(serializeFields(obj.fields));
         out.push_back(';');
     }
 

@@ -486,66 +486,14 @@ ExportGdgeOutcome GitService::exportLevelToGdge(LevelKey const& levelKey, std::f
     return out;
 }
 
-ImportGdgePreviewOutcome GitService::inspectGdgeImport(LevelKey const& dest, std::filesystem::path const& inPath) {
-    ImportGdgePreviewOutcome out;
-    (void)dest;
-    auto pkg = readGdgePackage(inPath);
-    if (!pkg) {
-        out.error = "invalid .gdge file";
-        return out;
-    }
-    out.sourceLevelKey = pkg->metadata.sourceLevelKey;
-    out.commitCount = static_cast<int>(pkg->commits.size());
-    if (pkg->commits.empty() || !pkg->metadata.headIndex) {
-        out.error = "package has no commits or HEAD";
-        return out;
-    }
-    out.canMerge = true;
-    out.ok = true;
-    return out;
-}
-
-ImportGdgeOutcome GitService::importFromGdge(LevelKey const& dest,
-                                             std::filesystem::path const& inPath,
-                                             bool merge) {
-    ImportGdgeOutcome out;
+GitService::MergeSingleResult GitService::mergeSingleGdge(
+    LevelKey const& canonicalDest,
+    std::filesystem::path const& inPath
+) {
+    MergeSingleResult out;
     auto pkg = readGdgePackage(inPath);
     if (!pkg || pkg->commits.empty() || !pkg->metadata.headIndex) {
         out.error = "invalid .gdge file";
-        return out;
-    }
-
-    auto const canonicalDest = m_store.resolveOrCreateCanonicalKey(dest);
-    if (!merge) {
-        std::vector<ImportedCommit> imported;
-        imported.reserve(pkg->commits.size());
-        for (auto const& c : pkg->commits) {
-            imported.push_back(ImportedCommit{
-                .importIndex = c.commitIndex,
-                .parentIndex = c.parentIndex,
-                .revertsIndex = c.revertsIndex,
-                .message = c.message,
-                .createdAt = c.createdAt,
-                .deltaBlob = c.deltaBlob
-            });
-        }
-        if (!m_store.replaceLevelHistoryFromImport(canonicalDest, imported, pkg->metadata.headIndex)) {
-            out.error = "failed to import history";
-            return out;
-        }
-        this->clearReconstructCache();
-        auto head = m_store.getHead(canonicalDest);
-        if (!head) {
-            out.error = "missing imported HEAD";
-            return out;
-        }
-        auto st = this->reconstruct(*head);
-        if (!st) {
-            out.error = "failed to reconstruct imported state";
-            return out;
-        }
-        out.ok = true;
-        out.state = std::move(*st);
         return out;
     }
 
@@ -589,7 +537,6 @@ ImportGdgeOutcome GitService::importFromGdge(LevelKey const& dest,
     }
     this->cachePut(*id, *merged);
     out.ok = true;
-    out.merged = true;
     out.conflictCount = conflicts;
     out.state = std::move(*merged);
     return out;
@@ -609,7 +556,7 @@ ImportManyGdgeOutcome GitService::importManyFromGdge(
     bool anyMerged = false;
     std::string lastError;
     for (auto const& path : inPaths) {
-        auto merged = this->importFromGdge(canonicalDest, path, true);
+        auto merged = this->mergeSingleGdge(canonicalDest, path);
         if (!merged.ok) {
             out.skippedCount++;
             if (lastError.empty()) {

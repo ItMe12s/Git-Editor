@@ -54,22 +54,6 @@ struct ExportGdgeOutcome {
     std::string error;
 };
 
-struct ImportGdgePreviewOutcome {
-    bool        ok = false;
-    bool        canMerge = false;
-    int         commitCount = 0;
-    std::string sourceLevelKey;
-    std::string error;
-};
-
-struct ImportGdgeOutcome {
-    bool        ok = false;
-    bool        merged = false;
-    int         conflictCount = 0;
-    LevelState  state;
-    std::string error;
-};
-
 struct ImportManyGdgeOutcome {
     bool        ok = false;
     int         mergedCount = 0;
@@ -102,10 +86,6 @@ public:
     // Replaces dest history with a deep copy of src, then returns reconstructed HEAD for dest.
     ImportLevelOutcome importLevelFrom(LevelKey const& dest, LevelKey const& src);
     ExportGdgeOutcome exportLevelToGdge(LevelKey const& levelKey, std::filesystem::path const& outPath);
-    ImportGdgePreviewOutcome inspectGdgeImport(LevelKey const& dest, std::filesystem::path const& inPath);
-    ImportGdgeOutcome importFromGdge(LevelKey const& dest,
-                                     std::filesystem::path const& inPath,
-                                     bool merge);
     ImportManyGdgeOutcome importManyFromGdge(LevelKey const& dest,
                                              std::vector<std::filesystem::path> const& inPaths);
 
@@ -114,6 +94,15 @@ public:
     std::optional<LevelState> reconstruct(CommitId commitId);
 
 private:
+    struct MergeSingleResult {
+        bool        ok = false;
+        int         conflictCount = 0;
+        LevelState  state;
+        std::string error;
+    };
+    MergeSingleResult mergeSingleGdge(LevelKey const& canonicalDest,
+                                      std::filesystem::path const& inPath);
+
     void       cachePut(CommitId id, LevelState state);
     std::optional<LevelState> cacheGet(CommitId id);
 

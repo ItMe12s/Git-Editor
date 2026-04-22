@@ -40,6 +40,7 @@ constexpr float kRowHeight     = 46.f;
 constexpr ccColor3B kAddColor  = {64, 227, 72};
 constexpr ccColor3B kModColor  = {50, 200, 255};
 constexpr ccColor3B kDelColor  = {255, 90, 90};
+constexpr ccColor3B kHdrColor  = {255, 210, 70};
 
 bool canApplyEditorResult(LevelEditorLayer* editor) {
     return editor != nullptr && editor->getParent() != nullptr;
@@ -176,6 +177,9 @@ void HistoryLayer::rebuildHeader() {
 void HistoryLayer::rebuildList() {
     if (!m_scroll) return;
 
+    // Squash/revert/merge can reassign commit ids with fresh deltas; stale stats would mislead.
+    m_statsCache.clear();
+
     auto* content = m_scroll->m_contentLayer;
     content->removeAllChildren();
 
@@ -248,6 +252,9 @@ void HistoryLayer::rebuildList() {
                 lbl->setColor(color);
                 return lbl;
             };
+            if (stats.headerChanges > 0) {
+                statsNode->addChild(makeStat("h" + std::to_string(stats.headerChanges), kHdrColor));
+            }
             if (stats.adds > 0) {
                 statsNode->addChild(makeStat("+" + std::to_string(stats.adds), kAddColor));
             }

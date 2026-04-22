@@ -32,9 +32,10 @@ struct Delta {
 };
 
 struct DeltaStats {
-    int adds     = 0;
-    int modifies = 0;
-    int removes  = 0;
+    int headerChanges = 0;
+    int adds          = 0;
+    int modifies      = 0;
+    int removes       = 0;
 };
 
 std::string dumpDelta(Delta const& d);
