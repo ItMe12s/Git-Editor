@@ -177,6 +177,37 @@ RevertOutcome GitService::revert(LevelKey const& levelKey, CommitId target) {
     return out;
 }
 
+ImportLevelOutcome GitService::importLevelFrom(LevelKey const& dest, LevelKey const& src) {
+    ImportLevelOutcome out;
+    if (dest == src) {
+        out.error = "source and destination are the same";
+        return out;
+    }
+    if (!m_store.replaceLevelHistoryFrom(dest, src)) {
+        out.error = "failed to copy level history";
+        return out;
+    }
+    this->clearReconstructCache();
+    auto const head = m_store.getHead(dest);
+    if (!head) {
+        out.error = "no HEAD after import";
+        return out;
+    }
+    auto st = this->reconstruct(*head);
+    if (!st) {
+        out.error = "reconstruct after import failed";
+        return out;
+    }
+    out.ok    = true;
+    out.state = std::move(*st);
+    return out;
+}
+
+void GitService::clearReconstructCache() {
+    m_lru.clear();
+    m_index.clear();
+}
+
 std::optional<LevelState> GitService::reconstruct(CommitId commitId) {
     if (auto hit = this->cacheGet(commitId)) {
         return hit;

@@ -139,7 +139,12 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
     }
 
     void onGitLevels() {
-        if (auto popup = git_editor::LevelBrowserLayer::create()) {
+        auto* editor = m_editorLayer;
+        if (!editor) {
+            Notification::create("No active editor", NotificationIcon::Error)->show();
+            return;
+        }
+        if (auto popup = git_editor::LevelBrowserLayer::create(editor, this)) {
             popup->show();
         }
     }

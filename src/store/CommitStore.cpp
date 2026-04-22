@@ -6,6 +6,9 @@
 #include <sqlite3.h>
 
 #include <chrono>
+#include <queue>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace git_editor {
 
@@ -143,12 +146,13 @@ bool CommitStore::ensureSchema() {
     return ok;
 }
 
-std::optional<CommitId> CommitStore::insert(
-    LevelKey const& levelKey,
+std::optional<CommitId> CommitStore::insertAt(
+    LevelKey const&         levelKey,
     std::optional<CommitId> parent,
     std::optional<CommitId> reverts,
-    std::string const& message,
-    std::string const& deltaBlob
+    std::string const&      message,
+    std::int64_t            createdAt,
+    std::string const&      deltaBlob
 ) {
     if (!m_db) return std::nullopt;
 
@@ -166,7 +170,7 @@ std::optional<CommitId> CommitStore::insert(
     if (parent)  sqlite3_bind_int64(st, 2, *parent);   else sqlite3_bind_null(st, 2);
     if (reverts) sqlite3_bind_int64(st, 3, *reverts);  else sqlite3_bind_null(st, 3);
     sqlite3_bind_text(st, 4, message.c_str(), static_cast<int>(message.size()), SQLITE_TRANSIENT);
-    sqlite3_bind_int64(st, 5, nowSeconds());
+    sqlite3_bind_int64(st, 5, createdAt);
     sqlite3_bind_blob(st, 6, deltaBlob.data(), static_cast<int>(deltaBlob.size()), SQLITE_TRANSIENT);
 
     std::optional<CommitId> out;
@@ -177,6 +181,16 @@ std::optional<CommitId> CommitStore::insert(
     }
     sqlite3_finalize(st);
     return out;
+}
+
+std::optional<CommitId> CommitStore::insert(
+    LevelKey const&         levelKey,
+    std::optional<CommitId> parent,
+    std::optional<CommitId> reverts,
+    std::string const&      message,
+    std::string const&      deltaBlob
+) {
+    return this->insertAt(levelKey, parent, reverts, message, nowSeconds(), deltaBlob);
 }
 
 namespace {
@@ -293,14 +307,8 @@ std::vector<LevelSummary> CommitStore::listLevels() {
     return out;
 }
 
-bool CommitStore::deleteLevel(LevelKey const& levelKey) {
+bool CommitStore::deleteCommitsAndRefsForKeyNoTransaction(LevelKey const& levelKey) {
     if (!m_db) return false;
-
-    if (!execOrLog(m_db, "BEGIN IMMEDIATE;")) return false;
-    if (!execOrLog(m_db, "PRAGMA defer_foreign_keys = ON;")) {
-        execOrLog(m_db, "ROLLBACK;");
-        return false;
-    }
 
     {
         constexpr char const* delRefs =
@@ -308,7 +316,6 @@ bool CommitStore::deleteLevel(LevelKey const& levelKey) {
         sqlite3_stmt* st = nullptr;
         if (sqlite3_prepare_v2(m_db, delRefs, -1, &st, nullptr) != SQLITE_OK) {
             geode::log::error("prepare deleteLevel refs: {}", sqlite3_errmsg(m_db));
-            execOrLog(m_db, "ROLLBACK;");
             return false;
         }
         sqlite3_bind_text(
@@ -317,7 +324,6 @@ bool CommitStore::deleteLevel(LevelKey const& levelKey) {
         if (sqlite3_step(st) != SQLITE_DONE) {
             geode::log::error("deleteLevel refs step: {}", sqlite3_errmsg(m_db));
             sqlite3_finalize(st);
-            execOrLog(m_db, "ROLLBACK;");
             return false;
         }
         sqlite3_finalize(st);
@@ -329,7 +335,6 @@ bool CommitStore::deleteLevel(LevelKey const& levelKey) {
         sqlite3_stmt* st = nullptr;
         if (sqlite3_prepare_v2(m_db, delCommits, -1, &st, nullptr) != SQLITE_OK) {
             geode::log::error("prepare deleteLevel commits: {}", sqlite3_errmsg(m_db));
-            execOrLog(m_db, "ROLLBACK;");
             return false;
         }
         sqlite3_bind_text(
@@ -338,10 +343,162 @@ bool CommitStore::deleteLevel(LevelKey const& levelKey) {
         if (sqlite3_step(st) != SQLITE_DONE) {
             geode::log::error("deleteLevel commits step: {}", sqlite3_errmsg(m_db));
             sqlite3_finalize(st);
-            execOrLog(m_db, "ROLLBACK;");
             return false;
         }
         sqlite3_finalize(st);
+    }
+    return true;
+}
+
+bool CommitStore::deleteLevel(LevelKey const& levelKey) {
+    if (!m_db) return false;
+
+    if (!execOrLog(m_db, "BEGIN IMMEDIATE;")) return false;
+    if (!execOrLog(m_db, "PRAGMA defer_foreign_keys = ON;")) {
+        execOrLog(m_db, "ROLLBACK;");
+        return false;
+    }
+
+    if (!this->deleteCommitsAndRefsForKeyNoTransaction(levelKey)) {
+        execOrLog(m_db, "ROLLBACK;");
+        execOrLog(m_db, "PRAGMA defer_foreign_keys = OFF;");
+        return false;
+    }
+
+    if (!execOrLog(m_db, "COMMIT;")) {
+        execOrLog(m_db, "ROLLBACK;");
+        execOrLog(m_db, "PRAGMA defer_foreign_keys = OFF;");
+        return false;
+    }
+    execOrLog(m_db, "PRAGMA defer_foreign_keys = OFF;");
+    return true;
+}
+
+bool CommitStore::replaceLevelHistoryFrom(LevelKey const& dest, LevelKey const& src) {
+    if (!m_db) return false;
+    if (dest == src) {
+        geode::log::warn("replaceLevelHistoryFrom: dest == src");
+        return false;
+    }
+
+    auto const headOld = this->getHead(src);
+    if (!headOld) {
+        geode::log::error("replaceLevelHistoryFrom: no HEAD for src");
+        return false;
+    }
+
+    auto const rows = this->list(src);
+    if (rows.empty()) {
+        geode::log::error("replaceLevelHistoryFrom: empty list for src");
+        return false;
+    }
+
+    std::unordered_map<CommitId, CommitRow> byId;
+    std::unordered_set<CommitId>            idSet;
+    byId.reserve(rows.size());
+    for (auto const& r : rows) {
+        byId[r.id] = r;
+        idSet.insert(r.id);
+    }
+
+    for (auto const& r : rows) {
+        if (r.parent && !idSet.count(*r.parent)) {
+            geode::log::error("replaceLevelHistoryFrom: parent {} not in level set", *r.parent);
+            return false;
+        }
+        if (r.reverts && !idSet.count(*r.reverts)) {
+            geode::log::error("replaceLevelHistoryFrom: reverts {} not in level set", *r.reverts);
+            return false;
+        }
+    }
+
+    std::unordered_map<CommitId, int>                    inDeg;
+    std::unordered_map<CommitId, std::vector<CommitId>> afterDone;
+    for (CommitId v : idSet) {
+        std::unordered_set<CommitId> deps;
+        auto const&                  row = byId[v];
+        if (row.parent && idSet.count(*row.parent)) deps.insert(*row.parent);
+        if (row.reverts && idSet.count(*row.reverts)) deps.insert(*row.reverts);
+        inDeg[v] = static_cast<int>(deps.size());
+        for (CommitId d : deps) {
+            afterDone[d].push_back(v);
+        }
+    }
+
+    std::vector<CommitId> order;
+    order.reserve(idSet.size());
+    std::queue<CommitId> q;
+    for (CommitId id : idSet) {
+        if (inDeg[id] == 0) {
+            q.push(id);
+        }
+    }
+    while (!q.empty()) {
+        CommitId u = q.front();
+        q.pop();
+        order.push_back(u);
+        for (CommitId v : afterDone[u]) {
+            inDeg[v]--;
+            if (inDeg[v] == 0) {
+                q.push(v);
+            }
+        }
+    }
+
+    if (order.size() != idSet.size()) {
+        geode::log::error("replaceLevelHistoryFrom: topological sort failed (cycle?)");
+        return false;
+    }
+
+    if (!execOrLog(m_db, "BEGIN IMMEDIATE;")) {
+        return false;
+    }
+    if (!execOrLog(m_db, "PRAGMA defer_foreign_keys = ON;")) {
+        execOrLog(m_db, "ROLLBACK;");
+        return false;
+    }
+
+    if (!this->deleteCommitsAndRefsForKeyNoTransaction(dest)) {
+        execOrLog(m_db, "ROLLBACK;");
+        execOrLog(m_db, "PRAGMA defer_foreign_keys = OFF;");
+        return false;
+    }
+
+    std::unordered_map<CommitId, CommitId> idMap;
+    for (CommitId const oldId : order) {
+        auto const& row = byId[oldId];
+        std::optional<CommitId> newParent;
+        if (row.parent) {
+            newParent = idMap.at(*row.parent);
+        }
+        std::optional<CommitId> newReverts;
+        if (row.reverts) {
+            newReverts = idMap.at(*row.reverts);
+        }
+        auto const newId = this->insertAt(
+            dest, newParent, newReverts, row.message, row.createdAt, row.deltaBlob
+        );
+        if (!newId) {
+            geode::log::error("replaceLevelHistoryFrom: insert failed at old id {}", oldId);
+            execOrLog(m_db, "ROLLBACK;");
+            execOrLog(m_db, "PRAGMA defer_foreign_keys = OFF;");
+            return false;
+        }
+        idMap[oldId] = *newId;
+    }
+
+    if (auto it = idMap.find(*headOld); it == idMap.end()) {
+        geode::log::error("replaceLevelHistoryFrom: head not in map");
+        execOrLog(m_db, "ROLLBACK;");
+        execOrLog(m_db, "PRAGMA defer_foreign_keys = OFF;");
+        return false;
+    } else {
+        if (!this->setHead(dest, it->second)) {
+            geode::log::error("replaceLevelHistoryFrom: setHead failed");
+            execOrLog(m_db, "ROLLBACK;");
+            execOrLog(m_db, "PRAGMA defer_foreign_keys = OFF;");
+            return false;
+        }
     }
 
     if (!execOrLog(m_db, "COMMIT;")) {

@@ -35,6 +35,12 @@ struct RevertOutcome {
     std::string             error;
 };
 
+struct ImportLevelOutcome {
+    bool        ok    = false;
+    LevelState  state;
+    std::string error;
+};
+
 // Linear history, checkout adds forward commit to target state (no rewind HEAD). Persist then setHead then cache.
 class GitService {
 public:
@@ -47,6 +53,11 @@ public:
     CheckoutOutcome checkout(LevelKey const& levelKey, CommitId target);
 
     RevertOutcome   revert(LevelKey const& levelKey, CommitId target);
+
+    // Replaces dest history with a deep copy of src, then returns reconstructed HEAD for dest.
+    ImportLevelOutcome importLevelFrom(LevelKey const& dest, LevelKey const& src);
+
+    void             clearReconstructCache();
 
     std::optional<LevelState> reconstruct(CommitId commitId);
 

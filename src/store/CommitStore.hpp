@@ -59,11 +59,27 @@ public:
     std::vector<LevelSummary> listLevels();
     bool                      deleteLevel(LevelKey const& levelKey);
 
+    // Wipes dest's commits/refs, deep-copies all commits for src to dest (new ids, remapped
+    // parent_id/reverts_id). Preserves created_at, message, delta. Sets HEAD to copy of src HEAD.
+    // Single transaction. Returns false on failure or if dest == src.
+    bool replaceLevelHistoryFrom(LevelKey const& dest, LevelKey const& src);
+
     std::optional<CommitId> getHead(LevelKey const& levelKey);
     bool                    setHead(LevelKey const& levelKey, CommitId head);
 
 private:
     bool ensureSchema();
+
+    std::optional<CommitId> insertAt(
+        LevelKey const&         levelKey,
+        std::optional<CommitId> parent,
+        std::optional<CommitId> reverts,
+        std::string const&      message,
+        std::int64_t            createdAt,
+        std::string const&      deltaBlob
+    );
+
+    bool deleteCommitsAndRefsForKeyNoTransaction(LevelKey const& levelKey);
 
     sqlite3* m_db = nullptr;
 };
