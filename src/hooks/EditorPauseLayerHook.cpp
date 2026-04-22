@@ -3,6 +3,7 @@
 #include "../ui/CommitMessageLayer.hpp"
 #include "../ui/HistoryLayer.hpp"
 #include "../ui/LevelBrowserLayer.hpp"
+#include "../util/AsyncQueue.hpp"
 #include "../util/LevelKey.hpp"
 
 #include <Geode/Geode.hpp>
@@ -17,7 +18,6 @@
 #include <Geode/ui/Layout.hpp>
 #include <Geode/ui/Notification.hpp>
 #include <Geode/utils/cocos.hpp>
-#include <thread>
 
 using namespace geode::prelude;
 
@@ -117,7 +117,7 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
                     )->show();
                     return;
                 }
-                std::thread([levelKey, message, levelStr]() {
+                git_editor::postToGitWorker([levelKey, message, levelStr]() {
                     auto outcome = git_editor::sharedGitService().commit(
                         levelKey, message, levelStr
                     );
@@ -131,7 +131,7 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
                             )->show();
                         }
                     });
-                }).detach();
+                });
             }
         );
         if (popup) popup->show();

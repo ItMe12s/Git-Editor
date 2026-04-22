@@ -30,7 +30,8 @@ struct CommitRow {
     std::string              deltaBlob;
 };
 
-// SQLite, main thread. If schema_meta.version < kSchemaVersion: drop commits/refs, no migration.
+// SQLite store used through a serialized worker queue. If schema_meta.version < kSchemaVersion:
+// drop commits/refs, no migration.
 class CommitStore {
 public:
     static constexpr int kSchemaVersion = 2;

@@ -3,7 +3,10 @@
 #include "../editor/LevelStateIO.hpp"
 #include "../service/GitService.hpp"
 #include "../store/CommitStore.hpp"
+#include "../util/AsyncQueue.hpp"
+#include "../util/UiAction.hpp"
 #include "../util/LevelKey.hpp"
+#include "../util/UiText.hpp"
 
 #include <Geode/Geode.hpp>
 #include <Geode/binding/ButtonSprite.hpp>
@@ -15,9 +18,7 @@
 #include <Geode/ui/ScrollLayer.hpp>
 #include <Geode/utils/cocos.hpp>
 
-#include <ctime>
 #include <string>
-#include <thread>
 
 using namespace geode::prelude;
 
@@ -33,22 +34,8 @@ constexpr float kListPadBottom  = 16.f;
 constexpr float kRowHeight      = 50.f;
 constexpr float kRowMenuWidth   = 144.f;
 
-std::string formatTimestamp(std::int64_t unixSeconds) {
-    std::time_t t = static_cast<std::time_t>(unixSeconds);
-    std::tm tm{};
-#if defined(_WIN32)
-    if (localtime_s(&tm, &t) != 0) return "?";
-#else
-    if (localtime_r(&t, &tm) == nullptr) return "?";
-#endif
-    char buf[32];
-    if (std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M", &tm) == 0) return "?";
-    return std::string(buf);
-}
-
-std::string shorten(std::string const& s, std::size_t maxChars) {
-    if (s.size() <= maxChars) return s;
-    return s.substr(0, maxChars - 1) + "...";
+bool canApplyEditorResult(LevelEditorLayer* editor) {
+    return editor != nullptr && editor->getParent() != nullptr;
 }
 
 } // namespace
@@ -181,11 +168,9 @@ void LevelBrowserLayer::rebuildList() {
 
         auto loadBtn = makeLoadBtn(
             [self, levelKey, destKey, count](CCMenuItemSpriteExtra*) {
-                if (self && self->m_busy) {
-                    Notification::create("Action already running", NotificationIcon::Info)->show();
-                    return;
-                }
+                if (!self || !tryBeginBusyAction(self->m_busy)) return;
                 if (levelKey == destKey) {
+                    finishBusyAction(self->m_busy);
                     Notification::create("Already this level: nothing to load", NotificationIcon::Info)
                         ->show();
                     return;
@@ -204,20 +189,24 @@ void LevelBrowserLayer::rebuildList() {
                     warnBody.c_str(),
                     "Cancel", "Load",
                     [self, levelKey, destKey](FLAlertLayer*, bool yes) {
-                        if (!yes) return;
-                        if (!self || !self->m_editor) return;
-                        if (self->m_busy) {
-                            Notification::create("Action already running", NotificationIcon::Info)->show();
+                        if (!yes) {
+                            if (self) finishBusyAction(self->m_busy);
                             return;
                         }
-                        self->m_busy = true;
+                        if (!self || !self->m_editor) {
+                            if (self) finishBusyAction(self->m_busy);
+                            return;
+                        }
+                        Ref<LevelEditorLayer> editorRef(self->m_editor);
+                        Ref<EditorPauseLayer> pauseRef(self->m_pauseLayer);
                         Ref<LevelBrowserLayer> alive(self.data());
-                        std::thread([alive, levelKey, destKey]() {
+                        postToGitWorker([alive, editorRef, pauseRef, levelKey, destKey]() {
                             auto outcome = sharedGitService().importLevelFrom(destKey, levelKey);
-                            geode::queueInMainThread([alive, outcome = std::move(outcome)]() mutable {
-                                if (!alive || !alive->m_editor) return;
-                                alive->m_busy = false;
-                                auto* const pause = alive->m_pauseLayer;
+                            geode::queueInMainThread([alive, editorRef, pauseRef, outcome = std::move(outcome)]() mutable {
+                                if (!alive) return;
+                                finishBusyAction(alive->m_busy);
+                                auto* editor = editorRef.data();
+                                auto* pause = pauseRef.data();
                                 if (!outcome.ok) {
                                     Notification::create(
                                         ("Load failed: " + outcome.error).c_str(),
@@ -225,7 +214,14 @@ void LevelBrowserLayer::rebuildList() {
                                     )->show();
                                     return;
                                 }
-                                if (!applyLevelState(alive->m_editor, outcome.state)) {
+                                if (!canApplyEditorResult(editor)) {
+                                    Notification::create(
+                                        "Load succeeded but editor is no longer active",
+                                        NotificationIcon::Warning
+                                    )->show();
+                                    return;
+                                }
+                                if (!applyLevelState(editor, outcome.state)) {
                                     Notification::create(
                                         "Load saved to the mod, but the editor would not apply the level",
                                         NotificationIcon::Warning
@@ -238,7 +234,7 @@ void LevelBrowserLayer::rebuildList() {
                                     pause->onResume(nullptr);
                                 }
                             });
-                        }).detach();
+                        });
                     }
                 );
             }
@@ -246,10 +242,7 @@ void LevelBrowserLayer::rebuildList() {
         menu->addChild(loadBtn);
 
         auto delBtn = makeDeleteBtn([self, levelKey, count](CCMenuItemSpriteExtra*) {
-            if (self && self->m_busy) {
-                Notification::create("Action already running", NotificationIcon::Info)->show();
-                return;
-            }
+            if (!self || !tryBeginBusyAction(self->m_busy)) return;
             createQuickPopup(
                 "ARE YOU SURE?",
                 ("PERMANENTLY DELETE all " + std::to_string(count) + " commits for \"" + shorten(levelKey, 48)
@@ -257,19 +250,17 @@ void LevelBrowserLayer::rebuildList() {
                     .c_str(),
                 "Cancel", "Delete",
                 [self, levelKey](FLAlertLayer*, bool yes) {
-                    if (!yes) return;
-                    if (!self) return;
-                    if (self->m_busy) {
-                        Notification::create("Action already running", NotificationIcon::Info)->show();
+                    if (!yes) {
+                        if (self) finishBusyAction(self->m_busy);
                         return;
                     }
-                    self->m_busy = true;
+                    if (!self) return;
                     Ref<LevelBrowserLayer> alive(self.data());
-                    std::thread([alive, levelKey]() {
+                    postToGitWorker([alive, levelKey]() {
                         bool const ok = sharedCommitStore().deleteLevel(levelKey);
                         geode::queueInMainThread([alive, ok]() {
                             if (!alive) return;
-                            alive->m_busy = false;
+                            finishBusyAction(alive->m_busy);
                             if (!ok) {
                                 Notification::create("Delete failed", NotificationIcon::Error)->show();
                                 return;
@@ -278,7 +269,7 @@ void LevelBrowserLayer::rebuildList() {
                                 ->show();
                             alive->rebuildList();
                         });
-                    }).detach();
+                    });
                 }
             );
         });

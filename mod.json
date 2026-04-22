@@ -7,7 +7,7 @@
 		"ios": "2.2081"
 	},
 	"id": "imes.git-editor",
-	"name": "Git Editor",
+	"name": "Git Editor (Level/Collab Merger)",
 	"version": "v1.0.0",
 	"developer": "imes",
 	"description": "Per-level commit history for the GD editor: commit, browse, and checkout snapshots of your level locally.",

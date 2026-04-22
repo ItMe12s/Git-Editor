@@ -6,6 +6,9 @@
 #include "../editor/LevelStateIO.hpp"
 #include "../service/GitService.hpp"
 #include "../store/CommitStore.hpp"
+#include "../util/AsyncQueue.hpp"
+#include "../util/UiAction.hpp"
+#include "../util/UiText.hpp"
 
 #include <Geode/Geode.hpp>
 #include <Geode/binding/ButtonSprite.hpp>
@@ -20,8 +23,6 @@
 
 #include <cerrno>
 #include <cstdio>
-#include <ctime>
-#include <thread>
 #include <vector>
 
 using namespace geode::prelude;
@@ -40,22 +41,8 @@ constexpr ccColor3B kAddColor  = {64, 227, 72};
 constexpr ccColor3B kModColor  = {50, 200, 255};
 constexpr ccColor3B kDelColor  = {255, 90, 90};
 
-std::string formatTimestamp(std::int64_t unixSeconds) {
-    std::time_t t = static_cast<std::time_t>(unixSeconds);
-    std::tm tm{};
-#if defined(_WIN32)
-    if (localtime_s(&tm, &t) != 0) return "?";
-#else
-    if (localtime_r(&t, &tm) == nullptr) return "?";
-#endif
-    char buf[32];
-    if (std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M", &tm) == 0) return "?";
-    return std::string(buf);
-}
-
-std::string shorten(std::string const& s, std::size_t maxChars) {
-    if (s.size() <= maxChars) return s;
-    return s.substr(0, maxChars - 1) + "...";
+bool canApplyEditorResult(LevelEditorLayer* editor) {
+    return editor != nullptr && editor->getParent() != nullptr;
 }
 
 void showConflictSummary(std::vector<Conflict> const& conflicts) {
@@ -245,8 +232,16 @@ void HistoryLayer::rebuildList() {
                 ->setAxisAlignment(AxisAlignment::Start)
                 ->setCrossAxisOverflow(false)
         );
-        if (auto delta = parseDelta(c.deltaBlob)) {
-            auto const stats = computeStats(*delta);
+        auto statsIt = m_statsCache.find(c.id);
+        if (statsIt == m_statsCache.end()) {
+            DeltaStats stats;
+            if (auto delta = parseDelta(c.deltaBlob)) {
+                stats = computeStats(*delta);
+            }
+            statsIt = m_statsCache.emplace(c.id, stats).first;
+        }
+        auto const stats = statsIt->second;
+        {
             auto makeStat = [](std::string const& text, ccColor3B color) {
                 auto* lbl = CCLabelBMFont::create(text.c_str(), "chatFont.fnt");
                 lbl->setScale(.45f);
@@ -358,30 +353,40 @@ void HistoryLayer::rebuildList() {
         auto checkoutBtn = makeBtn(
             "Checkout", "GJ_button_02.png",
             [self, editor, pauseLayer, levelKey, commitId, commitMsg](CCMenuItemSpriteExtra*) {
-                if (self && self->m_busy) {
-                    Notification::create("Action already running", NotificationIcon::Info)->show();
-                    return;
-                }
+                if (!self || !tryBeginBusyAction(self->m_busy)) return;
+                Ref<LevelEditorLayer> editorRef(editor);
+                Ref<EditorPauseLayer> pauseRef(pauseLayer);
                 createQuickPopup(
                     "Checkout",
                     ("Load state of commit \"" + shorten(commitMsg, 40) +
                      "\"? A new auto-revert commit will be added on top of HEAD.").c_str(),
                     "Cancel", "Checkout",
-                    [self, editor, pauseLayer, levelKey, commitId](FLAlertLayer*, bool yes) {
-                        if (!yes) return;
+                    [self, editorRef, pauseRef, levelKey, commitId](FLAlertLayer*, bool yes) {
+                        if (!yes) {
+                            if (self) finishBusyAction(self->m_busy);
+                            return;
+                        }
                         if (!self) return;
-                        self->m_busy = true;
                         Ref<HistoryLayer> alive(self.data());
-                        std::thread([alive, editor, pauseLayer, levelKey, commitId]() {
+                        postToGitWorker([alive, editorRef, pauseRef, levelKey, commitId]() {
                             auto outcome = sharedGitService().checkout(levelKey, commitId);
                             geode::queueInMainThread(
-                                [alive, editor, pauseLayer, outcome = std::move(outcome)]() mutable {
+                                [alive, editorRef, pauseRef, outcome = std::move(outcome)]() mutable {
                                     if (!alive) return;
-                                    alive->m_busy = false;
+                                    finishBusyAction(alive->m_busy);
                                     if (!outcome.ok) {
                                         Notification::create(
                                             ("Checkout failed: " + outcome.error).c_str(),
                                             NotificationIcon::Error
+                                        )->show();
+                                        return;
+                                    }
+                                    auto* editor = editorRef.data();
+                                    auto* pauseLayer = pauseRef.data();
+                                    if (!canApplyEditorResult(editor)) {
+                                        Notification::create(
+                                            "Checkout succeeded but editor is no longer active",
+                                            NotificationIcon::Warning
                                         )->show();
                                         return;
                                     }
@@ -397,7 +402,7 @@ void HistoryLayer::rebuildList() {
                                     if (pauseLayer) pauseLayer->onResume(nullptr);
                                 }
                             );
-                        }).detach();
+                        });
                     }
                 );
             }
@@ -407,30 +412,40 @@ void HistoryLayer::rebuildList() {
         auto revertBtn = makeBtn(
             "Revert", "GJ_button_06.png",
             [self, editor, pauseLayer, levelKey, commitId, commitMsg](CCMenuItemSpriteExtra*) {
-                if (self && self->m_busy) {
-                    Notification::create("Action already running", NotificationIcon::Info)->show();
-                    return;
-                }
+                if (!self || !tryBeginBusyAction(self->m_busy)) return;
+                Ref<LevelEditorLayer> editorRef(editor);
+                Ref<EditorPauseLayer> pauseRef(pauseLayer);
                 createQuickPopup(
                     "Revert",
                     ("Undo just the changes from commit \"" + shorten(commitMsg, 40) +
                      "\"? Later commits are preserved.").c_str(),
                     "Cancel", "Revert",
-                    [self, editor, pauseLayer, levelKey, commitId](FLAlertLayer*, bool yes) {
-                        if (!yes) return;
+                    [self, editorRef, pauseRef, levelKey, commitId](FLAlertLayer*, bool yes) {
+                        if (!yes) {
+                            if (self) finishBusyAction(self->m_busy);
+                            return;
+                        }
                         if (!self) return;
-                        self->m_busy = true;
                         Ref<HistoryLayer> alive(self.data());
-                        std::thread([alive, editor, pauseLayer, levelKey, commitId]() {
+                        postToGitWorker([alive, editorRef, pauseRef, levelKey, commitId]() {
                             auto outcome = sharedGitService().revert(levelKey, commitId);
                             geode::queueInMainThread(
-                                [alive, editor, pauseLayer, outcome = std::move(outcome)]() mutable {
+                                [alive, editorRef, pauseRef, outcome = std::move(outcome)]() mutable {
                                     if (!alive) return;
-                                    alive->m_busy = false;
+                                    finishBusyAction(alive->m_busy);
                                     if (!outcome.ok) {
                                         Notification::create(
                                             ("Revert failed: " + outcome.error).c_str(),
                                             NotificationIcon::Error
+                                        )->show();
+                                        return;
+                                    }
+                                    auto* editor = editorRef.data();
+                                    auto* pauseLayer = pauseRef.data();
+                                    if (!canApplyEditorResult(editor)) {
+                                        Notification::create(
+                                            "Revert succeeded but editor is no longer active",
+                                            NotificationIcon::Warning
                                         )->show();
                                         return;
                                     }
@@ -451,7 +466,7 @@ void HistoryLayer::rebuildList() {
                                     showConflictSummary(outcome.conflicts);
                                 }
                             );
-                        }).detach();
+                        });
                     }
                 );
             }
@@ -469,11 +484,9 @@ void HistoryLayer::rebuildList() {
 }
 
 void HistoryLayer::onSquashPressed() {
-    if (m_busy) {
-        Notification::create("Action already running", NotificationIcon::Info)->show();
-        return;
-    }
+    if (!tryBeginBusyAction(m_busy)) return;
     if (m_selected.size() < 2) {
+        finishBusyAction(m_busy);
         Notification::create("Select at least 2 commits", NotificationIcon::Warning)->show();
         return;
     }
@@ -493,6 +506,7 @@ void HistoryLayer::onSquashPressed() {
     }
 
     if (idsOldestFirst.size() != m_selected.size()) {
+        finishBusyAction(m_busy);
         Notification::create("Selection mismatch", NotificationIcon::Error)->show();
         return;
     }
@@ -512,33 +526,42 @@ void HistoryLayer::onSquashPressed() {
     auto* pauseLayer = m_pauseLayer;
     std::string levelKey = m_levelKey;
     Ref<HistoryLayer> self(this);
+    Ref<LevelEditorLayer> editorRef(editor);
+    Ref<EditorPauseLayer> pauseRef(pauseLayer);
 
     createQuickPopup(
         "ARE YOU SURE?",
-        "This will combind the selected commit range into a single commit.\nThis CANNOT be undone.",
+        "This will combine the selected commit range into a single commit.\nThis CANNOT be undone.",
         "Cancel", "Squash",
-        [self, editor, pauseLayer, levelKey, idsOldestFirst, defaultMsg](
+        [self, editorRef, pauseRef, levelKey, idsOldestFirst, defaultMsg](
             FLAlertLayer*, bool yes) {
-            if (!yes) return;
+            if (!yes) {
+                if (self) finishBusyAction(self->m_busy);
+                return;
+            }
             if (auto popup = CommitMessageLayer::create(
-                [self, editor, pauseLayer, levelKey, idsOldestFirst](std::string const& msg) {
+                [self, editorRef, pauseRef, levelKey, idsOldestFirst](std::string const& msg) {
                     if (!self) return;
-                    if (self->m_busy) {
-                        Notification::create("Action already running", NotificationIcon::Info)->show();
-                        return;
-                    }
-                    self->m_busy = true;
                     Ref<HistoryLayer> alive(self.data());
-                    std::thread([alive, editor, pauseLayer, levelKey, idsOldestFirst, msg]() {
+                    postToGitWorker([alive, editorRef, pauseRef, levelKey, idsOldestFirst, msg]() {
                         auto outcome = sharedGitService().squash(levelKey, idsOldestFirst, msg);
                         geode::queueInMainThread(
-                            [alive, editor, pauseLayer, outcome = std::move(outcome)]() mutable {
+                            [alive, editorRef, pauseRef, outcome = std::move(outcome)]() mutable {
                                 if (!alive) return;
-                                alive->m_busy = false;
+                                finishBusyAction(alive->m_busy);
                                 if (!outcome.ok) {
                                     Notification::create(
                                         ("Squash failed: " + outcome.error).c_str(),
                                         NotificationIcon::Error
+                                    )->show();
+                                    return;
+                                }
+                                auto* editor = editorRef.data();
+                                auto* pauseLayer = pauseRef.data();
+                                if (!canApplyEditorResult(editor)) {
+                                    Notification::create(
+                                        "Squash succeeded but editor is no longer active",
+                                        NotificationIcon::Warning
                                     )->show();
                                     return;
                                 }
@@ -557,13 +580,16 @@ void HistoryLayer::onSquashPressed() {
                                 (void)pauseLayer;
                             }
                         );
-                    }).detach();
+                    });
                 },
                 "Squash Commits",
                 "Squash",
                 defaultMsg
             )) {
                 popup->show();
+            }
+            else if (self) {
+                finishBusyAction(self->m_busy);
             }
         }
     );
