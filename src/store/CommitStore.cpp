@@ -183,6 +183,48 @@ std::vector<CommitRow> CommitStore::list(LevelKey const& levelKey) {
     return out;
 }
 
+std::vector<CommitSummary> CommitStore::listSummaries(LevelKey const& levelKey) {
+    std::vector<CommitSummary> out;
+    if (!m_db) return out;
+    auto const canonicalKey = this->resolveCanonicalKey(levelKey);
+
+    // JSON1: counts computed in SQLite so big delta_blob stays in page cache
+    // instead of being copied into a std::string on the main thread.
+    // `h` is an object (json_each enumerates members), `hr` is one optional field,
+    // `+` `~` `-` are arrays. IFNULL/COALESCE guard missing keys.
+    constexpr char const* sql =
+        "SELECT id, message, created_at, "
+        "(SELECT COUNT(*) FROM json_each(IFNULL(json_extract(delta_blob, '$.h'), '{}'))) + "
+        "   (CASE WHEN json_type(delta_blob, '$.hr') IS NOT NULL THEN 1 ELSE 0 END) AS h_count, "
+        "COALESCE(json_array_length(delta_blob, '$.\"+\"'), 0) AS add_count, "
+        "COALESCE(json_array_length(delta_blob, '$.\"~\"'), 0) AS mod_count, "
+        "COALESCE(json_array_length(delta_blob, '$.\"-\"'), 0) AS rm_count "
+        "FROM commits WHERE level_key = ? "
+        "ORDER BY created_at DESC, id DESC;";
+
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(m_db, sql, -1, &st, nullptr) != SQLITE_OK) {
+        geode::log::error("prepare listSummaries failed: {}", sqlite3_errmsg(m_db));
+        return out;
+    }
+    sqlite3_bind_text(st, 1, canonicalKey.c_str(), static_cast<int>(canonicalKey.size()), SQLITE_TRANSIENT);
+
+    while (sqlite3_step(st) == SQLITE_ROW) {
+        CommitSummary s;
+        s.id          = sqlite3_column_int64(st, 0);
+        auto const* msg = reinterpret_cast<char const*>(sqlite3_column_text(st, 1));
+        s.message     = msg ? msg : "";
+        s.createdAt   = sqlite3_column_int64(st, 2);
+        s.headerCount = sqlite3_column_int(st, 3);
+        s.addCount    = sqlite3_column_int(st, 4);
+        s.modifyCount = sqlite3_column_int(st, 5);
+        s.removeCount = sqlite3_column_int(st, 6);
+        out.push_back(std::move(s));
+    }
+    sqlite3_finalize(st);
+    return out;
+}
+
 bool CommitStore::updateMessage(CommitId id, std::string const& message) {
     if (!m_db) return false;
 

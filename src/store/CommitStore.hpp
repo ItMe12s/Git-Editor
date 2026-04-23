@@ -30,6 +30,17 @@ struct CommitRow {
     std::string              deltaBlob;
 };
 
+// Blob-free row for list UI.
+struct CommitSummary {
+    CommitId     id          = 0;
+    std::string  message;
+    std::int64_t createdAt   = 0;
+    int          headerCount = 0;
+    int          addCount    = 0;
+    int          modifyCount = 0;
+    int          removeCount = 0;
+};
+
 // One sqlite3* per process (sharedCommitStore). The UI may read on the main thread, mutating
 // paths often run on Geode's async blocking pool via postToGitWorker. That path mutex-serializes
 // only jobs posted to postToGitWorker, not all store access. If schema_meta.version < kSchemaVersion:
@@ -56,8 +67,9 @@ public:
 
     std::optional<CommitRow> get(CommitId id);
 
-    std::vector<CommitRow> list(LevelKey const& levelKey);
-    bool                   updateMessage(CommitId id, std::string const& message);
+    std::vector<CommitRow>     list(LevelKey const& levelKey);
+    std::vector<CommitSummary> listSummaries(LevelKey const& levelKey);
+    bool                       updateMessage(CommitId id, std::string const& message);
 
     // Atomically replaces a contiguous range [oldest..newest] (oldest-first ids) with one new
     // commit. Re-parents children of newest, moves HEAD if it pointed at any squashed commit,

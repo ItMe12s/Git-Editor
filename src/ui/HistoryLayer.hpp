@@ -11,7 +11,6 @@
 #include <cocos2d.h>
 #include <set>
 #include <string>
-#include <unordered_map>
 
 namespace git_editor {
 
@@ -41,7 +40,6 @@ protected:
     bool                            m_squashMode = false;
     bool                            m_busy       = false;
     std::set<CommitId>              m_selected;
-    std::unordered_map<CommitId, DeltaStats> m_statsCache;
     cocos2d::CCMenu*       m_headerMenu = nullptr;
     CCMenuItemSpriteExtra* m_squashBtn  = nullptr;
 };

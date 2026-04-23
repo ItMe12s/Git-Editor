@@ -8,7 +8,7 @@ namespace git_editor::history_data_source {
 
 struct HistoryLoadResult {
     LevelKey levelKey;
-    std::vector<CommitRow> commits;
+    std::vector<CommitSummary> commits;
 };
 
 HistoryLoadResult loadHistory(LevelKey levelKey, LevelKey activeEditorLevelKey);

@@ -181,9 +181,6 @@ void HistoryLayer::rebuildHeader() {
 void HistoryLayer::rebuildList() {
     if (!m_scroll) return;
 
-    // Squash/revert/merge can reassign commit ids with fresh deltas, stale stats would mislead.
-    m_statsCache.clear();
-
     auto* content = m_scroll->m_contentLayer;
     content->removeAllChildren();
 
@@ -240,15 +237,6 @@ void HistoryLayer::rebuildList() {
                 ->setAxisAlignment(AxisAlignment::Start)
                 ->setCrossAxisOverflow(false)
         );
-        auto statsIt = m_statsCache.find(c.id);
-        if (statsIt == m_statsCache.end()) {
-            DeltaStats stats;
-            if (auto delta = parseDelta(c.deltaBlob)) {
-                stats = computeStats(*delta);
-            }
-            statsIt = m_statsCache.emplace(c.id, stats).first;
-        }
-        auto const stats = statsIt->second;
         {
             auto makeStat = [](std::string const& text, ccColor3B color) {
                 auto* lbl = CCLabelBMFont::create(text.c_str(), "chatFont.fnt");
@@ -256,17 +244,17 @@ void HistoryLayer::rebuildList() {
                 lbl->setColor(color);
                 return lbl;
             };
-            if (stats.headerChanges > 0) {
-                statsNode->addChild(makeStat("h" + std::to_string(stats.headerChanges), kHdrColor));
+            if (c.headerCount > 0) {
+                statsNode->addChild(makeStat("h" + std::to_string(c.headerCount), kHdrColor));
             }
-            if (stats.adds > 0) {
-                statsNode->addChild(makeStat("+" + std::to_string(stats.adds), kAddColor));
+            if (c.addCount > 0) {
+                statsNode->addChild(makeStat("+" + std::to_string(c.addCount), kAddColor));
             }
-            if (stats.modifies > 0) {
-                statsNode->addChild(makeStat("~" + std::to_string(stats.modifies), kModColor));
+            if (c.modifyCount > 0) {
+                statsNode->addChild(makeStat("~" + std::to_string(c.modifyCount), kModColor));
             }
-            if (stats.removes > 0) {
-                statsNode->addChild(makeStat("-" + std::to_string(stats.removes), kDelColor));
+            if (c.removeCount > 0) {
+                statsNode->addChild(makeStat("-" + std::to_string(c.removeCount), kDelColor));
             }
         }
         statsNode->updateLayout();
@@ -292,7 +280,6 @@ void HistoryLayer::rebuildList() {
 
         auto const commitId  = c.id;
         auto const commitMsg = c.message;
-        auto const deltaBlob = c.deltaBlob;
 
         if (m_squashMode) {
             bool const checked = m_selected.count(commitId) > 0;
@@ -317,8 +304,13 @@ void HistoryLayer::rebuildList() {
 
         auto helpBtn = makeBtn(
             "?", "GJ_button_04.png",
-            [deltaBlob, commitMsg](CCMenuItemSpriteExtra*) {
-                if (auto opt = parseDelta(deltaBlob)) {
+            [commitId, commitMsg](CCMenuItemSpriteExtra*) {
+                auto row = sharedCommitStore().get(commitId);
+                if (!row) {
+                    FLAlertLayer::create("Error", "Commit not found.", "OK")->show();
+                    return;
+                }
+                if (auto opt = parseDelta(row->deltaBlob)) {
                     std::string body  = describeDeltaText(*opt);
                     std::string title = "What changed";
                     if (!commitMsg.empty()) {
@@ -514,7 +506,7 @@ void HistoryLayer::onSquashPressed() {
         return;
     }
 
-    auto commits = sharedCommitStore().list(m_levelKey);
+    auto commits = sharedCommitStore().listSummaries(m_levelKey);
 
     // commits is DESC by createdAt, build oldest-first selected list.
     std::vector<CommitId>    idsOldestFirst;
@@ -522,7 +514,7 @@ void HistoryLayer::onSquashPressed() {
     messagesOldestFirst.reserve(m_selected.size());
     idsOldestFirst = history_selection_model::selectedOldestFirst(commits, m_selected);
     for (auto id : idsOldestFirst) {
-        auto it = std::find_if(commits.begin(), commits.end(), [id](CommitRow const& row) { return row.id == id; });
+        auto it = std::find_if(commits.begin(), commits.end(), [id](CommitSummary const& row) { return row.id == id; });
         if (it != commits.end()) messagesOldestFirst.push_back(it->message);
     }
 
