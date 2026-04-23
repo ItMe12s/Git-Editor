@@ -1,5 +1,10 @@
 # Changelog
 
+Check if your version update crosses a version with a wipe (e.g. Beta 1 -> Beta 4 crosses Beta 3 so it's wiped).
+Crossing these versions will result in a database wipe:
+
+- 1.0.0-beta.3
+
 ## 1.0.0-beta.3
 
 THIS UPDATE WIPES YOUR DATABASE

@@ -7,7 +7,7 @@ A Geometry Dash (Geode) mod: per-level commit history, checkout/revert/squash, l
 - Linear history per level key, no branches.
 - Commits store a JSON `Delta` against the parent in `git-editor.db` (under the mod save directory).
 - Delta keys: `h` (header), `+` (adds), `-` (removes), `~` (modifies).
-- State reconstruction replays from root to HEAD, with an in-memory state cache (capacity 16 by default, LRU-ordered, see [StateCache.hpp](src/service/StateCache.hpp)).
+- State reconstruction replays from root to HEAD, with an in-memory state cache (default capacity 16, if the map is at capacity, inserting a new commit id clears the entire cache, see [StateCache.hpp](src/service/StateCache.hpp)).
 - `GitService` returns [`Result<T>`](src/service/Result.hpp) (success payload in `value`, failure message in `error`). Payload structs in [GitService.hpp](src/service/GitService.hpp) group multi-field outcomes (e.g. revert with conflicts, multi-file `.gdge` import stats).
 
 ## Other info not in about.md
@@ -20,16 +20,17 @@ A Geometry Dash (Geode) mod: per-level commit history, checkout/revert/squash, l
 
 ## TO-DO
 
-- File compression + Password/encryption. Beta 5
-- Git Stash. Beta 6+
-- Specific header metadata support: Song and nong ID (Not needed for a solo project or collab but useful). Beta 6+
+- File compression + Password/encryption. Beta 4
+- Password and encryption system. Beta 6+
+- Git Stash. Beta 5
+- Specific header metadata support: Song and nong ID (Not needed for a solo project or collab but useful). Beta 5
 - ~~Less boilerplate on Git Service, Gd Header, Level Parser.~~ Beta 4
   - Combined parsers.
   - Added result template.
   - Reworked Git Service, Revert return value.
 - ~~Make more use or just remove some of State Cache, Conflict Kind.~~ Beta 4
   - Combined missing types into one.
-  - State cache rework still not done ong.
+  - Reworked LRU cache to just a simple map and flush-on-full.
 - Finally clean up GdgeImportPlanner, LevelKeyResolver, HistorySelectionModel. Beta 4
 - ~~Should rename async queue to like job queue or something.~~ Beta 4
   - Renamed to GitWorker.
