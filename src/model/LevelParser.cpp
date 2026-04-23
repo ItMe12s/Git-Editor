@@ -1,7 +1,7 @@
 #include "LevelParser.hpp"
+#include "../util/Parsing.hpp"
 
 #include <algorithm>
-#include <charconv>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -10,37 +10,16 @@ namespace git_editor {
 
 namespace {
 
-std::vector<std::string_view> splitView(std::string_view s, char delim) {
-    std::vector<std::string_view> out;
-    std::size_t start = 0;
-    for (std::size_t i = 0; i <= s.size(); ++i) {
-        if (i == s.size() || s[i] == delim) {
-            out.emplace_back(s.data() + start, i - start);
-            start = i + 1;
-        }
-    }
-    return out;
-}
-
-bool parseKey(std::string_view s, int& out) {
-    if (s.empty()) return false;
-    int value = 0;
-    auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), value);
-    if (ec != std::errc() || ptr != s.data() + s.size()) return false;
-    out = value;
-    return true;
-}
-
 FieldMap readKvChunk(std::string_view chunk) {
     FieldMap out;
     if (chunk.empty()) return out;
 
-    auto tokens = splitView(chunk, ',');
+    auto tokens = parsing::splitView(chunk, ',');
     if (!tokens.empty() && tokens.back().empty()) tokens.pop_back();
 
     for (std::size_t i = 0; i + 1 < tokens.size(); i += 2) {
         int k = 0;
-        if (!parseKey(tokens[i], k)) continue;
+        if (!parsing::parseInt(tokens[i], k)) continue;
         out.emplace(k, std::string(tokens[i + 1]));
     }
     return out;
@@ -64,7 +43,7 @@ std::string serializeFields(FieldMap const& m) {
 LevelState parseLevelString(std::string_view raw) {
     LevelState state;
 
-    auto chunks = splitView(raw, ';');
+    auto chunks = parsing::splitView(raw, ';');
     if (chunks.empty()) return state;
 
     state.header = readKvChunk(chunks.front());

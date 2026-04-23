@@ -1,30 +1,12 @@
 #include "GdHeader.hpp"
+#include "../util/Parsing.hpp"
 
-#include <charconv>
 #include <set>
 #include <unordered_map>
 
 namespace git_editor::gd_header {
 
 namespace {
-
-std::vector<std::string_view> splitView(std::string_view s, char delim) {
-    std::vector<std::string_view> out;
-    std::size_t start = 0;
-    for (std::size_t i = 0; i <= s.size(); ++i) {
-        if (i == s.size() || s[i] == delim) {
-            out.emplace_back(s.data() + start, i - start);
-            start = i + 1;
-        }
-    }
-    return out;
-}
-
-bool parseInt(std::string_view s, int& out) {
-    if (s.empty()) return false;
-    auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), out);
-    return ec == std::errc() && ptr == s.data() + s.size();
-}
 
 template <class T>
 bool eq(std::optional<T> const& a, std::optional<T> const& b) {
@@ -35,7 +17,7 @@ bool eq(std::optional<T> const& a, std::optional<T> const& b) {
 
 std::optional<KvList> parseHeader(std::string_view chunk) {
     KvList out;
-    auto tokens = splitView(chunk, ',');
+    auto tokens = parsing::splitView(chunk, ',');
     if (!tokens.empty() && tokens.back().empty()) tokens.pop_back();
     if (tokens.size() % 2 != 0) return std::nullopt;
 
@@ -64,23 +46,23 @@ std::optional<ChannelMap> parseChannels(std::string_view value) {
     ChannelMap out;
     if (value.empty()) return out;
 
-    auto records = splitView(value, '|');
+    auto records = parsing::splitView(value, '|');
     for (auto record : records) {
         if (record.empty()) continue;
-        auto tokens = splitView(record, '_');
+        auto tokens = parsing::splitView(record, '_');
         if (tokens.size() % 2 != 0) return std::nullopt;
 
         ChannelRecord fields;
         for (std::size_t i = 0; i < tokens.size(); i += 2) {
             int key = 0;
-            if (!parseInt(tokens[i], key)) return std::nullopt;
+            if (!parsing::parseInt(tokens[i], key)) return std::nullopt;
             fields[key] = std::string(tokens[i + 1]);
         }
 
         auto idIt = fields.find(6);
         if (idIt == fields.end()) return std::nullopt;
         int channelId = 0;
-        if (!parseInt(idIt->second, channelId)) return std::nullopt;
+        if (!parsing::parseInt(idIt->second, channelId)) return std::nullopt;
         if (out.contains(channelId)) return std::nullopt;
         out.emplace(channelId, std::move(fields));
     }
