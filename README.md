@@ -21,6 +21,10 @@ A Geometry Dash (Geode) mod: per-level commit history, checkout/revert/squash, l
 
 - File compression + Password/encryption
 - Git Stash
+- Less boilerplate on Git Service, Gd Header, Level Parser
+- Make more use of State Cache, Conflict Kind
+- Finally clean up GdgeImportPlanner, LevelKeyResolver, HistorySelectionModel
+- Should rename async queue to like job queue or something
 
 ## Build
 
