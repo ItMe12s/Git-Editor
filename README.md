@@ -19,12 +19,17 @@ A Geometry Dash (Geode) mod: per-level commit history, checkout/revert/squash, l
 
 ## TO-DO
 
-- File compression + Password/encryption
-- Git Stash
-- Less boilerplate on Git Service, Gd Header, Level Parser
-- Make more use of State Cache, Conflict Kind
-- Finally clean up GdgeImportPlanner, LevelKeyResolver, HistorySelectionModel
-- Should rename async queue to like job queue or something
+- File compression + Password/encryption.
+- Git Stash.
+- Less boilerplate on Git Service, Gd Header, Level Parser.
+- Make more use or just remove some of State Cache, Conflict Kind.
+- Finally clean up GdgeImportPlanner, LevelKeyResolver, HistorySelectionModel.
+- Should rename async queue to like job queue or something.
+
+## Weird edge cases that might happen
+
+- Main-thread and worker race on in-memory state because committing while reading history at the same time but this can't happen normally anyway.
+- PRAGMA foreign_keys=ON; not an user issue, just in case someone replace the SQLite build with a one that doesn't support it.
 
 ## Build
 
