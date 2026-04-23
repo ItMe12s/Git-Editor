@@ -53,21 +53,19 @@ bool canApplyEditorResult(LevelEditorLayer* editor) {
 void showConflictSummary(std::vector<Conflict> const& conflicts) {
     if (conflicts.empty()) return;
 
-    int adds = 0, removes = 0, missingTargets = 0, stale = 0;
+    int adds = 0, missing = 0, stale = 0;
     for (auto const& c : conflicts) {
         switch (c.kind) {
-            case Conflict::Kind::AddAlreadyExists: ++adds;           break;
-            case Conflict::Kind::RemoveMissing:    ++removes;        break;
-            case Conflict::Kind::ModifyMissing:    ++missingTargets; break;
-            case Conflict::Kind::ModifyStale:      ++stale;          break;
+            case Conflict::Kind::AddAlreadyExists: ++adds;   break;
+            case Conflict::Kind::Missing:          ++missing; break;
+            case Conflict::Kind::ModifyStale:      ++stale;   break;
         }
     }
 
     std::string body = "Some ops could not be applied cleanly:\n";
-    if (adds)           body += "- " + std::to_string(adds)           + " add(s) already present\n";
-    if (removes)        body += "- " + std::to_string(removes)        + " remove(s) already gone\n";
-    if (missingTargets) body += "- " + std::to_string(missingTargets) + " modify(ies) targeting missing objects\n";
-    if (stale)          body += "- " + std::to_string(stale)          + " stale field(s) skipped";
+    if (adds)    body += "- " + std::to_string(adds)    + " add(s) already present\n";
+    if (missing) body += "- " + std::to_string(missing) + " missing\n";
+    if (stale)   body += "- " + std::to_string(stale)   + " stale field(s) skipped";
 
     FLAlertLayer::create(
         "Revert - partial",

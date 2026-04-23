@@ -9,7 +9,11 @@
 namespace git_editor {
 
 struct Conflict {
-    enum class Kind { AddAlreadyExists, RemoveMissing, ModifyMissing, ModifyStale };
+    enum class Kind {
+        AddAlreadyExists,
+        Missing,
+        ModifyStale
+    };
 
     Kind        kind;
     ObjectUuid  uuid   = 0;

@@ -119,7 +119,7 @@ LevelState apply(LevelState base, Delta const& d, std::vector<Conflict>* out) {
     for (auto const& o : d.removes) {
         auto it = base.objects.find(o.uuid);
         if (it == base.objects.end()) {
-            report({ Conflict::Kind::RemoveMissing, o.uuid, 0,
+            report({ Conflict::Kind::Missing, o.uuid, 0,
                 "object already removed, remove skipped" });
             continue;
         }
@@ -129,7 +129,7 @@ LevelState apply(LevelState base, Delta const& d, std::vector<Conflict>* out) {
     for (auto const& m : d.modifies) {
         auto it = base.objects.find(m.uuid);
         if (it == base.objects.end()) {
-            report({ Conflict::Kind::ModifyMissing, m.uuid, 0,
+            report({ Conflict::Kind::Missing, m.uuid, 0,
                 "target of modify is gone, modify skipped" });
             continue;
         }
