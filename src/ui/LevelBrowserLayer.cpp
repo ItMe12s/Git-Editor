@@ -3,7 +3,7 @@
 #include "../editor/LevelStateIO.hpp"
 #include "../service/GitService.hpp"
 #include "../store/CommitStore.hpp"
-#include "../util/AsyncQueue.hpp"
+#include "../util/GitWorker.hpp"
 #include "../util/UiAction.hpp"
 #include "../util/LevelKey.hpp"
 #include "../util/UiText.hpp"

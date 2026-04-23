@@ -1,4 +1,4 @@
-#include "AsyncQueue.hpp"
+#include "GitWorker.hpp"
 
 #include <Geode/loader/Log.hpp>
 #include <Geode/utils/async.hpp>

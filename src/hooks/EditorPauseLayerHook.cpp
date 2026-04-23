@@ -3,7 +3,7 @@
 #include "../ui/CommitMessageLayer.hpp"
 #include "../ui/HistoryLayer.hpp"
 #include "../ui/LevelBrowserLayer.hpp"
-#include "../util/AsyncQueue.hpp"
+#include "../util/GitWorker.hpp"
 #include "../util/LevelKey.hpp"
 #include "../util/UiText.hpp"
 

@@ -15,7 +15,7 @@ A Geometry Dash (Geode) mod: per-level commit history, checkout/revert/squash, l
 - Revert applies `diff(target, target.parent)` onto current HEAD, reports conflicts.
 - Squash requires 2+ contiguous selected commits.
 - Editor levels use `id:<n>` as the level key, from **cvolton.level-id-api** (see [mod.json](mod.json) dependencies and `levelKeyFor` in the source).
-- Heavy git/DB work is scheduled with `geode::async::runtime().spawnBlocking` (`postToGitWorker`), the UI can still read the store on the main thread. See comments on `CommitStore` and [AsyncQueue.cpp](src/util/AsyncQueue.cpp).
+- Heavy git/DB work is scheduled with `geode::async::runtime().spawnBlocking` (`postToGitWorker`), the UI can still read the store on the main thread. See comments on `CommitStore` and [GitWorker.cpp](src/util/GitWorker.cpp).
 
 ## TO-DO
 
@@ -24,7 +24,7 @@ A Geometry Dash (Geode) mod: per-level commit history, checkout/revert/squash, l
 - Less boilerplate on Git Service, Gd Header, Level Parser.
 - Make more use or just remove some of State Cache, Conflict Kind.
 - Finally clean up GdgeImportPlanner, LevelKeyResolver, HistorySelectionModel.
-- Should rename async queue to like job queue or something.
+- ~~Should rename async queue to like job queue or something.~~ Renamed to GitWorker.
 
 ## Weird edge cases that might happen
 

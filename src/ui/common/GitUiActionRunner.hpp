@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../../util/AsyncQueue.hpp"
+#include "../../util/GitWorker.hpp"
 
 #include <Geode/Geode.hpp>
 
