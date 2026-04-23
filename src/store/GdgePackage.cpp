@@ -1,5 +1,9 @@
 #include "GdgePackage.hpp"
 
+#include "../util/DbZip.hpp"
+
+#include <Geode/loader/Mod.hpp>
+
 #include <sqlite3.h>
 
 #include <algorithm>
@@ -93,7 +97,10 @@ bool validateData(GdgePackageData const& data) {
 
 } // namespace
 
-bool writeGdgePackage(std::filesystem::path const& outPath, GdgePackageData const& data) {
+namespace {
+
+bool writeGdgePackageSqlite(std::filesystem::path const& outPath,
+                             GdgePackageData const&        data) {
     if (!validateData(data)) return false;
 
     SqlitePtr db = nullptr;
@@ -173,9 +180,46 @@ bool writeGdgePackage(std::filesystem::path const& outPath, GdgePackageData cons
     return ok;
 }
 
-std::optional<GdgePackageData> readGdgePackage(std::filesystem::path const& path) {
+} // namespace
+
+bool writeGdgePackage(std::filesystem::path const& outPath, GdgePackageData const& data) {
+    bool const compressExports =
+        geode::Mod::get()->getSettingValue<bool>("compress-export-files");
+
+    if (!compressExports) {
+        return writeGdgePackageSqlite(outPath, data);
+    }
+
+    auto tmpPath = outPath;
+    tmpPath += ".tmp";
+
+    if (!writeGdgePackageSqlite(tmpPath, data)) {
+        return false;
+    }
+
+    auto readRes = geode::utils::file::readBinary(tmpPath);
+    std::error_code ec;
+    std::filesystem::remove(tmpPath, ec);
+    if (readRes.isErr()) return false;
+
+    return writeZipAtomic(outPath, "package.gdge", readRes.unwrap());
+}
+
+namespace {
+
+std::optional<GdgePackageData> readGdgePackageFromSqlitePath(
+    std::filesystem::path const& sqlitePath,
+    std::filesystem::path const& cleanupPath
+) {
+    auto const doCleanup = [&]() {
+        if (!cleanupPath.empty()) {
+            std::error_code ec;
+            std::filesystem::remove(cleanupPath, ec);
+        }
+    };
+
     SqlitePtr db = nullptr;
-    auto const utf8 = path.u8string();
+    auto const utf8 = sqlitePath.u8string();
     if (sqlite3_open_v2(
             reinterpret_cast<char const*>(utf8.c_str()),
             &db,
@@ -183,6 +227,7 @@ std::optional<GdgePackageData> readGdgePackage(std::filesystem::path const& path
             nullptr
         ) != SQLITE_OK) {
         if (db) sqlite3_close(db);
+        doCleanup();
         return std::nullopt;
     }
 
@@ -245,8 +290,31 @@ std::optional<GdgePackageData> readGdgePackage(std::filesystem::path const& path
     }
 
     closeDb();
+    doCleanup();
     if (!validateData(out)) return std::nullopt;
     return out;
+}
+
+} // namespace
+
+std::optional<GdgePackageData> readGdgePackage(std::filesystem::path const& path) {
+    auto const form = peekDbFileForm(path);
+
+    if (form == DbFileForm::Sqlite) {
+        return readGdgePackageFromSqlitePath(path, {});
+    }
+
+    if (form == DbFileForm::Zip) {
+        auto tmpPath = geode::Mod::get()->getTempDir()
+                     / (path.stem().string() + ".gdge.tmp");
+
+        if (!extractZipToFile(path, tmpPath, "package.gdge")) {
+            return std::nullopt;
+        }
+        return readGdgePackageFromSqlitePath(tmpPath, tmpPath);
+    }
+
+    return std::nullopt;
 }
 
 } // namespace git_editor

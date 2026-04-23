@@ -1,4 +1,7 @@
 #include "GitWorker.hpp"
+#include "DbFlusher.hpp"
+
+#include "../store/CommitStore.hpp"
 
 #include <Geode/loader/Log.hpp>
 #include <Geode/utils/async.hpp>
@@ -29,6 +32,9 @@ void postToGitWorker(std::function<void()> job) {
             geode::log::error("git worker job threw: {}", e.what());
         } catch (...) {
             geode::log::error("git worker job threw unknown exception");
+        }
+        if (sharedCommitStore().consumeDirty()) {
+            scheduleLocalDbFlush();
         }
     });
 }

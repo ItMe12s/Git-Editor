@@ -22,33 +22,18 @@ endif()
 
 add_subdirectory($ENV{GEODE_SDK} ${CMAKE_CURRENT_BINARY_DIR}/geode)
 
-# SQLite via CPM (reusing Geode's bundled CPM.cmake).
-include($ENV{GEODE_SDK}/cmake/CPM.cmake)
+# Vendored SQLite 3.53.0 amalgamation (src/sqlite/).
+# shell.c is the CLI shell; not needed. Only compile sqlite3.c.
+target_sources(${PROJECT_NAME} PRIVATE src/sqlite/sqlite3.c)
+target_include_directories(${PROJECT_NAME} PRIVATE src/sqlite)
 
-# Keep SQLite tiny: no shell, no FTS, no RTree.
-set(BUILD_SHELL OFF CACHE BOOL "" FORCE)
-set(SQLITE_ENABLE_FTS5 OFF CACHE BOOL "" FORCE)
-set(SQLITE_ENABLE_RTREE OFF CACHE BOOL "" FORCE)
-set(SQLITE_ENABLE_MATH_FUNCTIONS OFF CACHE BOOL "" FORCE)
-
-CPMAddPackage(
-    NAME sqlite3
-    GITHUB_REPOSITORY azadkuh/sqlite-amalgamation
-    GIT_TAG 3.38.2
-    OPTIONS
-        "BUILD_SHELL OFF"
+# Tiny build profile. JSON1 and serialize/deserialize stay on by default.
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+    SQLITE_THREADSAFE=1
+    SQLITE_DEFAULT_MEMSTATUS=0
+    SQLITE_DQS=0
+    SQLITE_OMIT_LOAD_EXTENSION
+    SQLITE_OMIT_DEPRECATED
 )
-
-# SQLite must be position-independent since we link it into a shared mod.
-if (NOT TARGET SQLite3)
-    message(FATAL_ERROR "SQLite3 target not created by CPMAddPackage")
-endif()
-
-set_target_properties(SQLite3 PROPERTIES POSITION_INDEPENDENT_CODE ON)
-target_link_libraries(${PROJECT_NAME} SQLite3)
-
-# Upstream only exposes its header via INSTALL_INTERFACE, which CPM never
-# triggers. Wire the BUILD_INTERFACE ourselves so we can #include <sqlite3.h>.
-target_include_directories(${PROJECT_NAME} PRIVATE ${sqlite3_SOURCE_DIR})
 
 setup_geode_mod(${PROJECT_NAME})

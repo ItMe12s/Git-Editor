@@ -1,6 +1,8 @@
 #include "CommitStore.hpp"
 #include "CommitSchema.hpp"
 
+#include "../util/DbZip.hpp"
+
 #include <Geode/loader/Log.hpp>
 #include <Geode/loader/Mod.hpp>
 
@@ -94,6 +96,7 @@ std::optional<CommitId> CommitStore::insertAt(
     std::optional<CommitId> out;
     if (sqlite3_step(st) == SQLITE_DONE) {
         out = sqlite3_last_insert_rowid(m_db);
+        this->markDirty();
     } else {
         geode::log::error("insert step failed: {}", sqlite3_errmsg(m_db));
     }
@@ -239,6 +242,7 @@ bool CommitStore::updateMessage(CommitId id, std::string const& message) {
     sqlite3_bind_int64(st, 2, id);
 
     bool const ok = (sqlite3_step(st) == SQLITE_DONE) && (sqlite3_changes(m_db) > 0);
+    if (ok) this->markDirty();
     sqlite3_finalize(st);
     return ok;
 }
@@ -325,6 +329,7 @@ std::optional<CommitId> CommitStore::squash(
         return std::nullopt;
     }
     if (!tx.commit()) return std::nullopt;
+    this->markDirty();
     return newId;
 }
 
@@ -410,7 +415,9 @@ bool CommitStore::deleteLevel(LevelKey const& levelKey) {
         tx.rollback();
         return false;
     }
-    return tx.commit();
+    if (!tx.commit()) return false;
+    this->markDirty();
+    return true;
 }
 
 bool CommitStore::replaceLevelHistoryFrom(LevelKey const& dest, LevelKey const& src) {
@@ -533,7 +540,9 @@ bool CommitStore::replaceLevelHistoryFrom(LevelKey const& dest, LevelKey const& 
         }
     }
 
-    return tx.commit();
+    if (!tx.commit()) return false;
+    this->markDirty();
+    return true;
 }
 
 std::optional<CommitId> CommitStore::getHead(LevelKey const& levelKey) {
@@ -572,6 +581,7 @@ bool CommitStore::setHead(LevelKey const& levelKey, CommitId head) {
     sqlite3_bind_int64(st, 2, head);
 
     bool ok = (sqlite3_step(st) == SQLITE_DONE);
+    if (ok) this->markDirty();
     sqlite3_finalize(st);
     return ok;
 }
@@ -584,18 +594,53 @@ LevelKey CommitStore::resolveOrCreateCanonicalKey(LevelKey const& observedKey) {
     return observedKey;
 }
 
+void CommitStore::markDirty() {
+    m_dirty.store(true, std::memory_order_relaxed);
+}
+
+bool CommitStore::consumeDirty() {
+    return m_dirty.exchange(false, std::memory_order_acq_rel);
+}
+
 CommitStore& sharedCommitStore() {
     static CommitStore store;
     static bool triedInit = false;
     if (!triedInit) {
         triedInit = true;
-        auto dir = geode::Mod::get()->getSaveDir();
+        auto* mod = geode::Mod::get();
+        auto  dir = mod->getSaveDir();
         std::error_code ec;
         std::filesystem::create_directories(dir, ec);
-        auto dbPath = dir / "git-editor.db";
-        if (!store.init(dbPath)) {
+
+        auto const raw = dir / "git-editor.db";
+        auto const zip = dir / "git-editor.db.zip";
+        bool const compressOn =
+            mod->getSettingValue<bool>("compress-local-database");
+
+        bool rawExists = std::filesystem::exists(raw, ec);
+        bool zipExists = std::filesystem::exists(zip, ec);
+
+        if (compressOn) {
+            if (!rawExists && zipExists) {
+                geode::log::info("extracting git-editor.db from zip");
+                if (!extractZipToFile(zip, raw, "git-editor.db")) {
+                    geode::log::error("failed to extract git-editor.db from zip; starting fresh");
+                }
+            }
+        } else {
+            if (!rawExists && zipExists) {
+                geode::log::info("compress-local-database OFF: extracting and removing zip");
+                if (extractZipToFile(zip, raw, "git-editor.db")) {
+                    std::filesystem::remove(zip, ec);
+                } else {
+                    geode::log::error("failed to extract git-editor.db from zip");
+                }
+            }
+        }
+
+        if (!store.init(raw)) {
             geode::log::error("failed to open db at {}",
-                reinterpret_cast<char const*>(dbPath.u8string().c_str()));
+                reinterpret_cast<char const*>(raw.u8string().c_str()));
         }
     }
     return store;
