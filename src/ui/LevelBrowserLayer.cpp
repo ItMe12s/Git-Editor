@@ -201,11 +201,11 @@ void LevelBrowserLayer::rebuildList() {
                         Ref<LevelEditorLayer> editorRef(self->m_editor);
                         Ref<EditorPauseLayer> pauseRef(self->m_pauseLayer);
                         Ref<LevelBrowserLayer> alive(self.data());
-                        ui_action_runner::runWorkerResult<ImportLevelOutcome>(
+                        ui_action_runner::runWorkerResult<Result<LevelState>>(
                             [levelKey, destKey]() {
                                 return sharedGitService().importLevelFrom(destKey, levelKey);
                             },
-                            [alive, editorRef, pauseRef](ImportLevelOutcome outcome) mutable {
+                            [alive, editorRef, pauseRef](Result<LevelState> outcome) mutable {
                                 if (!alive) return;
                                 finishBusyAction(alive->m_busy);
                                 auto* editor = editorRef.data();
@@ -224,7 +224,7 @@ void LevelBrowserLayer::rebuildList() {
                                     )->show();
                                     return;
                                 }
-                                if (!applyLevelState(editor, outcome.state)) {
+                                if (!applyLevelState(editor, outcome.value)) {
                                     Notification::create(
                                         "Load saved to the mod, but the editor would not apply the level",
                                         NotificationIcon::Warning

@@ -22,9 +22,13 @@ A Geometry Dash (Geode) mod: per-level commit history, checkout/revert/squash, l
 - File compression + Password/encryption.
 - Git Stash.
 - ~~Less boilerplate on Git Service, Gd Header, Level Parser.~~
-- ~~Make more use or just remove some of State Cache, Conflict Kind.~~ Combined missing types into one.
+  - Combined parsers.
+  - Added result template
+- ~~Make more use or just remove some of State Cache, Conflict Kind.~~
+  - Combined missing types into one.
 - Finally clean up GdgeImportPlanner, LevelKeyResolver, HistorySelectionModel.
-- ~~Should rename async queue to like job queue or something.~~ Renamed to GitWorker.
+- ~~Should rename async queue to like job queue or something.~~
+  - Renamed to GitWorker.
 
 ## Weird edge cases that might happen
 

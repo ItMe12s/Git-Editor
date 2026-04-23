@@ -38,11 +38,11 @@ std::optional<LevelState> reconstructRoot(CommitStore& store, GitService& svc, L
     return svc.reconstruct(it->id);
 }
 
-template <class TOutcome>
-TOutcome failOutcome(std::string msg) {
-    TOutcome out;
-    out.error = std::move(msg);
-    return out;
+template <typename T>
+Result<T> failResult(std::string msg) {
+    Result<T> r;
+    r.error = std::move(msg);
+    return r;
 }
 
 std::optional<LevelState> reconstructPackageHead(GdgePackageData const& pkg) {
@@ -80,12 +80,12 @@ std::optional<LevelState> reconstructPackageHead(GdgePackageData const& pkg) {
 GitService::GitService(CommitStore& store, std::size_t cacheCapacity)
     : m_store(store), m_cache(cacheCapacity) {}
 
-CommitOutcome GitService::commit(
+Result<CommitId> GitService::commit(
     LevelKey const& levelKey,
     std::string const& message,
     std::string const& liveLevelStr
 ) {
-    CommitOutcome out;
+    Result<CommitId> out;
     auto const canonicalKey = m_store.resolveOrCreateCanonicalKey(levelKey);
 
     LevelState headState;
@@ -93,7 +93,7 @@ CommitOutcome GitService::commit(
     if (parent) {
         auto recon = this->reconstruct(*parent);
         if (!recon) {
-            auto failed = failOutcome<CommitOutcome>("failed to reconstruct HEAD, refusing to commit");
+            auto failed = failResult<CommitId>("failed to reconstruct HEAD, refusing to commit");
             geode::log::error("{}", failed.error);
             return failed;
         }
@@ -115,12 +115,12 @@ CommitOutcome GitService::commit(
 
     auto id = m_store.insert(canonicalKey, parent, std::nullopt, message, blob);
     if (!id) {
-        auto failed = failOutcome<CommitOutcome>("DB insert failed");
+        auto failed = failResult<CommitId>("DB insert failed");
         geode::log::error("{}", failed.error);
         return failed;
     }
     if (!m_store.setHead(canonicalKey, *id)) {
-        auto failed = failOutcome<CommitOutcome>(
+        auto failed = failResult<CommitId>(
             "DB setHead failed (stranded commit " + std::to_string(*id) + ")"
         );
         geode::log::error("{}", failed.error);
@@ -129,24 +129,24 @@ CommitOutcome GitService::commit(
 
     this->cachePut(*id, std::move(incoming));
 
-    out.ok = true;
-    out.id = *id;
+    out.ok     = true;
+    out.value  = *id;
     return out;
 }
 
-CheckoutOutcome GitService::checkout(LevelKey const& levelKey, CommitId target) {
-    CheckoutOutcome out;
+Result<LevelState> GitService::checkout(LevelKey const& levelKey, CommitId target) {
+    Result<LevelState> out;
     auto const canonicalKey = m_store.resolveCanonicalKey(levelKey);
 
     auto head = m_store.getHead(canonicalKey);
     if (!head) {
-        return failOutcome<CheckoutOutcome>("no HEAD for this level");
+        return failResult<LevelState>("no HEAD for this level");
     }
     if (*head == target) {
         auto recon = this->reconstruct(target);
-        if (!recon) return failOutcome<CheckoutOutcome>("reconstruct HEAD failed");
+        if (!recon) return failResult<LevelState>("reconstruct HEAD failed");
         out.ok    = true;
-        out.state = std::move(*recon);
+        out.value = std::move(*recon);
         return out;
     }
 
@@ -154,7 +154,7 @@ CheckoutOutcome GitService::checkout(LevelKey const& levelKey, CommitId target) 
     auto targetState = this->reconstruct(target);
     if (!headState || !targetState) {
         geode::log::error("checkout reconstruct failed");
-        return failOutcome<CheckoutOutcome>("reconstruct failed");
+        return failResult<LevelState>("reconstruct failed");
     }
 
     auto revertDelta = diff(*headState, *targetState);
@@ -162,84 +162,83 @@ CheckoutOutcome GitService::checkout(LevelKey const& levelKey, CommitId target) 
 
     auto targetRow = m_store.get(target);
     if (targetRow && targetRow->levelKey != canonicalKey) {
-        return failOutcome<CheckoutOutcome>("target commit belongs to a different level");
+        return failResult<LevelState>("target commit belongs to a different level");
     }
     std::string msg = "Checkout: " + (targetRow ? shortPreview(targetRow->message) : std::to_string(target));
 
     auto id = m_store.insert(canonicalKey, *head, target, msg, blob);
     if (!id) {
-        return failOutcome<CheckoutOutcome>("DB insert failed");
+        return failResult<LevelState>("DB insert failed");
     }
     if (!m_store.setHead(canonicalKey, *id)) {
-        return failOutcome<CheckoutOutcome>("DB setHead failed");
+        return failResult<LevelState>("DB setHead failed");
     }
 
     this->cachePut(*id, *targetState);
 
-    out.ok             = true;
-    out.revertCommitId = *id;
-    out.state          = std::move(*targetState);
+    out.ok    = true;
+    out.value = std::move(*targetState);
     return out;
 }
 
-RevertOutcome GitService::revert(LevelKey const& levelKey, CommitId target) {
-    RevertOutcome out;
+Result<RevertPayload> GitService::revert(LevelKey const& levelKey, CommitId target) {
+    Result<RevertPayload> out;
     auto const canonicalKey = m_store.resolveCanonicalKey(levelKey);
 
     auto head = m_store.getHead(canonicalKey);
     if (!head) {
-        return failOutcome<RevertOutcome>("no HEAD for this level");
+        return failResult<RevertPayload>("no HEAD for this level");
     }
 
     auto targetRow = m_store.get(target);
     if (!targetRow) {
-        return failOutcome<RevertOutcome>("target commit not found");
+        return failResult<RevertPayload>("target commit not found");
     }
     if (targetRow->levelKey != canonicalKey) {
-        return failOutcome<RevertOutcome>("target commit belongs to a different level");
+        return failResult<RevertPayload>("target commit belongs to a different level");
     }
     if (!targetRow->parent) {
-        return failOutcome<RevertOutcome>("can't revert the initial commit (it has no parent)");
+        return failResult<RevertPayload>("can't revert the initial commit (it has no parent)");
     }
 
     auto parentState = this->reconstruct(*targetRow->parent);
     auto targetState = this->reconstruct(target);
     auto headState   = this->reconstruct(*head);
     if (!parentState || !targetState || !headState) {
-        return failOutcome<RevertOutcome>("reconstruct failed");
+        return failResult<RevertPayload>("reconstruct failed");
     }
 
     // diff(target, parent) not inverse(stored delta): ops use current UUIDs if chain drifted.
     auto undoDelta = diff(*targetState, *parentState);
 
-    LevelState headCopy = *headState;
-    auto newState       = apply(std::move(*headState), undoDelta, &out.conflicts);
-    auto persistedDelta = diff(headCopy, newState);
-    auto blob           = dumpDelta(persistedDelta);
+    RevertPayload value;
+    LevelState    headCopy = *headState;
+    value.state            = apply(std::move(*headState), undoDelta, &value.conflicts);
+    auto persistedDelta    = diff(headCopy, value.state);
+    auto blob              = dumpDelta(persistedDelta);
 
     std::string msg = "Revert: " + shortPreview(targetRow->message);
     auto id = m_store.insert(canonicalKey, *head, target, msg, blob);
     if (!id) {
-        return failOutcome<RevertOutcome>("DB insert failed");
+        return failResult<RevertPayload>("DB insert failed");
     }
     if (!m_store.setHead(canonicalKey, *id)) {
-        return failOutcome<RevertOutcome>("DB setHead failed");
+        return failResult<RevertPayload>("DB setHead failed");
     }
 
-    this->cachePut(*id, newState);
+    this->cachePut(*id, value.state);
 
-    out.ok             = true;
-    out.revertCommitId = *id;
-    out.state          = std::move(newState);
+    out.ok     = true;
+    out.value  = std::move(value);
     return out;
 }
 
-SquashOutcome GitService::squash(
+Result<LevelState> GitService::squash(
     LevelKey const&              levelKey,
     std::vector<CommitId> const& idsOldestFirst,
     std::string const&           message
 ) {
-    SquashOutcome out;
+    Result<LevelState> out;
     auto const canonicalKey = m_store.resolveCanonicalKey(levelKey);
 
     if (idsOldestFirst.size() < 2) {
@@ -292,14 +291,13 @@ SquashOutcome GitService::squash(
 
     this->clearReconstructCache();
 
-    out.ok          = true;
-    out.newCommitId = *newId;
-    out.state       = std::move(*target);
+    out.ok     = true;
+    out.value  = std::move(*target);
     return out;
 }
 
-ImportLevelOutcome GitService::importLevelFrom(LevelKey const& dest, LevelKey const& src) {
-    ImportLevelOutcome out;
+Result<LevelState> GitService::importLevelFrom(LevelKey const& dest, LevelKey const& src) {
+    Result<LevelState> out;
     auto const canonicalDest = m_store.resolveOrCreateCanonicalKey(dest);
     auto const canonicalSrc  = m_store.resolveCanonicalKey(src);
     if (canonicalDest == canonicalSrc) {
@@ -321,13 +319,13 @@ ImportLevelOutcome GitService::importLevelFrom(LevelKey const& dest, LevelKey co
         out.error = "reconstruct after import failed";
         return out;
     }
-    out.ok    = true;
-    out.state = std::move(*st);
+    out.ok     = true;
+    out.value  = std::move(*st);
     return out;
 }
 
-ExportGdgeOutcome GitService::exportLevelToGdge(LevelKey const& levelKey, std::filesystem::path const& outPath) {
-    ExportGdgeOutcome out;
+Result<void> GitService::exportLevelToGdge(LevelKey const& levelKey, std::filesystem::path const& outPath) {
+    Result<void> out;
     auto const canonical = m_store.resolveCanonicalKey(levelKey);
     auto rows = m_store.list(canonical);
     if (rows.empty()) {
@@ -391,11 +389,11 @@ ExportGdgeOutcome GitService::exportLevelToGdge(LevelKey const& levelKey, std::f
     return out;
 }
 
-GitService::MergeSingleResult GitService::mergeSingleGdge(
+Result<MergeSinglePayload> GitService::mergeSingleGdge(
     LevelKey const& canonicalDest,
     std::filesystem::path const& inPath
 ) {
-    MergeSingleResult out;
+    Result<MergeSinglePayload> out;
     auto pkg = readGdgePackage(inPath);
     if (!pkg || pkg->commits.empty() || !pkg->metadata.headIndex) {
         out.error = "invalid .gdge file";
@@ -419,9 +417,9 @@ GitService::MergeSingleResult GitService::mergeSingleGdge(
             return out;
         }
         this->cachePut(*id, *theirs);
-        out.ok = true;
-        out.conflictCount = 0;
-        out.state = std::move(*theirs);
+        out.ok             = true;
+        out.value.state    = std::move(*theirs);
+        out.value.conflictCount = 0;
         return out;
     }
     auto root = reconstructRoot(m_store, *this, canonicalDest);
@@ -452,17 +450,17 @@ GitService::MergeSingleResult GitService::mergeSingleGdge(
         return out;
     }
     this->cachePut(*id, *merged);
-    out.ok = true;
-    out.conflictCount = conflicts;
-    out.state = std::move(*merged);
+    out.ok                  = true;
+    out.value.conflictCount = conflicts;
+    out.value.state         = std::move(*merged);
     return out;
 }
 
-GitService::MergeSingleResult GitService::smartMergeMany(
+Result<MergeSinglePayload> GitService::smartMergeMany(
     LevelKey const& canonicalDest,
     std::vector<std::filesystem::path> const& paths
 ) {
-    MergeSingleResult out;
+    Result<MergeSinglePayload> out;
     if (paths.empty()) {
         out.error = "no smart-mergeable files";
         return out;
@@ -528,9 +526,9 @@ GitService::MergeSingleResult GitService::smartMergeMany(
         return out;
     }
     this->cachePut(*id, merged);
-    out.ok = true;
-    out.conflictCount = totalConflicts;
-    out.state = std::move(merged);
+    out.ok                  = true;
+    out.value.conflictCount = totalConflicts;
+    out.value.state         = std::move(merged);
     return out;
 }
 
@@ -558,11 +556,11 @@ ImportPlan GitService::planImport(
     return this->classifyImports(canonicalDest, inPaths);
 }
 
-ImportManyGdgeOutcome GitService::importManyFromGdge(
+Result<ImportManyPayload> GitService::importManyFromGdge(
     LevelKey const& dest,
     std::vector<std::filesystem::path> const& inPaths
 ) {
-    ImportManyGdgeOutcome out;
+    Result<ImportManyPayload> out;
     if (inPaths.empty()) {
         out.error = "no files selected";
         return out;
@@ -570,7 +568,7 @@ ImportManyGdgeOutcome GitService::importManyFromGdge(
 
     auto const canonicalDest = m_store.resolveOrCreateCanonicalKey(dest);
     auto plan = this->classifyImports(canonicalDest, inPaths);
-    out.skippedCount += static_cast<int>(plan.invalid.size());
+    out.value.skippedCount += static_cast<int>(plan.invalid.size());
 
     bool anyMerged = false;
     std::string lastError;
@@ -578,31 +576,31 @@ ImportManyGdgeOutcome GitService::importManyFromGdge(
     if (!plan.smart.empty()) {
         auto smart = this->smartMergeMany(canonicalDest, plan.smart);
         if (!smart.ok) {
-            out.skippedCount += static_cast<int>(plan.smart.size());
+            out.value.skippedCount += static_cast<int>(plan.smart.size());
             if (lastError.empty()) lastError = smart.error;
         } else {
             anyMerged = true;
-            out.smartCount = static_cast<int>(plan.smart.size());
-            out.mergedCount += out.smartCount;
-            out.conflictCount += smart.conflictCount;
-            out.state = std::move(smart.state);
+            out.value.smartCount = static_cast<int>(plan.smart.size());
+            out.value.mergedCount += out.value.smartCount;
+            out.value.conflictCount += smart.value.conflictCount;
+            out.value.state = std::move(smart.value.state);
         }
     }
 
     for (auto const& path : plan.sequential) {
         auto merged = this->mergeSingleGdge(canonicalDest, path);
         if (!merged.ok) {
-            out.skippedCount++;
+            out.value.skippedCount++;
             if (lastError.empty()) {
                 lastError = pathUtf8(path.filename()) + ": " + merged.error;
             }
             continue;
         }
         anyMerged = true;
-        out.sequentialCount++;
-        out.mergedCount++;
-        out.conflictCount += merged.conflictCount;
-        out.state = std::move(merged.state);
+        out.value.sequentialCount++;
+        out.value.mergedCount++;
+        out.value.conflictCount += merged.value.conflictCount;
+        out.value.state = std::move(merged.value.state);
     }
 
     if (!anyMerged) {

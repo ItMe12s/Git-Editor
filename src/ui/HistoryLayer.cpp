@@ -395,11 +395,11 @@ void HistoryLayer::startCheckoutFlow(CommitId commitId, std::string const& commi
             }
             if (!self) return;
             Ref<HistoryLayer> alive(self.data());
-            ui_action_runner::runWorkerResult<CheckoutOutcome>(
+            ui_action_runner::runWorkerResult<Result<LevelState>>(
                 [levelKey, commitId]() {
                     return sharedGitService().checkout(levelKey, commitId);
                 },
-                [alive, editorRef, pauseRef](CheckoutOutcome outcome) mutable {
+                [alive, editorRef, pauseRef](Result<LevelState> outcome) mutable {
                     if (!alive) return;
                     finishBusyAction(alive->m_busy);
                     if (!outcome.ok) {
@@ -418,7 +418,7 @@ void HistoryLayer::startCheckoutFlow(CommitId commitId, std::string const& commi
                         )->show();
                         return;
                     }
-                    if (!applyLevelState(editor, outcome.state)) {
+                    if (!applyLevelState(editor, outcome.value)) {
                         Notification::create(
                             "Checkout applied to DB but editor refused",
                             NotificationIcon::Warning
@@ -452,11 +452,11 @@ void HistoryLayer::startRevertFlow(CommitId commitId, std::string const& commitM
             }
             if (!self) return;
             Ref<HistoryLayer> alive(self.data());
-            ui_action_runner::runWorkerResult<RevertOutcome>(
+            ui_action_runner::runWorkerResult<Result<RevertPayload>>(
                 [levelKey, commitId]() {
                     return sharedGitService().revert(levelKey, commitId);
                 },
-                [alive, editorRef, pauseRef](RevertOutcome outcome) mutable {
+                [alive, editorRef, pauseRef](Result<RevertPayload> outcome) mutable {
                     if (!alive) return;
                     finishBusyAction(alive->m_busy);
                     if (!outcome.ok) {
@@ -475,12 +475,12 @@ void HistoryLayer::startRevertFlow(CommitId commitId, std::string const& commitM
                         )->show();
                         return;
                     }
-                    if (!applyLevelState(editor, outcome.state)) {
+                    if (!applyLevelState(editor, outcome.value.state)) {
                         Notification::create(
                             "Revert applied to DB but editor refused",
                             NotificationIcon::Warning
                         )->show();
-                    } else if (outcome.conflicts.empty()) {
+                    } else if (outcome.value.conflicts.empty()) {
                         Notification::create("Reverted", NotificationIcon::Success)->show();
                     } else {
                         Notification::create(
@@ -489,7 +489,7 @@ void HistoryLayer::startRevertFlow(CommitId commitId, std::string const& commitM
                     }
                     alive->onClose(nullptr);
                     if (pauseLayer) pauseLayer->onResume(nullptr);
-                    showConflictSummary(outcome.conflicts);
+                    showConflictSummary(outcome.value.conflicts);
                 }
             );
         }
@@ -554,11 +554,11 @@ void HistoryLayer::onSquashPressed() {
                 [self, editorRef, pauseRef, levelKey, idsOldestFirst](std::string const& msg) {
                     if (!self) return;
                     Ref<HistoryLayer> alive(self.data());
-                    ui_action_runner::runWorkerResult<SquashOutcome>(
+                    ui_action_runner::runWorkerResult<Result<LevelState>>(
                         [levelKey, idsOldestFirst, msg]() {
                             return sharedGitService().squash(levelKey, idsOldestFirst, msg);
                         },
-                        [alive, editorRef, pauseRef](SquashOutcome outcome) mutable {
+                        [alive, editorRef, pauseRef](Result<LevelState> outcome) mutable {
                                 if (!alive) return;
                                 finishBusyAction(alive->m_busy);
                                 if (!outcome.ok) {
@@ -577,7 +577,7 @@ void HistoryLayer::onSquashPressed() {
                                     )->show();
                                     return;
                                 }
-                                if (!applyLevelState(editor, outcome.state)) {
+                                if (!applyLevelState(editor, outcome.value)) {
                                     Notification::create(
                                         "Squash applied to DB but editor refused",
                                         NotificationIcon::Warning

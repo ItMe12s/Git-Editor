@@ -334,7 +334,7 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
                                                     )->show();
                                                     return;
                                                 }
-                                                if (!git_editor::applyLevelState(editorPtr, outcome.state)) {
+                                                if (!git_editor::applyLevelState(editorPtr, outcome.value.state)) {
                                                     Notification::create(
                                                         "Merge saved but editor apply failed",
                                                         NotificationIcon::Warning
@@ -342,10 +342,10 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
                                                     return;
                                                 }
                                                 Notification::create(
-                                                    ("Merged " + std::to_string(outcome.smartCount)
-                                                     + " smart + " + std::to_string(outcome.sequentialCount)
-                                                     + " sequential, conflicts " + std::to_string(outcome.conflictCount)
-                                                     + ", skipped " + std::to_string(outcome.skippedCount)).c_str(),
+                                                    ("Merged " + std::to_string(outcome.value.smartCount)
+                                                     + " smart + " + std::to_string(outcome.value.sequentialCount)
+                                                     + " sequential, conflicts " + std::to_string(outcome.value.conflictCount)
+                                                     + ", skipped " + std::to_string(outcome.value.skippedCount)).c_str(),
                                                     NotificationIcon::Success
                                                 )->show();
                                             });
