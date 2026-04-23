@@ -46,5 +46,5 @@ A Geometry Dash (Geode) mod: per-level commit history, checkout/revert/squash, l
 
 ## Build
 
-- **SQLite** is pulled via **CPM** in [CMakeLists.txt](CMakeLists.txt) and linked into the mod.
+- **SQLite 3.53.0** is vendored at `src/sqlite/sqlite3.c` and compiled directly into the mod. See [CMakeLists.txt](CMakeLists.txt).
 - For manual testing, see [testing-checklist.md](testing-checklist.md).
