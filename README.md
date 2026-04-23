@@ -19,7 +19,8 @@ A Geometry Dash (Geode) mod: per-level commit history, checkout/revert/squash, l
 
 ## TO-DO
 
-- None planned, file issues or bug reports (Discord in mod.json, source link on GitHub).
+- File compression + Password/encryption
+- Git Stash
 
 ## Build
 
