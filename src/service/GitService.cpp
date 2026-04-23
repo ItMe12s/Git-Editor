@@ -182,7 +182,6 @@ Result<LevelState> GitService::checkout(LevelKey const& levelKey, CommitId targe
 }
 
 Result<RevertPayload> GitService::revert(LevelKey const& levelKey, CommitId target) {
-    Result<RevertPayload> out;
     auto const canonicalKey = m_store.resolveCanonicalKey(levelKey);
 
     auto head = m_store.getHead(canonicalKey);
@@ -228,9 +227,10 @@ Result<RevertPayload> GitService::revert(LevelKey const& levelKey, CommitId targ
 
     this->cachePut(*id, value.state);
 
-    out.ok     = true;
-    out.value  = std::move(value);
-    return out;
+    Result<RevertPayload> r;
+    r.ok    = true;
+    r.value = std::move(value);
+    return r;
 }
 
 Result<LevelState> GitService::squash(
@@ -605,6 +605,7 @@ Result<ImportManyPayload> GitService::importManyFromGdge(
 
     if (!anyMerged) {
         out.error = lastError.empty() ? "none of selected files merged" : lastError;
+        out.value = {};
         return out;
     }
     out.ok = true;

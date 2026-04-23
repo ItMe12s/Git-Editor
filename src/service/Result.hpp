@@ -1,5 +1,6 @@
 #pragma once
 
+// When ok is false, value is not meaningful. read it only if ok is true.
 #include <string>
 
 namespace git_editor {

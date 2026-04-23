@@ -77,10 +77,14 @@ public:
     std::optional<LevelState> reconstruct(CommitId commitId);
 
 private:
-    Result<MergeSinglePayload> mergeSingleGdge(LevelKey const& canonicalDest,
-                                               std::filesystem::path const& inPath);
-    Result<MergeSinglePayload> smartMergeMany(LevelKey const& canonicalDest,
-                                              std::vector<std::filesystem::path> const& paths);
+    Result<MergeSinglePayload> mergeSingleGdge(
+        LevelKey const& canonicalDest,
+        std::filesystem::path const& inPath
+    );
+    Result<MergeSinglePayload> smartMergeMany(
+        LevelKey const& canonicalDest,
+        std::vector<std::filesystem::path> const& paths
+    );
     ImportPlan classifyImports(LevelKey const& canonicalDest,
                                std::vector<std::filesystem::path> const& inPaths);
 
