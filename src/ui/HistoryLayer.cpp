@@ -4,7 +4,6 @@
 #include "DeltaInfoLayer.hpp"
 #include "common/GitUiActionRunner.hpp"
 #include "history/HistoryDataSource.hpp"
-#include "history/HistorySelectionModel.hpp"
 #include "../diff/Delta.hpp"
 #include "../editor/LevelStateIO.hpp"
 #include "../service/GitService.hpp"
@@ -27,6 +26,7 @@
 #include <cerrno>
 #include <algorithm>
 #include <cstdio>
+#include <set>
 #include <vector>
 
 using namespace geode::prelude;
@@ -34,6 +34,22 @@ using namespace geode::prelude;
 namespace git_editor {
 
 namespace {
+
+// commitsDesc: newest first, return ids oldest first among selected.
+template <typename Row>
+std::vector<CommitId> selectedOldestFirst(
+    std::vector<Row> const& commitsDesc,
+    std::set<CommitId> const& selected
+) {
+    std::vector<CommitId> ids;
+    ids.reserve(selected.size());
+    for (auto it = commitsDesc.rbegin(); it != commitsDesc.rend(); ++it) {
+        if (selected.count(it->id)) {
+            ids.push_back(it->id);
+        }
+    }
+    return ids;
+}
 
 constexpr float kPopupWidth    = 420.f;
 constexpr float kPopupHeight   = 280.f;
@@ -510,7 +526,7 @@ void HistoryLayer::onSquashPressed() {
     std::vector<CommitId>    idsOldestFirst;
     std::vector<std::string> messagesOldestFirst;
     messagesOldestFirst.reserve(m_selected.size());
-    idsOldestFirst = history_selection_model::selectedOldestFirst(commits, m_selected);
+    idsOldestFirst = selectedOldestFirst(commits, m_selected);
     for (auto id : idsOldestFirst) {
         auto it = std::find_if(commits.begin(), commits.end(), [id](CommitSummary const& row) { return row.id == id; });
         if (it != commits.end()) messagesOldestFirst.push_back(it->message);

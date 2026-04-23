@@ -31,7 +31,10 @@ A Geometry Dash (Geode) mod: per-level commit history, checkout/revert/squash, l
 - ~~Make more use or just remove some of State Cache, Conflict Kind.~~ Beta 4
   - Combined missing types into one.
   - Reworked LRU cache to just a simple map and flush-on-full.
-- Finally clean up GdgeImportPlanner, LevelKeyResolver, HistorySelectionModel. Beta 4
+- ~~Finally clean up LevelKeyResolver, HistorySelectionModel.~~ Beta 4
+  - Removed LevelKeyResolver, canonical key still via resolveCanonicalKey.
+  - Put history selection model in HistoryLayer.cpp.
+  - GdgeImportPlanner keep separate from GitService (planning vs service).
 - ~~Should rename async queue to like job queue or something.~~ Beta 4
   - Renamed to GitWorker.
 
