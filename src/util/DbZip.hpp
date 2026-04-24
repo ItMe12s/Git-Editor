@@ -30,7 +30,7 @@ bool writeZipAtomic(std::filesystem::path const& outZip,
 Result<ByteVector> readZipEntry(std::filesystem::path const& inZip,
                                 std::string const&            entryName);
 
-// Extract a single zip entry to outFile on disk. Convenience wrapper used at startup.
+// Extract a single zip entry to outFile on disk (e.g. zip-backed .gdge import).
 bool extractZipToFile(std::filesystem::path const& inZip,
                       std::filesystem::path const& outFile,
                       std::string const&            entryName);

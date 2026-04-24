@@ -19,8 +19,8 @@ constexpr std::array<std::uint8_t, 4> kZipMagic = { 0x50, 0x4B, 0x03, 0x04 };
 } // namespace
 
 DbFileForm peekDbFileForm(std::filesystem::path const& path) {
-    // Use path (native) to construct ifstream, not UTF-8 narrow, so Windows non-ASCII paths
-    // open correctly. Only 16 B read, do not use readBinary (full file) for a magic sniff.
+    // std::ifstream from std::filesystem::path uses the native representation; avoid
+    // ifstream(UTF-8 char*) on Windows. Read at most 16 B; do not readBinary (whole file) for a sniff.
     std::ifstream f(path, std::ios::binary);
     if (!f) return DbFileForm::Unknown;
 
@@ -61,7 +61,7 @@ bool writeZipAtomic(std::filesystem::path const& outZip,
     if (addRes.isErr()) {
         geode::log::error("writeZipAtomic: Zip::add failed: {}", addRes.unwrapErr());
         std::error_code ec;
-        // Geode utils::file has no generic path remove; error_code overload avoids throw.
+        // std::filesystem::remove with error_code, Geode has no single-file remove helper here.
         std::filesystem::remove(tmpPath, ec);
         return false;
     }

@@ -66,5 +66,5 @@ Something will eventually break I can feel it.
 ## Geode index / paths / UI ids
 
 1. **Save dir:** First launch, confirm no `createDirectoryAll` / DB open errors in log, DB under mod save dir opens.
-2. **Paths:** Export/import a `.gdge` with compress on and off, import a zip-backed package with non-ASCII path if you can, to stress path handling (guys with russian usernames).
+2. **Paths:** Export/import a `.gdge` with compress on and off. If possible, use a path with non-ASCII characters to stress path handling.
 3. **Node IDs (optional dev check):** With `geode.node-ids` / dev tools, `querySelector` (or child-by-id) for ids such as `imes.git-editor/git-editor-history-scroll`, `imes.git-editor/git-editor-levels-scroll`, `imes.git-editor/git-editor-delta-scroll`, `imes.git-editor/git-editor-commit-message-input`.

@@ -16,8 +16,10 @@ A Geometry Dash (Geode) mod: per-level commit history, checkout/revert/squash, l
 - Revert applies `diff(target, target.parent)` onto current HEAD, reports conflicts.
 - Squash requires 2+ contiguous selected commits.
 - Editor levels use `id:<n>` as the level key, from **cvolton.level-id-api** (see [mod.json](mod.json) dependencies and `levelKeyFor` in the source).
-- Heavy git/DB work is serialized on a worker (`postToGitWorker` in [GitWorker.cpp](src/util/GitWorker.cpp)); the UI can still read the store on the main thread. See comments on `CommitStore` and the worker header.
-- Magic-byte detection in [DbZip.cpp](src/util/DbZip.cpp) lets `.gdge` files be either raw SQLite or zip interchangeably. On startup, if only a legacy `git-editor.db.zip` exists (from a previous install), it is extracted to `git-editor.db` and the zip is removed.
+- Heavy git/DB work is serialized on a worker via `postToGitWorker` (see [GitWorker.cpp](src/util/GitWorker.cpp)). The UI can still read the store on the main thread. See `CommitStore` and the worker header.
+- Path strings for logs, SQLite, and on-screen file names use `geode::utils::string::pathToString`, mostly through [`PathUtf8.hpp`](src/util/PathUtf8.hpp) (`DbZip` uses `pathToString` directly in one error string). The mod save directory is created with `geode::utils::file::createDirectoryAll` before opening `git-editor.db`.
+- The editor pause menu and History / Levels / commit message / delta popups set stable `imes.git-editor/…` node ids (mod-prefixed ids per Geode’s usual `"name"_spr` pattern) for compatibility, see [testing-checklist.md](testing-checklist.md).
+- [DbZip.cpp](src/util/DbZip.cpp) peeks the first 16 bytes to classify a file as SQLite, zip, or unknown (used for `.gdge` on disk, not the live DB path). The running mod stores history only in a plain `git-editor.db` file.
 
 ## TO-DO
 

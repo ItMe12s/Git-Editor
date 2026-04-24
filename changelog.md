@@ -8,10 +8,12 @@ Crossing these versions will result in a database wipe:
 ## 1.0.0-beta.4
 
 - Added default-on compression for exported `.gdge` files, stored as zips with automatic detection on import, both compressed and raw files are supported.
+- Added more Node IDs (including popups: History, Levels, commit message, delta detail).
+- Unified path system (`geode::utils::string::pathToString` via `PathUtf8`).
 - Simplified revert action message for missing objects (Refactored revert payload system).
 - Simplified in-memory caching system (LRU to map and flush-on-full).
 - Vendored SQLite 3.53.0 amalgamation (was 3.38.2 via CPM).
-- Removed legacy code and other internal improvements. You can read more technical changes on GitHub.
+- Removed legacy code and other internal improvements like `postToGitWorker` no longer wraps jobs in C++ `try`/`catch`. You can read more technical changes on GitHub.
 
 ## 1.0.0-beta.3
 

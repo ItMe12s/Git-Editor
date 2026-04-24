@@ -21,7 +21,6 @@ void postToGitWorker(std::function<void()> job) {
         if (!box || !*box) {
             return;
         }
-        // Jobs are expected to be no-throw (SQLite is C API).
         (*box)();
     });
 }
