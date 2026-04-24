@@ -23,7 +23,6 @@ endif()
 add_subdirectory($ENV{GEODE_SDK} ${CMAKE_CURRENT_BINARY_DIR}/geode)
 
 # Vendored SQLite 3.53.0 amalgamation (src/sqlite/).
-# shell.c is the CLI shell; not needed. Only compile sqlite3.c.
 target_sources(${PROJECT_NAME} PRIVATE src/sqlite/sqlite3.c)
 target_include_directories(${PROJECT_NAME} PRIVATE src/sqlite)
 
