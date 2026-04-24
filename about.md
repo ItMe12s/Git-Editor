@@ -29,7 +29,7 @@ All of these are in the editor pause menu at the top :3
 - **Export/Import**: export current level history to `.gdge` and import the same `.gdge` but modified and it will try to use smart merge.
 - **3-Way Merge**: the mod understands the base of your level and resolves conflicts for you. (does NOT fix bad collab hosts giving out incorrect color channel and group id).
 
-Everything is saved offline as a SQLite database inside the mod save folder (`git-editor.db`). By default the database and exported `.gdge` files are compressed with zip to save disk space. Both options can be toggled in the mod settings under "Compress Local Database" and "Compress Export Files". Imported `.gdge` files are detected automatically, old uncompressed files and new compressed ones both work.
+Everything is saved offline as a SQLite database inside the mod save folder (`git-editor.db`). Exported `.gdge` files are compressed with zip by default to save disk space, which can be toggled in the mod settings under "Compress Export Files". Imported `.gdge` files are detected automatically, both compressed and uncompressed work.
 
 ## Some Examples
 

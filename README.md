@@ -17,7 +17,7 @@ A Geometry Dash (Geode) mod: per-level commit history, checkout/revert/squash, l
 - Squash requires 2+ contiguous selected commits.
 - Editor levels use `id:<n>` as the level key, from **cvolton.level-id-api** (see [mod.json](mod.json) dependencies and `levelKeyFor` in the source).
 - Heavy git/DB work is serialized on a worker (`postToGitWorker` in [GitWorker.cpp](src/util/GitWorker.cpp)); the UI can still read the store on the main thread. See comments on `CommitStore` and the worker header.
-- After every git write the DB is snapshotted via the SQLite Online Backup API and zipped to `git-editor.db.zip` asynchronously (when "Compress Local Database" is on). A final synchronous flush fires on `GameEvent::Exiting`. Magic-byte detection in [DbZip.cpp](src/util/DbZip.cpp) lets `.gdge` files be either raw SQLite or zip interchangeably.
+- Magic-byte detection in [DbZip.cpp](src/util/DbZip.cpp) lets `.gdge` files be either raw SQLite or zip interchangeably. On startup, if only a legacy `git-editor.db.zip` exists (from a previous install), it is extracted to `git-editor.db` and the zip is removed.
 
 ## TO-DO
 

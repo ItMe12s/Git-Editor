@@ -1,6 +1,5 @@
 #pragma once
 
-#include <atomic>
 #include <cstdint>
 #include <filesystem>
 #include <optional>
@@ -97,15 +96,6 @@ public:
     LevelKey resolveCanonicalKey(LevelKey const& observedKey);
     LevelKey resolveOrCreateCanonicalKey(LevelKey const& observedKey);
 
-    // Exposes the raw SQLite handle for backup/flush operations.
-    // Must only be used from the same thread that owns the DB (worker thread).
-    sqlite3* rawHandle() const { return m_db; }
-
-    // Tracks whether a mutation occurred since the last consumeDirty() call.
-    // Safe to call from multiple threads (atomic).
-    void markDirty();
-    bool consumeDirty();
-
 private:
     bool ensureSchema();
 
@@ -121,7 +111,6 @@ private:
     bool deleteCommitsAndRefsForKeyNoTransaction(LevelKey const& levelKey);
 
     sqlite3*              m_db    = nullptr;
-    std::atomic<bool>     m_dirty { false };
 };
 
 CommitStore& sharedCommitStore();

@@ -7,7 +7,7 @@ Crossing these versions will result in a database wipe:
 
 ## 1.0.0-beta.4
 
-- Added default-on compression for the local database and exported `.gdge` files, both are now stored as zips with automatic detection and extraction/import of both compressed and raw files.
+- Added default-on compression for exported `.gdge` files, stored as zips with automatic detection on import, both compressed and raw files are supported.
 - Simplified revert action message for missing objects (Refactored revert payload system).
 - Simplified in-memory caching system (LRU to map and flush-on-full).
 - Vendored SQLite 3.53.0 amalgamation (was 3.38.2 via CPM).

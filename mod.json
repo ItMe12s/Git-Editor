@@ -39,12 +39,6 @@
 				"slider-step": 0.05
 			}
 		},
-		"compress-local-database": {
-			"name": "Compress Local Database",
-			"description": "Store git-editor.db compressed as git-editor.db.zip on disk. Reduces save directory size. Unzipped automatically on startup.",
-			"type": "bool",
-			"default": true
-		},
 		"compress-export-files": {
 			"name": "Compress Export Files",
 			"description": "Compress exported .gdge files using zip. Imported files are detected automatically regardless of compression.",

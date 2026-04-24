@@ -42,15 +42,6 @@ Something will eventually break I can feel it.
 2. Import both in one pick session.
 3. Verify plan popup accepts both and merged state is correct.
 
-## Local database compression
-
-1. Enable "Compress Local Database" (default). Commit. Exit GD cleanly.
-2. Verify `git-editor.db.zip` exists, no raw `.db` remains.
-3. Restart. Verify history intact.
-4. Disable setting. Restart. Verify only raw `.db` exists, zip removed.
-5. Re-enable. Commit. Exit. Verify zip reappears.
-6. Kill GD mid-session. Verify raw `.db` survives and history loads on next startup.
-
 ## Load level history
 
 1. Create source level with multiple commits. Load into destination.

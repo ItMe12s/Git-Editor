@@ -3,8 +3,6 @@
 #include <Geode/loader/Log.hpp>
 #include <Geode/utils/file.hpp>
 
-#include <sqlite3.h>
-
 #include <array>
 #include <cstring>
 #include <fstream>
@@ -41,57 +39,6 @@ DbFileForm peekDbFileForm(std::filesystem::path const& path) {
     }
 
     return DbFileForm::Unknown;
-}
-
-Result<ByteVector> sqliteBackupToMemory(sqlite3* live) {
-    Result<ByteVector> out;
-    if (!live) {
-        out.error = "sqliteBackupToMemory: null source db";
-        return out;
-    }
-
-    sqlite3* memDb = nullptr;
-    if (sqlite3_open_v2(":memory:", &memDb, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr)
-            != SQLITE_OK) {
-        out.error = "sqliteBackupToMemory: failed to open memory db";
-        return out;
-    }
-
-    auto* backup = sqlite3_backup_init(memDb, "main", live, "main");
-    if (!backup) {
-        out.error = std::string("sqliteBackupToMemory: backup_init failed: ")
-                  + sqlite3_errmsg(memDb);
-        sqlite3_close(memDb);
-        return out;
-    }
-
-    int rc = SQLITE_OK;
-    do {
-        rc = sqlite3_backup_step(backup, -1);
-    } while (rc == SQLITE_OK || rc == SQLITE_BUSY || rc == SQLITE_LOCKED);
-    sqlite3_backup_finish(backup);
-
-    if (rc != SQLITE_DONE) {
-        out.error = std::string("sqliteBackupToMemory: backup_step failed: ")
-                  + sqlite3_errstr(rc);
-        sqlite3_close(memDb);
-        return out;
-    }
-
-    sqlite3_int64 sz = 0;
-    unsigned char* raw = sqlite3_serialize(memDb, "main", &sz, 0);
-    sqlite3_close(memDb);
-
-    if (!raw || sz <= 0) {
-        out.error = "sqliteBackupToMemory: sqlite3_serialize returned null";
-        if (raw) sqlite3_free(raw);
-        return out;
-    }
-
-    out.value.assign(raw, raw + static_cast<std::size_t>(sz));
-    sqlite3_free(raw);
-    out.ok = true;
-    return out;
 }
 
 bool writeZipAtomic(std::filesystem::path const& outZip,
