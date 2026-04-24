@@ -74,6 +74,7 @@ bool LevelBrowserLayer::init(
     float const innerH = kPopupHeight - kListPadTop - kListPadBottom;
 
     m_scroll = ScrollLayer::create({innerW, innerH});
+    m_scroll->setID("git-editor-levels-scroll"_spr);
     m_scroll->setAnchorPoint({0.f, 0.f});
     m_scroll->m_contentLayer->setLayout(
         ColumnLayout::create()
@@ -105,6 +106,7 @@ void LevelBrowserLayer::rebuildList() {
 
     if (levels.empty()) {
         auto empty = CCLabelBMFont::create("No levels with commits.", "bigFont.fnt");
+        empty->setID("git-editor-levels-empty"_spr);
         empty->setScale(.5f);
         empty->setOpacity(160);
         content->addChild(empty);
@@ -132,6 +134,7 @@ void LevelBrowserLayer::rebuildList() {
 
     for (auto const& lv : levels) {
         auto row = CCNode::create();
+        row->setID("git-editor-levels-row"_spr);
         row->setContentSize({rowWidth, kRowHeight});
         row->setAnchorPoint({0.f, 0.f});
         row->setLayout(AnchorLayout::create());
@@ -155,6 +158,7 @@ void LevelBrowserLayer::rebuildList() {
         row->addChildAtPosition(subLbl, Anchor::Left, {6.f, -10.f});
 
         auto menu = CCMenu::create();
+        menu->setID("git-editor-levels-row-menu"_spr);
         menu->setContentSize({kRowMenuWidth, kRowHeight});
         menu->setAnchorPoint({1.f, .5f});
         menu->setLayout(

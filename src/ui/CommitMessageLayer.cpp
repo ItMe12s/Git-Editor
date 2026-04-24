@@ -62,6 +62,7 @@ bool CommitMessageLayer::init(
     this->setTitle(title.c_str());
 
     m_input = TextInput::create(kWidth - 60.f, "Commit message", "chatFont.fnt");
+    m_input->setID("git-editor-commit-message-input"_spr);
     m_input->setMaxCharCount(static_cast<size_t>(kMaxMessageLen));
     m_input->setCommonFilter(CommonFilter::Any);
     if (!initialText.empty()) {
@@ -75,6 +76,7 @@ bool CommitMessageLayer::init(
         confirmSpr, this,
         menu_selector(CommitMessageLayer::onConfirmClicked)
     );
+    m_buttonMenu->setID("git-editor-commit-message-menu"_spr);
     m_buttonMenu->addChildAtPosition(confirmBtn, Anchor::Bottom, {0.f, 28.f});
 
     return true;

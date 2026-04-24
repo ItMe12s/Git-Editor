@@ -1,6 +1,7 @@
 #include "GdgePackage.hpp"
 
 #include "../util/DbZip.hpp"
+#include "../util/PathUtf8.hpp"
 
 #include <Geode/loader/Mod.hpp>
 
@@ -104,9 +105,9 @@ bool writeGdgePackageSqlite(std::filesystem::path const& outPath,
     if (!validateData(data)) return false;
 
     SqlitePtr db = nullptr;
-    auto const utf8 = outPath.u8string();
+    auto const utf8 = pathUtf8(outPath);
     if (sqlite3_open_v2(
-            reinterpret_cast<char const*>(utf8.c_str()),
+            utf8.c_str(),
             &db,
             SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX,
             nullptr
@@ -219,9 +220,9 @@ std::optional<GdgePackageData> readGdgePackageFromSqlitePath(
     };
 
     SqlitePtr db = nullptr;
-    auto const utf8 = sqlitePath.u8string();
+    auto const utf8 = pathUtf8(sqlitePath);
     if (sqlite3_open_v2(
-            reinterpret_cast<char const*>(utf8.c_str()),
+            utf8.c_str(),
             &db,
             SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX,
             nullptr
@@ -306,7 +307,7 @@ std::optional<GdgePackageData> readGdgePackage(std::filesystem::path const& path
 
     if (form == DbFileForm::Zip) {
         auto tmpPath = geode::Mod::get()->getTempDir()
-                     / (path.stem().string() + ".gdge.tmp");
+            / (pathUtf8(path.stem()) + ".gdge.tmp");
 
         if (!extractZipToFile(path, tmpPath, "package.gdge")) {
             return std::nullopt;

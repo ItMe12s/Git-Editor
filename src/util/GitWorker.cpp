@@ -1,9 +1,7 @@
 #include "GitWorker.hpp"
 
-#include <Geode/loader/Log.hpp>
 #include <Geode/utils/async.hpp>
 
-#include <exception>
 #include <memory>
 #include <mutex>
 
@@ -23,13 +21,8 @@ void postToGitWorker(std::function<void()> job) {
         if (!box || !*box) {
             return;
         }
-        try {
-            (*box)();
-        } catch (std::exception const& e) {
-            geode::log::error("git worker job threw: {}", e.what());
-        } catch (...) {
-            geode::log::error("git worker job threw unknown exception");
-        }
+        // Jobs are expected to be no-throw (SQLite is C API).
+        (*box)();
     });
 }
 

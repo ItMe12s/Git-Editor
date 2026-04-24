@@ -40,9 +40,11 @@ bool DeltaInfoLayer::init(std::string title, std::string body) {
     float const scrollH = panelH  - kPanelPad * 2.f;
 
     auto* panel = CCLayerColor::create({0, 0, 0, static_cast<GLubyte>(kPanelAlpha)}, panelW, panelH);
+    panel->setID("git-editor-delta-panel"_spr);
     panel->setAnchorPoint({0.f, 0.f});
 
     m_scroll = ScrollLayer::create({scrollW, scrollH});
+    m_scroll->setID("git-editor-delta-scroll"_spr);
     m_scroll->setAnchorPoint({0.f, 0.f});
 
     float const lineW   = (scrollW - 4.f) / kTextScale;

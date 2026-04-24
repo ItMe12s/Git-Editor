@@ -8,6 +8,7 @@
 #include "../identity/Matcher.hpp"
 #include "../model/LevelParser.hpp"
 #include "../store/GdgePackage.hpp"
+#include "../util/PathUtf8.hpp"
 #include "../util/StateHash.hpp"
 
 #include <Geode/loader/Log.hpp>
@@ -23,11 +24,6 @@ namespace {
 std::string shortPreview(std::string s, std::size_t n = 40) {
     if (s.size() <= n) return s;
     return s.substr(0, n - 1) + "...";
-}
-
-std::string pathUtf8(std::filesystem::path const& path) {
-    auto const u8 = path.u8string();
-    return std::string(reinterpret_cast<char const*>(u8.c_str()), u8.size());
 }
 
 std::optional<LevelState> reconstructRoot(CommitStore& store, GitService& svc, LevelKey const& levelKey) {
@@ -410,7 +406,7 @@ Result<MergeSinglePayload> GitService::mergeSingleGdge(
     if (!head) {
         auto blob = dumpDelta(diff(LevelState {}, *theirs));
         auto id = m_store.insert(
-            canonicalDest, std::nullopt, std::nullopt, "Import .gdge: " + pathUtf8(inPath.filename()), blob
+            canonicalDest, std::nullopt, std::nullopt, "Import .gdge: " + git_editor::pathUtf8(inPath.filename()), blob
         );
         if (!id || !m_store.setHead(canonicalDest, *id)) {
             out.error = "failed to persist imported level";
@@ -443,7 +439,7 @@ Result<MergeSinglePayload> GitService::mergeSingleGdge(
     auto persistDelta = diff(*ours, *merged);
     auto blob = dumpDelta(persistDelta);
     auto id = m_store.insert(
-        canonicalDest, *head, std::nullopt, "Merge import: " + pathUtf8(inPath.filename()), blob
+        canonicalDest, *head, std::nullopt, "Merge import: " + git_editor::pathUtf8(inPath.filename()), blob
     );
     if (!id || !m_store.setHead(canonicalDest, *id)) {
         out.error = "failed to persist merge commit";
@@ -506,7 +502,7 @@ Result<MergeSinglePayload> GitService::smartMergeMany(
         }
         merged = std::move(*step);
         totalConflicts += conflicts;
-        names.push_back(pathUtf8(inPath.filename()));
+        names.push_back(git_editor::pathUtf8(inPath.filename()));
     }
 
     auto persistDelta = diff(ours, merged);
@@ -592,7 +588,7 @@ Result<ImportManyPayload> GitService::importManyFromGdge(
         if (!merged.ok) {
             out.value.skippedCount++;
             if (lastError.empty()) {
-                lastError = pathUtf8(path.filename()) + ": " + merged.error;
+                lastError = git_editor::pathUtf8(path.filename()) + ": " + merged.error;
             }
             continue;
         }

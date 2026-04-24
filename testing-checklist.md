@@ -62,3 +62,9 @@ Something will eventually break I can feel it.
 2. First commit on a level with no history. Verify root set and reconstruction works.
 3. Delete a level's history. Verify gone from Levels list, fresh commit works.
 4. Open History on 50+ commit level. Verify scroll, tap, and edit have no lag.
+
+## Geode index / paths / UI ids
+
+1. **Save dir:** First launch, confirm no `createDirectoryAll` / DB open errors in log, DB under mod save dir opens.
+2. **Paths:** Export/import a `.gdge` with compress on and off, import a zip-backed package with non-ASCII path if you can, to stress path handling (guys with russian usernames).
+3. **Node IDs (optional dev check):** With `geode.node-ids` / dev tools, `querySelector` (or child-by-id) for ids such as `imes.git-editor/git-editor-history-scroll`, `imes.git-editor/git-editor-levels-scroll`, `imes.git-editor/git-editor-delta-scroll`, `imes.git-editor/git-editor-commit-message-input`.

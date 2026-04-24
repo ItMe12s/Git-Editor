@@ -1,8 +1,11 @@
 #include "CommitStore.hpp"
 #include "CommitSchema.hpp"
 
+#include "../util/PathUtf8.hpp"
+
 #include <Geode/loader/Log.hpp>
 #include <Geode/loader/Mod.hpp>
+#include <Geode/utils/file.hpp>
 
 #include <sqlite3.h>
 
@@ -32,11 +35,10 @@ CommitStore::~CommitStore() {
 bool CommitStore::init(std::filesystem::path const& dbPath) {
     if (m_db) return true;
 
-    auto u8 = dbPath.u8string();
-    auto const* utf8 = reinterpret_cast<char const*>(u8.c_str());
+    auto const utf8 = pathUtf8(dbPath);
 
     int rc = sqlite3_open_v2(
-        utf8, &m_db,
+        utf8.c_str(), &m_db,
         SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
         nullptr
     );
@@ -599,14 +601,13 @@ CommitStore& sharedCommitStore() {
         triedInit = true;
         auto* mod = geode::Mod::get();
         auto  dir = mod->getSaveDir();
-        std::error_code ec;
-        std::filesystem::create_directories(dir, ec);
-
-        auto const raw = dir / "git-editor.db";
-
-        if (!store.init(raw)) {
-            geode::log::error("failed to open db at {}",
-                reinterpret_cast<char const*>(raw.u8string().c_str()));
+        if (auto dirRes = geode::utils::file::createDirectoryAll(dir); dirRes.isErr()) {
+            geode::log::error("createDirectoryAll (save dir) failed: {}", dirRes.unwrapErr());
+        } else {
+            auto const raw = dir / "git-editor.db";
+            if (!store.init(raw)) {
+                geode::log::error("failed to open db at {}", pathUtf8(raw));
+            }
         }
     }
     return store;

@@ -5,6 +5,7 @@
 #include "../ui/LevelBrowserLayer.hpp"
 #include "../util/GitWorker.hpp"
 #include "../util/LevelKey.hpp"
+#include "../util/PathUtf8.hpp"
 #include "../util/UiText.hpp"
 
 #include <Geode/Geode.hpp>
@@ -71,11 +72,6 @@ std::string escapePopupText(std::string s) {
     return s;
 }
 
-std::string pathUtf8(std::filesystem::path const& path) {
-    auto const u8 = path.u8string();
-    return std::string(reinterpret_cast<char const*>(u8.c_str()), u8.size());
-}
-
 std::string planBody(git_editor::ImportPlan const& plan) {
     std::string body;
     if (plan.noLocalCommits) {
@@ -87,7 +83,7 @@ std::string planBody(git_editor::ImportPlan const& plan) {
         body += title;
         body += ":\n";
         for (auto const& p : paths) {
-            auto name = escapePopupText(git_editor::shorten(pathUtf8(p.filename()), 48));
+            auto name = escapePopupText(git_editor::shorten(git_editor::pathUtf8(p.filename()), 48));
             body += "- ";
             body += name;
             body += "\n";

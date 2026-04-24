@@ -123,6 +123,7 @@ bool HistoryLayer::init(
     float const innerH = kPopupHeight - kListPadTop - kListPadBottom;
 
     m_scroll = ScrollLayer::create({innerW, innerH});
+    m_scroll->setID("git-editor-history-scroll"_spr);
     m_scroll->setAnchorPoint({0.f, 0.f});
     m_scroll->m_contentLayer->setLayout(
         ColumnLayout::create()
@@ -140,6 +141,7 @@ bool HistoryLayer::init(
     );
 
     m_headerMenu = CCMenu::create();
+    m_headerMenu->setID("git-editor-history-header-menu"_spr);
     m_headerMenu->setContentSize({200.f, 26.f});
     m_headerMenu->setAnchorPoint({1.f, .5f});
     m_headerMenu->setLayout(
@@ -175,6 +177,7 @@ void HistoryLayer::rebuildHeader() {
             self->rebuildList();
         }
     );
+    modeBtn->setID("git-editor-history-mode-btn"_spr);
     m_headerMenu->addChild(modeBtn);
 
     if (m_squashMode && m_selected.size() >= 2) {
@@ -186,6 +189,7 @@ void HistoryLayer::rebuildHeader() {
                 if (self) self->onSquashPressed();
             }
         );
+        m_squashBtn->setID("git-editor-history-squash-btn"_spr);
         m_headerMenu->addChild(m_squashBtn);
     }
 
@@ -207,6 +211,7 @@ void HistoryLayer::rebuildList() {
 
     if (commits.empty()) {
         auto empty = CCLabelBMFont::create("No commits yet.", "bigFont.fnt");
+        empty->setID("git-editor-history-empty"_spr);
         empty->setScale(.5f);
         empty->setOpacity(160);
         content->addChild(empty);
@@ -226,6 +231,7 @@ void HistoryLayer::rebuildList() {
 
     for (auto const& c : commits) {
         auto row = CCNode::create();
+        row->setID("git-editor-history-row"_spr);
         row->setContentSize({rowWidth, kRowHeight});
         row->setAnchorPoint({0.f, 0.f});
         row->setLayout(AnchorLayout::create());
@@ -283,6 +289,7 @@ void HistoryLayer::rebuildList() {
         row->addChildAtPosition(msgLbl, Anchor::Left, {6.f, -8.f});
 
         auto menu = CCMenu::create();
+        menu->setID("git-editor-history-row-menu"_spr);
         menu->setContentSize({210.f, kRowHeight});
         menu->setAnchorPoint({1.f, .5f});
         menu->setLayout(
