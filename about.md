@@ -34,7 +34,7 @@ Everything is saved offline as a SQLite database inside the mod save folder (`gi
 ## Some Examples
 
 - **Time travel**: you can checkout an earlier commit to go back in time, make a change, and commit it. Then you can revert the checkout to *rewrite history* with that new commit. Also squash them into one commit.
-- **Backup mod**: keep a full history of your levels while using significantly less disk space long term.
+- **Backup mod**: keep a full history of your levels (Pro tip: You can zip/compress `git-editor.db` so its 10% of the size and you can put it anywhere like Google Drive or Discord).
 
 ## Current Limits
 
