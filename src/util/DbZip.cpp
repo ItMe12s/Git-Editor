@@ -50,20 +50,29 @@ bool writeZipAtomic(std::filesystem::path const& outZip,
     auto tmpPath = outZip;
     tmpPath += ".tmp";
 
-    auto zip = geode::utils::file::Zip::create(tmpPath);
-    if (zip.isErr()) {
-        geode::log::error("writeZipAtomic: Zip::create failed: {}", zip.unwrapErr());
+    auto zipRes = geode::utils::file::Zip::create(tmpPath);
+    if (zipRes.isErr()) {
+        geode::log::error("writeZipAtomic: Zip::create failed: {}", zipRes.unwrapErr());
         return false;
     }
 
-    geode::ByteSpan span(data.data(), data.size());
-    auto addRes = zip.unwrap().add(entryName, span);
-    if (addRes.isErr()) {
-        geode::log::error("writeZipAtomic: Zip::add failed: {}", addRes.unwrapErr());
-        std::error_code ec;
-        // std::filesystem::remove with error_code, Geode has no single-file remove helper here.
-        std::filesystem::remove(tmpPath, ec);
-        return false;
+    {
+        // `Zip` must be destroyed (file closed) before rename on Windows, keep it in this block.
+        auto z = std::move(zipRes).unwrap();
+        geode::ByteSpan span(data.data(), data.size());
+        auto addRes = z.add(entryName, span);
+        if (addRes.isErr()) {
+            geode::log::error("writeZipAtomic: Zip::add failed: {}", addRes.unwrapErr());
+            std::error_code remEc;
+            std::filesystem::remove(tmpPath, remEc);
+            return false;
+        }
+    }
+
+    {
+        // Allow re-export: replace existing outZip (e.g. user exports twice to the same name).
+        std::error_code oec;
+        (void)std::filesystem::remove(outZip, oec);
     }
 
     std::error_code ec;

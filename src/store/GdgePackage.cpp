@@ -3,6 +3,7 @@
 #include "../util/DbZip.hpp"
 #include "../util/PathUtf8.hpp"
 
+#include <Geode/loader/Log.hpp>
 #include <Geode/loader/Mod.hpp>
 
 #include <sqlite3.h>
@@ -102,7 +103,10 @@ namespace {
 
 bool writeGdgePackageSqlite(std::filesystem::path const& outPath,
                              GdgePackageData const&        data) {
-    if (!validateData(data)) return false;
+    if (!validateData(data)) {
+        geode::log::error("writeGdgePackageSqlite: validateData failed at {}", pathUtf8(outPath));
+        return false;
+    }
 
     SqlitePtr db = nullptr;
     auto const utf8 = pathUtf8(outPath);
@@ -112,6 +116,11 @@ bool writeGdgePackageSqlite(std::filesystem::path const& outPath,
             SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX,
             nullptr
         ) != SQLITE_OK) {
+        geode::log::error(
+            "writeGdgePackageSqlite: sqlite3_open_v2 failed for {}: {}",
+            pathUtf8(outPath),
+            db ? sqlite3_errmsg(db) : "db handle null"
+        );
         if (db) sqlite3_close(db);
         return false;
     }
@@ -174,8 +183,19 @@ bool writeGdgePackageSqlite(std::filesystem::path const& outPath,
         }
     }
 
-    if (ok) ok = execSql(db, "COMMIT;");
-    else execSql(db, "ROLLBACK;");
+    if (ok) {
+        if (!execSql(db, "COMMIT;")) {
+            ok = false;
+        }
+    }
+    if (!ok) {
+        // If BEGIN never ran (or already ended), ROLLBACK errors and clobbers sqlite3_errmsg.
+        std::string const err = sqlite3_errmsg(db);
+        if (sqlite3_get_autocommit(db) == 0) {
+            (void)execSql(db, "ROLLBACK;");
+        }
+        geode::log::error("writeGdgePackageSqlite: transaction or schema step failed: {}", err);
+    }
 
     sqlite3_close(db);
     return ok;
@@ -191,19 +211,44 @@ bool writeGdgePackage(std::filesystem::path const& outPath, GdgePackageData cons
         return writeGdgePackageSqlite(outPath, data);
     }
 
-    auto tmpPath = outPath;
-    tmpPath += ".tmp";
+    // Use a distinct name from writeZipAtomic's outPath+".tmp" so we never hand the same path to
+    // sqlite and the zip writer (e.g. if an intermediate file could not be deleted).
+    auto sqlitePath = outPath;
+    sqlitePath += ".sqlite-tmp";
 
-    if (!writeGdgePackageSqlite(tmpPath, data)) {
+    if (!writeGdgePackageSqlite(sqlitePath, data)) {
         return false;
     }
 
-    auto readRes = geode::utils::file::readBinary(tmpPath);
-    std::error_code ec;
-    std::filesystem::remove(tmpPath, ec);
-    if (readRes.isErr()) return false;
+    auto readRes = geode::utils::file::readBinary(sqlitePath);
+    if (readRes.isErr()) {
+        geode::log::error(
+            "writeGdgePackage: readBinary failed after sqlite ({}): {}",
+            pathUtf8(sqlitePath),
+            readRes.unwrapErr()
+        );
+        std::error_code ec2;
+        std::filesystem::remove(sqlitePath, ec2);
+        return false;
+    }
 
-    return writeZipAtomic(outPath, "package.gdge", readRes.unwrap());
+    {
+        std::error_code ec;
+        std::filesystem::remove(sqlitePath, ec);
+        if (ec) {
+            geode::log::warn(
+                "writeGdgePackage: could not remove intermediate sqlite at {}: {}",
+                pathUtf8(sqlitePath),
+                ec.message()
+            );
+        }
+    }
+
+    if (!writeZipAtomic(outPath, "package.gdge", readRes.unwrap())) {
+        geode::log::error("writeGdgePackage: writeZipAtomic failed for {}", pathUtf8(outPath));
+        return false;
+    }
+    return true;
 }
 
 namespace {
