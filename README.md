@@ -24,9 +24,9 @@ A Geometry Dash (Geode) mod: per-level commit history, checkout/revert/squash, l
 ## TO-DO
 
 - ~~File compression.~~ Beta 4
-- Password/encryption. Beta 6+
-- Git Stash. Beta 5
-- Specific header metadata support: Song and nong ID (Not needed for a solo project or collab but useful). Beta 5
+- Password/encryption. Beta 7+
+- Git Stash. Beta 6
+- Specific header metadata support: Song and nong ID (Not needed for a solo project or collab but useful). Beta 6
 - ~~Less boilerplate on Git Service, Gd Header, Level Parser.~~ Beta 4
   - Combined parsers.
   - Added result template.
