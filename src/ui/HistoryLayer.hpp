@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../diff/Delta.hpp"
+#include "../model/LevelState.hpp"
 #include "../store/CommitStore.hpp"
 
 #include <Geode/binding/CCMenuItemSpriteExtra.hpp>
@@ -8,9 +9,11 @@
 #include <Geode/binding/LevelEditorLayer.hpp>
 #include <Geode/ui/Popup.hpp>
 #include <Geode/ui/ScrollLayer.hpp>
+
 #include <cocos2d.h>
 #include <set>
 #include <string>
+#include <vector>
 
 namespace git_editor {
 
@@ -29,8 +32,23 @@ protected:
     void rebuildList();
     void rebuildHeader();
     void onSquashPressed();
+    void onSquashConfirmed(std::vector<CommitId> idsOldestFirst, std::string defaultMsg);
+    void runSquash(std::vector<CommitId> idsOldestFirst, std::string message);
     void startCheckoutFlow(CommitId commitId, std::string const& commitMsg);
     void startRevertFlow(CommitId commitId, std::string const& commitMsg);
+
+    // Common post-worker step: apply state to editor (or warn), notify, close, resume.
+    // pastTense: "Checked out"/"Reverted"/"Squashed" - notification on success.
+    // noun: "Checkout"/"Revert"/"Squash" - prefix for warnings.
+    void applyAndNotify(
+        char const*       noun,
+        char const*       pastTense,
+        LevelEditorLayer* editor,
+        EditorPauseLayer* pauseLayer,
+        LevelState const& state,
+        bool              hasConflicts,
+        bool              closeAndResume
+    );
 
     std::string                     m_levelKey;
     LevelEditorLayer*               m_editor     = nullptr;

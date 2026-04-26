@@ -16,14 +16,4 @@ void runWorkerResult(TWorker&& worker, TMain&& onMain) {
     });
 }
 
-template <class TWorker, class TMain>
-void runWorkerVoid(TWorker&& worker, TMain&& onMain) {
-    postToGitWorker([worker = std::forward<TWorker>(worker), onMain = std::forward<TMain>(onMain)]() mutable {
-        worker();
-        geode::queueInMainThread([onMain = std::move(onMain)]() mutable {
-            onMain();
-        });
-    });
-}
-
 } // namespace git_editor::ui_action_runner

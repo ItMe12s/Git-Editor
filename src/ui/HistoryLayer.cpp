@@ -3,7 +3,6 @@
 #include "CommitMessageLayer.hpp"
 #include "DeltaInfoLayer.hpp"
 #include "common/GitUiActionRunner.hpp"
-#include "history/HistoryDataSource.hpp"
 #include "../diff/Delta.hpp"
 #include "../editor/LevelStateIO.hpp"
 #include "../service/GitService.hpp"
@@ -64,6 +63,34 @@ constexpr ccColor3B kHdrColor  = {255, 210, 70};
 
 bool canApplyEditorResult(LevelEditorLayer* editor) {
     return editor != nullptr && editor->getParent() != nullptr;
+}
+
+struct HistoryLoadResult {
+    LevelKey                   levelKey;
+    std::vector<CommitSummary> commits;
+};
+
+// On miss, retry with canonical-key repair, then with the active editor's key.
+HistoryLoadResult loadHistory(LevelKey levelKey, LevelKey const& activeEditorLevelKey) {
+    auto commits = sharedCommitStore().listSummaries(levelKey);
+    if (commits.empty()) {
+        auto const repairedKey = sharedCommitStore().resolveOrCreateCanonicalKey(levelKey);
+        if (repairedKey != levelKey) {
+            auto repairedCommits = sharedCommitStore().listSummaries(repairedKey);
+            if (!repairedCommits.empty()) {
+                levelKey = repairedKey;
+                commits  = std::move(repairedCommits);
+            }
+        }
+    }
+    if (commits.empty() && !activeEditorLevelKey.empty() && activeEditorLevelKey != levelKey) {
+        auto activeCommits = sharedCommitStore().listSummaries(activeEditorLevelKey);
+        if (!activeCommits.empty()) {
+            levelKey = activeEditorLevelKey;
+            commits  = std::move(activeCommits);
+        }
+    }
+    return { std::move(levelKey), std::move(commits) };
 }
 
 void showConflictSummary(std::vector<Conflict> const& conflicts) {
@@ -203,7 +230,7 @@ void HistoryLayer::rebuildList() {
     content->removeAllChildren();
 
     auto const activeKey = (m_editor && m_editor->m_level) ? levelKeyFor(m_editor->m_level) : "";
-    auto loaded = history_data_source::loadHistory(m_levelKey, activeKey);
+    auto loaded = loadHistory(m_levelKey, activeKey);
     m_levelKey = loaded.levelKey;
     auto commits = std::move(loaded.commits);
 
@@ -400,6 +427,40 @@ void HistoryLayer::rebuildList() {
     m_scroll->scrollToTop();
 }
 
+void HistoryLayer::applyAndNotify(
+    char const*       noun,
+    char const*       pastTense,
+    LevelEditorLayer* editor,
+    EditorPauseLayer* pauseLayer,
+    LevelState const& state,
+    bool              hasConflicts,
+    bool              closeAndResume
+) {
+    if (!canApplyEditorResult(editor)) {
+        Notification::create(
+            (std::string(noun) + " succeeded but editor is no longer active").c_str(),
+            NotificationIcon::Warning
+        )->show();
+        return;
+    }
+    if (!applyLevelState(editor, state)) {
+        Notification::create(
+            (std::string(noun) + " applied to DB but editor refused").c_str(),
+            NotificationIcon::Warning
+        )->show();
+    } else if (hasConflicts) {
+        Notification::create(
+            (std::string(pastTense) + " with conflicts").c_str(), NotificationIcon::Warning
+        )->show();
+    } else {
+        Notification::create(pastTense, NotificationIcon::Success)->show();
+    }
+    if (closeAndResume) {
+        this->onClose(nullptr);
+        if (pauseLayer) pauseLayer->onResume(nullptr);
+    }
+}
+
 void HistoryLayer::startCheckoutFlow(CommitId commitId, std::string const& commitMsg) {
     if (!tryBeginBusyAction(m_busy)) return;
     Ref<HistoryLayer> self(this);
@@ -417,40 +478,22 @@ void HistoryLayer::startCheckoutFlow(CommitId commitId, std::string const& commi
                 return;
             }
             if (!self) return;
-            Ref<HistoryLayer> alive(self.data());
             ui_action_runner::runWorkerResult<Result<LevelState>>(
-                [levelKey, commitId]() {
-                    return sharedGitService().checkout(levelKey, commitId);
-                },
-                [alive, editorRef, pauseRef](Result<LevelState> outcome) mutable {
-                    if (!alive) return;
-                    finishBusyAction(alive->m_busy);
+                [levelKey, commitId]() { return sharedGitService().checkout(levelKey, commitId); },
+                [self, editorRef, pauseRef](Result<LevelState> outcome) mutable {
+                    if (!self) return;
+                    finishBusyAction(self->m_busy);
                     if (!outcome.ok) {
                         Notification::create(
-                            ("Checkout failed: " + outcome.error).c_str(),
-                            NotificationIcon::Error
+                            ("Checkout failed: " + outcome.error).c_str(), NotificationIcon::Error
                         )->show();
                         return;
                     }
-                    auto* editor = editorRef.data();
-                    auto* pauseLayer = pauseRef.data();
-                    if (!canApplyEditorResult(editor)) {
-                        Notification::create(
-                            "Checkout succeeded but editor is no longer active",
-                            NotificationIcon::Warning
-                        )->show();
-                        return;
-                    }
-                    if (!applyLevelState(editor, outcome.value)) {
-                        Notification::create(
-                            "Checkout applied to DB but editor refused",
-                            NotificationIcon::Warning
-                        )->show();
-                    } else {
-                        Notification::create("Checked out", NotificationIcon::Success)->show();
-                    }
-                    alive->onClose(nullptr);
-                    if (pauseLayer) pauseLayer->onResume(nullptr);
+                    self->applyAndNotify(
+                        "Checkout", "Checked out",
+                        editorRef.data(), pauseRef.data(),
+                        outcome.value, /*hasConflicts*/ false, /*closeAndResume*/ true
+                    );
                 }
             );
         }
@@ -474,44 +517,23 @@ void HistoryLayer::startRevertFlow(CommitId commitId, std::string const& commitM
                 return;
             }
             if (!self) return;
-            Ref<HistoryLayer> alive(self.data());
             ui_action_runner::runWorkerResult<Result<RevertPayload>>(
-                [levelKey, commitId]() {
-                    return sharedGitService().revert(levelKey, commitId);
-                },
-                [alive, editorRef, pauseRef](Result<RevertPayload> outcome) mutable {
-                    if (!alive) return;
-                    finishBusyAction(alive->m_busy);
+                [levelKey, commitId]() { return sharedGitService().revert(levelKey, commitId); },
+                [self, editorRef, pauseRef](Result<RevertPayload> outcome) mutable {
+                    if (!self) return;
+                    finishBusyAction(self->m_busy);
                     if (!outcome.ok) {
                         Notification::create(
-                            ("Revert failed: " + outcome.error).c_str(),
-                            NotificationIcon::Error
+                            ("Revert failed: " + outcome.error).c_str(), NotificationIcon::Error
                         )->show();
                         return;
                     }
-                    auto* editor = editorRef.data();
-                    auto* pauseLayer = pauseRef.data();
-                    if (!canApplyEditorResult(editor)) {
-                        Notification::create(
-                            "Revert succeeded but editor is no longer active",
-                            NotificationIcon::Warning
-                        )->show();
-                        return;
-                    }
-                    if (!applyLevelState(editor, outcome.value.state)) {
-                        Notification::create(
-                            "Revert applied to DB but editor refused",
-                            NotificationIcon::Warning
-                        )->show();
-                    } else if (outcome.value.conflicts.empty()) {
-                        Notification::create("Reverted", NotificationIcon::Success)->show();
-                    } else {
-                        Notification::create(
-                            "Reverted with conflicts", NotificationIcon::Warning
-                        )->show();
-                    }
-                    alive->onClose(nullptr);
-                    if (pauseLayer) pauseLayer->onResume(nullptr);
+                    self->applyAndNotify(
+                        "Revert", "Reverted",
+                        editorRef.data(), pauseRef.data(),
+                        outcome.value.state,
+                        !outcome.value.conflicts.empty(), /*closeAndResume*/ true
+                    );
                     showConflictSummary(outcome.value.conflicts);
                 }
             );
@@ -530,104 +552,84 @@ void HistoryLayer::onSquashPressed() {
     auto commits = sharedCommitStore().listSummaries(m_levelKey);
 
     // commits is DESC by createdAt, build oldest-first selected list.
-    std::vector<CommitId>    idsOldestFirst;
-    std::vector<std::string> messagesOldestFirst;
-    messagesOldestFirst.reserve(m_selected.size());
-    idsOldestFirst = selectedOldestFirst(commits, m_selected);
-    for (auto id : idsOldestFirst) {
-        auto it = std::find_if(commits.begin(), commits.end(), [id](CommitSummary const& row) { return row.id == id; });
-        if (it != commits.end()) messagesOldestFirst.push_back(it->message);
-    }
-
+    auto idsOldestFirst = selectedOldestFirst(commits, m_selected);
     if (idsOldestFirst.size() != m_selected.size()) {
         finishBusyAction(m_busy);
         Notification::create("Selection mismatch", NotificationIcon::Error)->show();
         return;
     }
 
+    std::vector<std::string> messagesOldestFirst;
+    messagesOldestFirst.reserve(idsOldestFirst.size());
+    for (auto id : idsOldestFirst) {
+        auto it = std::find_if(commits.begin(), commits.end(),
+            [id](CommitSummary const& row) { return row.id == id; });
+        if (it != commits.end()) messagesOldestFirst.push_back(it->message);
+    }
+
     std::string defaultMsg = "Squash: ";
     for (std::size_t i = 0; i < messagesOldestFirst.size(); ++i) {
         if (i) defaultMsg += ", ";
         defaultMsg += shorten(messagesOldestFirst[i], 20);
-        if (defaultMsg.size() > 110) {
-            defaultMsg += "...";
-            break;
-        }
+        if (defaultMsg.size() > 110) { defaultMsg += "..."; break; }
     }
     if (defaultMsg.size() > 120) defaultMsg.resize(120);
 
-    auto* editor     = m_editor;
-    auto* pauseLayer = m_pauseLayer;
-    std::string levelKey = m_levelKey;
     Ref<HistoryLayer> self(this);
-    Ref<LevelEditorLayer> editorRef(editor);
-    Ref<EditorPauseLayer> pauseRef(pauseLayer);
-
     createQuickPopup(
         "ARE YOU SURE?",
         "This will combine the selected commit range into a single commit.\nThis CANNOT be undone.",
         "Cancel", "Squash",
-        [self, editorRef, pauseRef, levelKey, idsOldestFirst, defaultMsg](
-            FLAlertLayer*, bool yes) {
-            if (!yes) {
-                if (self) finishBusyAction(self->m_busy);
+        [self, idsOldestFirst, defaultMsg](FLAlertLayer*, bool yes) mutable {
+            if (!self) return;
+            if (!yes) { finishBusyAction(self->m_busy); return; }
+            self->onSquashConfirmed(std::move(idsOldestFirst), std::move(defaultMsg));
+        }
+    );
+}
+
+void HistoryLayer::onSquashConfirmed(std::vector<CommitId> idsOldestFirst, std::string defaultMsg) {
+    Ref<HistoryLayer> self(this);
+    auto popup = CommitMessageLayer::create(
+        [self, idsOldestFirst](std::string const& msg) {
+            if (self) self->runSquash(idsOldestFirst, msg);
+        },
+        "Squash Commits",
+        "Squash",
+        defaultMsg,
+        [self]() { if (self) finishBusyAction(self->m_busy); }
+    );
+    if (popup) popup->show();
+    else       finishBusyAction(m_busy);
+}
+
+void HistoryLayer::runSquash(std::vector<CommitId> idsOldestFirst, std::string message) {
+    Ref<HistoryLayer> self(this);
+    Ref<LevelEditorLayer> editorRef(m_editor);
+    Ref<EditorPauseLayer> pauseRef(m_pauseLayer);
+    std::string levelKey = m_levelKey;
+    ui_action_runner::runWorkerResult<Result<LevelState>>(
+        [levelKey, idsOldestFirst, message]() {
+            return sharedGitService().squash(levelKey, idsOldestFirst, message);
+        },
+        [self, editorRef, pauseRef](Result<LevelState> outcome) mutable {
+            if (!self) return;
+            finishBusyAction(self->m_busy);
+            if (!outcome.ok) {
+                Notification::create(
+                    ("Squash failed: " + outcome.error).c_str(), NotificationIcon::Error
+                )->show();
                 return;
             }
-            if (auto popup = CommitMessageLayer::create(
-                [self, editorRef, pauseRef, levelKey, idsOldestFirst](std::string const& msg) {
-                    if (!self) return;
-                    Ref<HistoryLayer> alive(self.data());
-                    ui_action_runner::runWorkerResult<Result<LevelState>>(
-                        [levelKey, idsOldestFirst, msg]() {
-                            return sharedGitService().squash(levelKey, idsOldestFirst, msg);
-                        },
-                        [alive, editorRef, pauseRef](Result<LevelState> outcome) mutable {
-                                if (!alive) return;
-                                finishBusyAction(alive->m_busy);
-                                if (!outcome.ok) {
-                                    Notification::create(
-                                        ("Squash failed: " + outcome.error).c_str(),
-                                        NotificationIcon::Error
-                                    )->show();
-                                    return;
-                                }
-                                auto* editor = editorRef.data();
-                                auto* pauseLayer = pauseRef.data();
-                                if (!canApplyEditorResult(editor)) {
-                                    Notification::create(
-                                        "Squash succeeded but editor is no longer active",
-                                        NotificationIcon::Warning
-                                    )->show();
-                                    return;
-                                }
-                                if (!applyLevelState(editor, outcome.value)) {
-                                    Notification::create(
-                                        "Squash applied to DB but editor refused",
-                                        NotificationIcon::Warning
-                                    )->show();
-                                } else {
-                                    Notification::create("Squashed", NotificationIcon::Success)->show();
-                                }
-                                alive->m_squashMode = false;
-                                alive->m_selected.clear();
-                                alive->rebuildHeader();
-                                alive->rebuildList();
-                                (void)pauseLayer;
-                        }
-                    );
-                },
-                "Squash Commits",
-                "Squash",
-                defaultMsg,
-                [self]() {
-                    if (self) finishBusyAction(self->m_busy);
-                }
-            )) {
-                popup->show();
-            }
-            else if (self) {
-                finishBusyAction(self->m_busy);
-            }
+            self->applyAndNotify(
+                "Squash", "Squashed",
+                editorRef.data(), pauseRef.data(),
+                outcome.value, /*hasConflicts*/ false, /*closeAndResume*/ false
+            );
+            self->m_squashMode = false;
+            self->m_selected.clear();
+            self->rebuildHeader();
+            self->rebuildList();
         }
     );
 }

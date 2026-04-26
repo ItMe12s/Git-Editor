@@ -18,9 +18,6 @@ void postToGitWorker(std::function<void()> job) {
     auto boxed = std::make_unique<std::function<void()>>(std::move(job));
     geode::async::runtime().spawnBlocking<void>([box = std::move(boxed)]() mutable {
         std::lock_guard lock(s_gitWorkerMutex);
-        if (!box || !*box) {
-            return;
-        }
         (*box)();
     });
 }

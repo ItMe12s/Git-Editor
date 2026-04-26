@@ -2,7 +2,7 @@
 
 namespace git_editor {
 
-StateCache::StateCache(std::size_t cap) : m_cap(cap == 0 ? 1 : cap) {}
+StateCache::StateCache(std::size_t cap) : m_cap(cap) {}
 
 void StateCache::clear() {
     m_map.clear();

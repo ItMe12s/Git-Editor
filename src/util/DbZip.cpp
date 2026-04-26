@@ -28,11 +28,8 @@ DbFileForm peekDbFileForm(std::filesystem::path const& path) {
     f.read(buf.data(), 16);
     auto const nread = static_cast<std::size_t>(f.gcount());
 
-    if (nread >= 4 &&
-        static_cast<std::uint8_t>(buf[0]) == kZipMagic[0] &&
-        static_cast<std::uint8_t>(buf[1]) == kZipMagic[1] &&
-        static_cast<std::uint8_t>(buf[2]) == kZipMagic[2] &&
-        static_cast<std::uint8_t>(buf[3]) == kZipMagic[3]) {
+    if (nread >= kZipMagic.size() &&
+        std::memcmp(buf.data(), kZipMagic.data(), kZipMagic.size()) == 0) {
         return DbFileForm::Zip;
     }
 

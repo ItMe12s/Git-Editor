@@ -52,16 +52,15 @@ bool applyLevelString(LevelEditorLayer* editor, std::string const& levelString) 
         geode::log::warn("applyLevelString rejected string without level delimiter");
         return false;
     }
-    auto const normalized = levelString;
 
     editor->removeAllObjects();
 
     if (editor->m_level) {
-        editor->m_level->m_levelString = normalized;
+        editor->m_level->m_levelString = levelString;
         editor->m_level->levelWasAltered();
     }
 
-    gd::string s(normalized.c_str(), normalized.size()); // copy: createObjectsFromSetup mutates
+    gd::string s(levelString.c_str(), levelString.size()); // copy: createObjectsFromSetup mutates
     editor->createObjectsFromSetup(s);
     refreshEditorVisualState(editor);
 

@@ -41,6 +41,12 @@ Result<T> failResult(std::string msg) {
     return r;
 }
 
+template <typename T>
+Result<T> logAndFail(std::string msg) {
+    geode::log::error("{}", msg);
+    return failResult<T>(std::move(msg));
+}
+
 } // namespace
 
 GitService::GitService(CommitStore& store, std::size_t cacheCapacity)
@@ -58,11 +64,7 @@ Result<CommitId> GitService::commit(
     std::optional<CommitId> parent = m_store.getHead(canonicalKey);
     if (parent) {
         auto recon = this->reconstruct(*parent);
-        if (!recon) {
-            auto failed = failResult<CommitId>("failed to reconstruct HEAD, refusing to commit");
-            geode::log::error("{}", failed.error);
-            return failed;
-        }
+        if (!recon) return logAndFail<CommitId>("failed to reconstruct HEAD, refusing to commit");
         headState = std::move(*recon);
     }
 
@@ -80,17 +82,11 @@ Result<CommitId> GitService::commit(
     auto blob = dumpDelta(delta);
 
     auto id = m_store.insert(canonicalKey, parent, std::nullopt, message, blob);
-    if (!id) {
-        auto failed = failResult<CommitId>("DB insert failed");
-        geode::log::error("{}", failed.error);
-        return failed;
-    }
+    if (!id) return logAndFail<CommitId>("DB insert failed");
     if (!m_store.setHead(canonicalKey, *id)) {
-        auto failed = failResult<CommitId>(
+        return logAndFail<CommitId>(
             "DB setHead failed (stranded commit " + std::to_string(*id) + ")"
         );
-        geode::log::error("{}", failed.error);
-        return failed;
     }
 
     this->cachePut(*id, std::move(incoming));
@@ -119,8 +115,7 @@ Result<LevelState> GitService::checkout(LevelKey const& levelKey, CommitId targe
     auto headState   = this->reconstruct(*head);
     auto targetState = this->reconstruct(target);
     if (!headState || !targetState) {
-        geode::log::error("checkout reconstruct failed");
-        return failResult<LevelState>("reconstruct failed");
+        return logAndFail<LevelState>("checkout reconstruct failed");
     }
 
     auto revertDelta = diff(*headState, *targetState);

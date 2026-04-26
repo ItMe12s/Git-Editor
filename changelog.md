@@ -9,6 +9,10 @@ Crossing these versions will result in a database wipe:
 
 - Failed exports may leave behind temp files, This should not happen unless the mod is directly tampered with.
 
+## 1.0.0-beta.4.1
+
+- Check the GitHub commit for this one, it's mostly code changes/improvements.
+
 ## 1.0.0-beta.4
 
 - Added default-on compression for exported `.gdge` files, stored as zips with automatic detection on import, both compressed and raw files are supported.
