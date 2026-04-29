@@ -15,7 +15,7 @@ Crossing these versions will result in a database wipe:
 THIS UPDATE WIPES YOUR DATABASE!
 
 - Added blob compression (with zlib). This also make the old `.gdge` file invalid.
-- File size estimations in the mod's level page.
+- Added file size estimations in the mod's level page.
 - Internal improvements like using more Geode's utils. You can read more technical changes on GitHub.
 
 ## 1.0.0-beta.5
