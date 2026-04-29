@@ -35,12 +35,15 @@ if(NOT ZLIB_FOUND)
         GIT_TAG v1.3.2
     )
     set(ZLIB_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(ZLIB_BUILD_SHARED OFF CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(zlib)
     if(TARGET zlibstatic)
         set_target_properties(zlibstatic PROPERTIES POSITION_INDEPENDENT_CODE ON)
     endif()
+    target_link_libraries(${PROJECT_NAME} zlibstatic)
+else()
+    target_link_libraries(${PROJECT_NAME} ZLIB::ZLIB)
 endif()
-target_link_libraries(${PROJECT_NAME} ZLIB::ZLIB)
 
 # Tiny build profile. JSON1 and serialize/deserialize stay on by default.
 target_compile_definitions(${PROJECT_NAME} PRIVATE
