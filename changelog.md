@@ -13,8 +13,8 @@ Crossing these versions will result in a database wipe:
 ## 1.0.0-beta.7
 
 - SQLite prepared statements finalized on all paths where it mattered, new commits that advance HEAD persist insert + HEAD in one transaction.
-- Added import/export decompress cap for stored blob size
-- Added atomic replace for zip exports on Windows
+- Added import/export decompress cap for stored blob size.
+- Added atomic replace for zip exports on Windows.
 - Moved History and Levels load lists (and History rename) on to the git worker with a loading label. You can read more technical changes on GitHub.
 
 ## 1.0.0-beta.6
