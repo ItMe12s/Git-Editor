@@ -49,7 +49,7 @@ struct CommitSummary {
 // drop commits/refs, no migration.
 class CommitStore {
 public:
-    static constexpr int kSchemaVersion = 4;
+    static constexpr int kSchemaVersion = 5;
 
     CommitStore()  = default;
     ~CommitStore();

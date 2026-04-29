@@ -2,6 +2,7 @@
 
 #include "../diff/Delta.hpp"
 #include "../diff/Differ.hpp"
+#include "../util/BlobCodec.hpp"
 #include "../util/DbZip.hpp"
 #include "../util/PathUtf8.hpp"
 
@@ -177,9 +178,10 @@ bool writeGdgePackageSqlite(std::filesystem::path const& outPath,
                 else sqlite3_bind_null(st, 2);
                 if (c.revertsIndex) sqlite3_bind_int64(st, 3, *c.revertsIndex);
                 else sqlite3_bind_null(st, 3);
+                auto const stored = compressBlob(c.deltaBlob);
                 ok = bindText(st, 4, c.message)
                   && sqlite3_bind_int64(st, 5, c.createdAt) == SQLITE_OK
-                  && sqlite3_bind_blob(st, 6, c.deltaBlob.data(), static_cast<int>(c.deltaBlob.size()), SQLITE_TRANSIENT) == SQLITE_OK
+                  && sqlite3_bind_blob(st, 6, stored.data(), static_cast<int>(stored.size()), SQLITE_TRANSIENT) == SQLITE_OK
                   && sqlite3_step(st) == SQLITE_DONE;
                 if (!ok) break;
             }
@@ -330,7 +332,10 @@ std::optional<GdgePackageData> readGdgePackageFromSqlitePath(
         commit.createdAt = sqlite3_column_int64(st, 4);
         auto const* data = static_cast<char const*>(sqlite3_column_blob(st, 5));
         int const len = sqlite3_column_bytes(st, 5);
-        if (data && len > 0) commit.deltaBlob.assign(data, data + len);
+        if (data && len > 0) {
+            std::string stored(data, data + len);
+            commit.deltaBlob = decompressBlob(stored);
+        }
         out.commits.push_back(std::move(commit));
     }
     sqlite3_finalize(st);

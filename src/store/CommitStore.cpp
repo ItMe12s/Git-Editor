@@ -1,6 +1,8 @@
 #include "CommitStore.hpp"
 #include "CommitSchema.hpp"
 
+#include "../diff/Delta.hpp"
+#include "../util/BlobCodec.hpp"
 #include "../util/PathUtf8.hpp"
 
 #include <Geode/loader/Log.hpp>
@@ -92,7 +94,8 @@ std::optional<CommitId> CommitStore::insertAt(
     if (reverts) sqlite3_bind_int64(st, 3, *reverts);  else sqlite3_bind_null(st, 3);
     sqlite3_bind_text(st, 4, message.c_str(), static_cast<int>(message.size()), SQLITE_TRANSIENT);
     sqlite3_bind_int64(st, 5, createdAt);
-    sqlite3_bind_blob(st, 6, deltaBlob.data(), static_cast<int>(deltaBlob.size()), SQLITE_TRANSIENT);
+    auto const stored = compressBlob(deltaBlob);
+    sqlite3_bind_blob(st, 6, stored.data(), static_cast<int>(stored.size()), SQLITE_TRANSIENT);
 
     std::optional<CommitId> out;
     if (sqlite3_step(st) == SQLITE_DONE) {
@@ -134,7 +137,10 @@ CommitRow rowFromStatement(sqlite3_stmt* st, bool includeBlob) {
     if (includeBlob) {
         auto const* data = static_cast<char const*>(sqlite3_column_blob(st, 6));
         int len = sqlite3_column_bytes(st, 6);
-        if (data && len > 0) r.deltaBlob.assign(data, data + len);
+        if (data && len > 0) {
+            std::string stored(data, data + len);
+            r.deltaBlob = decompressBlob(stored);
+        }
     }
     return r;
 }
@@ -192,19 +198,10 @@ std::vector<CommitSummary> CommitStore::listSummaries(LevelKey const& levelKey) 
     if (!m_db) return out;
     auto const canonicalKey = this->resolveCanonicalKey(levelKey);
 
-    // JSON1: counts computed in SQLite so big delta_blob stays in page cache
-    // instead of being copied into a std::string on the main thread.
-    // `h` is an object (json_each enumerates members), `hr` is one optional field,
-    // `+` `~` `-` are arrays. IFNULL/COALESCE guard missing keys.
+    // Blobs are zlib-compressed, SQL JSON functions can't read them. Decompress + parseDelta in C++.
     constexpr char const* sql =
-        "SELECT id, message, created_at, "
-        "(SELECT COUNT(*) FROM json_each(IFNULL(json_extract(delta_blob, '$.h'), '{}'))) + "
-        "   (CASE WHEN json_type(delta_blob, '$.hr') IS NOT NULL THEN 1 ELSE 0 END) AS h_count, "
-        "COALESCE(json_array_length(delta_blob, '$.\"+\"'), 0) AS add_count, "
-        "COALESCE(json_array_length(delta_blob, '$.\"~\"'), 0) AS mod_count, "
-        "COALESCE(json_array_length(delta_blob, '$.\"-\"'), 0) AS rm_count "
-        "FROM commits WHERE level_key = ? "
-        "ORDER BY created_at DESC, id DESC;";
+        "SELECT id, message, created_at, delta_blob FROM commits "
+        "WHERE level_key = ? ORDER BY created_at DESC, id DESC;";
 
     sqlite3_stmt* st = nullptr;
     if (sqlite3_prepare_v2(m_db, sql, -1, &st, nullptr) != SQLITE_OK) {
@@ -219,10 +216,20 @@ std::vector<CommitSummary> CommitStore::listSummaries(LevelKey const& levelKey) 
         auto const* msg = reinterpret_cast<char const*>(sqlite3_column_text(st, 1));
         s.message     = msg ? msg : "";
         s.createdAt   = sqlite3_column_int64(st, 2);
-        s.headerCount = sqlite3_column_int(st, 3);
-        s.addCount    = sqlite3_column_int(st, 4);
-        s.modifyCount = sqlite3_column_int(st, 5);
-        s.removeCount = sqlite3_column_int(st, 6);
+
+        auto const* data = static_cast<char const*>(sqlite3_column_blob(st, 3));
+        int const len = sqlite3_column_bytes(st, 3);
+        if (data && len > 0) {
+            std::string stored(data, data + len);
+            auto json = decompressBlob(stored);
+            if (auto delta = parseDelta(json)) {
+                s.headerCount = static_cast<int>(delta->headerChanges.size())
+                    + (delta->rawHeaderChange.has_value() ? 1 : 0);
+                s.addCount    = static_cast<int>(delta->adds.size());
+                s.modifyCount = static_cast<int>(delta->modifies.size());
+                s.removeCount = static_cast<int>(delta->removes.size());
+            }
+        }
         out.push_back(std::move(s));
     }
     sqlite3_finalize(st);
