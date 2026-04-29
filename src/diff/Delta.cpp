@@ -1,5 +1,7 @@
 #include "Delta.hpp"
 
+#include "../util/UiText.hpp"
+
 #include <Geode/loader/Log.hpp>
 #include <matjson.hpp>
 
@@ -176,12 +178,6 @@ std::string fieldKeyName(int k) {
     return "field " + std::to_string(k);
 }
 
-std::string truncForDisplay(std::string const& s, std::size_t maxCh) {
-    if (s.size() <= maxCh) return s;
-    if (maxCh <= 3) return s.substr(0, maxCh);
-    return s.substr(0, maxCh - 3) + "...";
-}
-
 } // namespace
 
 std::string dumpDelta(Delta const& d) {
@@ -286,19 +282,19 @@ std::string describeDeltaText(Delta const& d) {
     };
     for (auto const& [k, ch] : d.headerChanges) {
         if (truncated) break;
-        appendStr("Header " + fieldKeyName(k) + ": " + truncForDisplay(ch.before, kMaxField) + " -> "
-            + truncForDisplay(ch.after, kMaxField));
+        appendStr("Header " + fieldKeyName(k) + ": " + shorten(ch.before, kMaxField) + " -> "
+            + shorten(ch.after, kMaxField));
     }
     if (d.rawHeaderChange.has_value() && !truncated) {
-        appendStr("Header raw: " + truncForDisplay(d.rawHeaderChange->before, kMaxField) + " -> "
-            + truncForDisplay(d.rawHeaderChange->after, kMaxField));
+        appendStr("Header raw: " + shorten(d.rawHeaderChange->before, kMaxField) + " -> "
+            + shorten(d.rawHeaderChange->after, kMaxField));
     }
     for (auto const& o : d.adds) {
         if (truncated) break;
         std::string line = "+ object " + std::to_string(o.uuid);
         if (auto it = o.fields.find(key::kType); it != o.fields.end()) {
             line += " (type=";
-            line += truncForDisplay(it->second, 40);
+            line += shorten(it->second, 40);
             line += ')';
         }
         appendStr(line);
@@ -312,8 +308,8 @@ std::string describeDeltaText(Delta const& d) {
         appendStr("~ object " + std::to_string(m.uuid));
         for (auto const& [k, ch] : m.fields) {
             if (truncated) break;
-            appendStr("  " + fieldKeyName(k) + ": " + truncForDisplay(ch.before, kMaxField) + " -> "
-                + truncForDisplay(ch.after, kMaxField));
+            appendStr("  " + fieldKeyName(k) + ": " + shorten(ch.before, kMaxField) + " -> "
+                + shorten(ch.after, kMaxField));
         }
     }
     if (truncated) {

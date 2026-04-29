@@ -35,6 +35,7 @@ CommitStore::~CommitStore() {
 bool CommitStore::init(std::filesystem::path const& dbPath) {
     if (m_db) return true;
 
+    m_dbPath = dbPath;
     auto const utf8 = pathUtf8(dbPath);
 
     int rc = sqlite3_open_v2(
@@ -338,7 +339,8 @@ std::vector<LevelSummary> CommitStore::listLevels() {
     if (!m_db) return out;
 
     constexpr char const* sql =
-        "SELECT level_key, COUNT(*), MAX(created_at) FROM commits "
+        "SELECT level_key, COUNT(*), MAX(created_at), "
+        "COALESCE(SUM(LENGTH(delta_blob)), 0) FROM commits "
         "GROUP BY level_key ORDER BY MAX(created_at) DESC;";
     sqlite3_stmt* st = nullptr;
     if (sqlite3_prepare_v2(m_db, sql, -1, &st, nullptr) != SQLITE_OK) {
@@ -352,6 +354,7 @@ std::vector<LevelSummary> CommitStore::listLevels() {
         s.levelKey      = key ? key : "";
         s.commitCount   = static_cast<int>(sqlite3_column_int64(st, 1));
         s.lastCreatedAt = sqlite3_column_int64(st, 2);
+        s.totalBytes    = sqlite3_column_int64(st, 3);
         out.push_back(std::move(s));
     }
     sqlite3_finalize(st);

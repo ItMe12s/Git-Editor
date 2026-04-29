@@ -19,7 +19,11 @@
 #include <Geode/ui/ScrollLayer.hpp>
 #include <Geode/utils/cocos.hpp>
 
+#include <fmt/format.h>
+
+#include <filesystem>
 #include <string>
+#include <system_error>
 
 using namespace geode::prelude;
 
@@ -69,6 +73,23 @@ bool LevelBrowserLayer::init(
     }
 
     this->setTitle("Levels");
+
+    {
+        std::int64_t dbBytes = 0;
+        std::error_code ec;
+        auto sz = std::filesystem::file_size(sharedCommitStore().dbPath(), ec);
+        if (!ec) dbBytes = static_cast<std::int64_t>(sz);
+        auto totalLbl = CCLabelBMFont::create(
+            ("Total: " + formatBytes(dbBytes)).c_str(), "chatFont.fnt"
+        );
+        totalLbl->setID("git-editor-levels-total"_spr);
+        totalLbl->setScale(.5f);
+        totalLbl->setAnchorPoint({1.f, .5f});
+        totalLbl->setOpacity(200);
+        m_mainLayer->addChildAtPosition(
+            totalLbl, Anchor::TopRight, {-12.f, -16.f}
+        );
+    }
 
     float const innerW = kPopupWidth - kListPadX * 2.f;
     float const innerH = kPopupHeight - kListPadTop - kListPadBottom;
@@ -149,8 +170,12 @@ void LevelBrowserLayer::rebuildList() {
         keyLbl->setAnchorPoint({0.f, .5f});
         row->addChildAtPosition(keyLbl, Anchor::Left, {6.f, 10.f});
 
-        std::string sub = std::to_string(lv.commitCount) + " commits - "
-            + formatTimestamp(lv.lastCreatedAt);
+        std::string sub = fmt::format(
+            "{} commits - {} - ~{}",
+            lv.commitCount,
+            formatTimestamp(lv.lastCreatedAt),
+            formatBytes(lv.totalBytes)
+        );
         auto subLbl = CCLabelBMFont::create(sub.c_str(), "chatFont.fnt");
         subLbl->setScale(.45f);
         subLbl->setOpacity(200);

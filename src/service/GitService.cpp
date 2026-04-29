@@ -13,6 +13,8 @@
 
 #include <Geode/loader/Log.hpp>
 
+#include <fmt/format.h>
+
 #include <algorithm>
 #include <unordered_map>
 #include <utility>
@@ -479,7 +481,7 @@ Result<MergeSinglePayload> GitService::smartMergeMany(
         if (preview.size() >= 80) break;
     }
     auto message = shortPreview(
-        "Smart merge: " + std::to_string(paths.size()) + " imports (" + preview + ")", 120
+        fmt::format("Smart merge: {} imports ({})", paths.size(), preview), 120
     );
     auto id = m_store.insert(canonicalDest, head, std::nullopt, message, blob);
     if (!id || !m_store.setHead(canonicalDest, *id)) {

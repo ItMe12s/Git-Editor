@@ -7,23 +7,11 @@
 #include <Geode/ui/Notification.hpp>
 #include <Geode/ui/TextInput.hpp>
 #include <Geode/utils/cocos.hpp>
-
-#include <cctype>
+#include <Geode/utils/string.hpp>
 
 using namespace geode::prelude;
 
 namespace git_editor {
-
-namespace {
-
-std::string trim(std::string s) {
-    auto isSpace = [](unsigned char c) { return std::isspace(c) != 0; };
-    while (!s.empty() && isSpace(s.front())) s.erase(s.begin());
-    while (!s.empty() && isSpace(s.back()))  s.pop_back();
-    return s;
-}
-
-} // namespace
 
 CommitMessageLayer* CommitMessageLayer::create(
     ConfirmFn onConfirm,
@@ -86,7 +74,7 @@ void CommitMessageLayer::onConfirmClicked(CCObject*) {
     if (!m_input) return;
 
     auto raw = m_input->getString();
-    auto message = trim(std::string(raw.c_str(), raw.size()));
+    auto message = geode::utils::string::trim(std::string(raw.c_str(), raw.size()));
 
     if (message.empty()) {
         Notification::create("Message required", NotificationIcon::Warning)->show();

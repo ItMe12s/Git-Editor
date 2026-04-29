@@ -18,6 +18,7 @@ struct LevelSummary {
     LevelKey     levelKey;
     int          commitCount   = 0;
     std::int64_t lastCreatedAt = 0;
+    std::int64_t totalBytes    = 0;
 };
 
 struct CommitRow {
@@ -57,6 +58,8 @@ public:
     CommitStore& operator=(CommitStore const&) = delete;
 
     bool init(std::filesystem::path const& dbPath);
+
+    std::filesystem::path const& dbPath() const { return m_dbPath; }
 
     std::optional<CommitId> insert(
         LevelKey const&         levelKey,
@@ -112,6 +115,7 @@ private:
     bool deleteCommitsAndRefsForKeyNoTransaction(LevelKey const& levelKey);
 
     sqlite3*              m_db    = nullptr;
+    std::filesystem::path m_dbPath;
 };
 
 CommitStore& sharedCommitStore();

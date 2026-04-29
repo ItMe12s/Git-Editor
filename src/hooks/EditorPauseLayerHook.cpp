@@ -360,10 +360,13 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
                                                     return;
                                                 }
                                                 Notification::create(
-                                                    ("Merged " + std::to_string(outcome.value.smartCount)
-                                                     + " smart + " + std::to_string(outcome.value.sequentialCount)
-                                                     + " sequential, conflicts " + std::to_string(outcome.value.conflictCount)
-                                                     + ", skipped " + std::to_string(outcome.value.skippedCount)).c_str(),
+                                                    fmt::format(
+                                                        "Merged {} smart + {} sequential, conflicts {}, skipped {}",
+                                                        outcome.value.smartCount,
+                                                        outcome.value.sequentialCount,
+                                                        outcome.value.conflictCount,
+                                                        outcome.value.skippedCount
+                                                    ).c_str(),
                                                     NotificationIcon::Success
                                                 )->show();
                                             });

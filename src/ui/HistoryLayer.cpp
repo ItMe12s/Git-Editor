@@ -106,9 +106,9 @@ void showConflictSummary(std::vector<Conflict> const& conflicts) {
     }
 
     std::string body = "Some ops could not be applied cleanly:\n";
-    if (adds)    body += "- " + std::to_string(adds)    + " add(s) already present\n";
-    if (missing) body += "- " + std::to_string(missing) + " missing\n";
-    if (stale)   body += "- " + std::to_string(stale)   + " stale field(s) skipped";
+    if (adds)    body += fmt::format("- {} add(s) already present\n", adds);
+    if (missing) body += fmt::format("- {} missing\n", missing);
+    if (stale)   body += fmt::format("- {} stale field(s) skipped", stale);
 
     FLAlertLayer::create(
         "Revert - partial",
