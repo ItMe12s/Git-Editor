@@ -4,6 +4,7 @@
 #include "../model/LevelState.hpp"
 #include "../store/CommitStore.hpp"
 
+#include <Geode/Geode.hpp>
 #include <Geode/binding/CCMenuItemSpriteExtra.hpp>
 #include <Geode/binding/EditorPauseLayer.hpp>
 #include <Geode/binding/LevelEditorLayer.hpp>
@@ -11,6 +12,7 @@
 #include <Geode/ui/ScrollLayer.hpp>
 
 #include <cocos2d.h>
+#include <cstdint>
 #include <set>
 #include <string>
 #include <vector>
@@ -30,6 +32,7 @@ protected:
     bool init(std::string levelKey, LevelEditorLayer* editor, EditorPauseLayer* pauseLayer);
 
     void rebuildList();
+    void renderList(std::vector<CommitSummary> commits);
     void rebuildHeader();
     void onSquashPressed();
     void onSquashConfirmed(std::vector<CommitId> idsOldestFirst, std::string defaultMsg);
@@ -51,12 +54,14 @@ protected:
     );
 
     std::string                     m_levelKey;
-    LevelEditorLayer*               m_editor     = nullptr;
-    EditorPauseLayer*               m_pauseLayer = nullptr;
+    geode::Ref<LevelEditorLayer>    m_editor;
+    geode::Ref<EditorPauseLayer>    m_pauseLayer;
     geode::ScrollLayer*             m_scroll     = nullptr;
 
     bool                            m_squashMode = false;
     bool                            m_busy       = false;
+    std::uint64_t                   m_loadSerial = 0;
+    std::vector<CommitSummary>      m_commits;
     std::set<CommitId>              m_selected;
     cocos2d::CCMenu*       m_headerMenu = nullptr;
     CCMenuItemSpriteExtra* m_squashBtn  = nullptr;

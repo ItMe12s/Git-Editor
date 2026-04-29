@@ -12,6 +12,7 @@
 #include <sqlite3.h>
 
 #include <chrono>
+#include <memory>
 #include <queue>
 #include <unordered_map>
 #include <unordered_set>
@@ -116,6 +117,33 @@ std::optional<CommitId> CommitStore::insert(
     std::string const&      deltaBlob
 ) {
     return this->insertAt(levelKey, parent, reverts, message, nowSeconds(), deltaBlob);
+}
+
+std::optional<CommitId> CommitStore::insertAndSetHead(
+    LevelKey const&         levelKey,
+    std::optional<CommitId> parent,
+    std::optional<CommitId> reverts,
+    std::string const&      message,
+    std::string const&      deltaBlob
+) {
+    if (!m_db) return std::nullopt;
+    auto const canonicalKey = this->resolveOrCreateCanonicalKey(levelKey);
+
+    commit_schema::DeferredFkTransaction tx(m_db);
+    if (!tx.begin()) return std::nullopt;
+
+    auto const id = this->insertAt(canonicalKey, parent, reverts, message, nowSeconds(), deltaBlob);
+    if (!id) {
+        tx.rollback();
+        return std::nullopt;
+    }
+    if (!this->setHead(canonicalKey, *id)) {
+        tx.rollback();
+        return std::nullopt;
+    }
+    if (!tx.commit()) return std::nullopt;
+
+    return id;
 }
 
 namespace {
@@ -246,12 +274,11 @@ bool CommitStore::updateMessage(CommitId id, std::string const& message) {
         return false;
     }
 
-    sqlite3_bind_text(st, 1, message.c_str(), static_cast<int>(message.size()), SQLITE_TRANSIENT);
-    sqlite3_bind_int64(st, 2, id);
+    std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> stmt(st, sqlite3_finalize);
+    sqlite3_bind_text(stmt.get(), 1, message.c_str(), static_cast<int>(message.size()), SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt.get(), 2, id);
 
-    bool const ok = (sqlite3_step(st) == SQLITE_DONE) && (sqlite3_changes(m_db) > 0);
-    if (ok)
-    sqlite3_finalize(st);
+    bool const ok = (sqlite3_step(stmt.get()) == SQLITE_DONE) && (sqlite3_changes(m_db) > 0);
     return ok;
 }
 
@@ -587,12 +614,11 @@ bool CommitStore::setHead(LevelKey const& levelKey, CommitId head) {
         geode::log::error("prepare setHead failed: {}", sqlite3_errmsg(m_db));
         return false;
     }
-    sqlite3_bind_text(st, 1, canonicalKey.c_str(), static_cast<int>(canonicalKey.size()), SQLITE_TRANSIENT);
-    sqlite3_bind_int64(st, 2, head);
+    std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> stmt(st, sqlite3_finalize);
+    sqlite3_bind_text(stmt.get(), 1, canonicalKey.c_str(), static_cast<int>(canonicalKey.size()), SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt.get(), 2, head);
 
-    bool ok = (sqlite3_step(st) == SQLITE_DONE);
-    if (ok)
-    sqlite3_finalize(st);
+    bool ok = (sqlite3_step(stmt.get()) == SQLITE_DONE);
     return ok;
 }
 

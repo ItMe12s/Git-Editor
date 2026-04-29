@@ -2,6 +2,7 @@
 
 #include "../service/Result.hpp"
 
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <vector>

@@ -68,6 +68,13 @@ public:
         std::string const&      message,
         std::string const&      deltaBlob
     );
+    std::optional<CommitId> insertAndSetHead(
+        LevelKey const&         levelKey,
+        std::optional<CommitId> parent,
+        std::optional<CommitId> reverts,
+        std::string const&      message,
+        std::string const&      deltaBlob
+    );
 
     std::optional<CommitRow> get(CommitId id);
 

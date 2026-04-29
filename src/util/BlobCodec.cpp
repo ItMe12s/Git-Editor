@@ -8,6 +8,12 @@
 
 namespace git_editor {
 
+namespace {
+
+constexpr std::uint32_t kMaxBlobFootprintBytes = 16u * 1024u * 1024u;
+
+} // namespace
+
 std::string compressBlob(std::string const& raw) {
     uLongf dstLen = compressBound(static_cast<uLong>(raw.size()));
     std::string out(4 + dstLen, '\0');
@@ -30,6 +36,10 @@ std::string decompressBlob(std::string const& bytes) {
     if (bytes.size() < 4) return {};
     std::uint32_t n = 0;
     std::memcpy(&n, bytes.data(), 4);
+    if (n > kMaxBlobFootprintBytes) {
+        geode::log::error("decompressBlob: uncompressed size {} exceeds cap {}", n, kMaxBlobFootprintBytes);
+        return {};
+    }
     std::string out(n, '\0');
     uLongf dstLen = n;
     int rc = uncompress(
@@ -39,6 +49,10 @@ std::string decompressBlob(std::string const& bytes) {
     );
     if (rc != Z_OK) {
         geode::log::error("decompressBlob: uncompress rc={}", rc);
+        return {};
+    }
+    if (dstLen != n) {
+        geode::log::error("decompressBlob: size mismatch {} != {}", dstLen, n);
         return {};
     }
     out.resize(dstLen);

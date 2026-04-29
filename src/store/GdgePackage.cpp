@@ -238,6 +238,7 @@ bool writeGdgePackage(std::filesystem::path const& outPath, GdgePackageData cons
         return false;
     }
 
+    bool const wroteZip = writeZipAtomic(outPath, "package.gdge", readRes.unwrap());
     {
         std::error_code ec;
         std::filesystem::remove(sqlitePath, ec);
@@ -249,8 +250,7 @@ bool writeGdgePackage(std::filesystem::path const& outPath, GdgePackageData cons
             );
         }
     }
-
-    if (!writeZipAtomic(outPath, "package.gdge", readRes.unwrap())) {
+    if (!wroteZip) {
         geode::log::error("writeGdgePackage: writeZipAtomic failed for {}", pathUtf8(outPath));
         return false;
     }
@@ -287,6 +287,11 @@ std::optional<GdgePackageData> readGdgePackageFromSqlitePath(
         if (db) sqlite3_close(db);
         db = nullptr;
     };
+    auto fail = [&]() -> std::optional<GdgePackageData> {
+        closeDb();
+        doCleanup();
+        return std::nullopt;
+    };
 
     GdgePackageData out;
     out.metadata.formatVersion = getMeta(db, "format_version").value_or("");
@@ -297,8 +302,7 @@ std::optional<GdgePackageData> readGdgePackageFromSqlitePath(
         auto const exportedAtText = getMeta(db, "exported_at").value_or("0");
         std::int64_t exportedAt = 0;
         if (!parseInt64(exportedAtText, exportedAt)) {
-            closeDb();
-            return std::nullopt;
+            return fail();
         }
         out.metadata.exportedAt = exportedAt;
     }
@@ -306,8 +310,7 @@ std::optional<GdgePackageData> readGdgePackageFromSqlitePath(
     if (auto head = getMeta(db, "head_index")) {
         std::int64_t parsedHead = 0;
         if (!parseInt64(*head, parsedHead)) {
-            closeDb();
-            return std::nullopt;
+            return fail();
         }
         out.metadata.headIndex = parsedHead;
     }
@@ -317,8 +320,7 @@ std::optional<GdgePackageData> readGdgePackageFromSqlitePath(
         "FROM commits ORDER BY commit_index ASC;";
     SqliteStmtPtr st = nullptr;
     if (sqlite3_prepare_v2(db, sql, -1, &st, nullptr) != SQLITE_OK) {
-        closeDb();
-        return std::nullopt;
+        return fail();
     }
 
     int rc = SQLITE_ROW;
@@ -340,8 +342,7 @@ std::optional<GdgePackageData> readGdgePackageFromSqlitePath(
     }
     sqlite3_finalize(st);
     if (rc != SQLITE_DONE) {
-        closeDb();
-        return std::nullopt;
+        return fail();
     }
 
     closeDb();

@@ -22,6 +22,8 @@
 #include <Geode/ui/ScrollLayer.hpp>
 #include <Geode/utils/cocos.hpp>
 
+#include <fmt/format.h>
+
 #include <cerrno>
 #include <algorithm>
 #include <cstdio>
@@ -229,10 +231,37 @@ void HistoryLayer::rebuildList() {
     auto* content = m_scroll->m_contentLayer;
     content->removeAllChildren();
 
-    auto const activeKey = (m_editor && m_editor->m_level) ? levelKeyFor(m_editor->m_level) : "";
-    auto loaded = loadHistory(m_levelKey, activeKey);
-    m_levelKey = loaded.levelKey;
-    auto commits = std::move(loaded.commits);
+    auto* editor = m_editor.data();
+    auto const activeKey = (editor && editor->m_level) ? levelKeyFor(editor->m_level) : "";
+    auto loading = CCLabelBMFont::create("Loading commits...", "bigFont.fnt");
+    loading->setID("git-editor-history-loading"_spr);
+    loading->setScale(.5f);
+    loading->setOpacity(160);
+    content->addChild(loading);
+    content->updateLayout();
+
+    auto const serial = ++m_loadSerial;
+    Ref<HistoryLayer> self(this);
+    std::string levelKey = m_levelKey;
+    ui_action_runner::runWorkerResult<HistoryLoadResult>(
+        [levelKey, activeKey]() {
+            return loadHistory(levelKey, activeKey);
+        },
+        [self, serial](HistoryLoadResult loaded) mutable {
+            if (!self || serial != self->m_loadSerial) return;
+            self->m_levelKey = std::move(loaded.levelKey);
+            self->renderList(std::move(loaded.commits));
+        }
+    );
+}
+
+void HistoryLayer::renderList(std::vector<CommitSummary> loadedCommits) {
+    if (!m_scroll) return;
+
+    auto* content = m_scroll->m_contentLayer;
+    content->removeAllChildren();
+    m_commits = std::move(loadedCommits);
+    auto const& commits = m_commits;
 
     float const rowWidth = content->getContentSize().width;
 
@@ -384,12 +413,19 @@ void HistoryLayer::rebuildList() {
             [self, commitId, commitMsg](CCMenuItemSpriteExtra*) {
                 if (auto popup = CommitMessageLayer::create(
                     [self, commitId](std::string const& newMessage) {
-                        if (!sharedCommitStore().updateMessage(commitId, newMessage)) {
-                            Notification::create("Rename failed", NotificationIcon::Error)->show();
-                            return;
-                        }
-                        Notification::create("Renamed commit", NotificationIcon::Success)->show();
-                        if (self) self->rebuildList();
+                        ui_action_runner::runWorkerResult<bool>(
+                            [commitId, newMessage]() {
+                                return sharedCommitStore().updateMessage(commitId, newMessage);
+                            },
+                            [self](bool ok) {
+                                if (!ok) {
+                                    Notification::create("Rename failed", NotificationIcon::Error)->show();
+                                    return;
+                                }
+                                Notification::create("Renamed commit", NotificationIcon::Success)->show();
+                                if (self) self->rebuildList();
+                            }
+                        );
                     },
                     "Rename Commit",
                     "Save",
@@ -464,8 +500,8 @@ void HistoryLayer::applyAndNotify(
 void HistoryLayer::startCheckoutFlow(CommitId commitId, std::string const& commitMsg) {
     if (!tryBeginBusyAction(m_busy)) return;
     Ref<HistoryLayer> self(this);
-    Ref<LevelEditorLayer> editorRef(m_editor);
-    Ref<EditorPauseLayer> pauseRef(m_pauseLayer);
+    Ref<LevelEditorLayer> editorRef(m_editor.data());
+    Ref<EditorPauseLayer> pauseRef(m_pauseLayer.data());
     std::string levelKey = m_levelKey;
     createQuickPopup(
         "Checkout",
@@ -503,8 +539,8 @@ void HistoryLayer::startCheckoutFlow(CommitId commitId, std::string const& commi
 void HistoryLayer::startRevertFlow(CommitId commitId, std::string const& commitMsg) {
     if (!tryBeginBusyAction(m_busy)) return;
     Ref<HistoryLayer> self(this);
-    Ref<LevelEditorLayer> editorRef(m_editor);
-    Ref<EditorPauseLayer> pauseRef(m_pauseLayer);
+    Ref<LevelEditorLayer> editorRef(m_editor.data());
+    Ref<EditorPauseLayer> pauseRef(m_pauseLayer.data());
     std::string levelKey = m_levelKey;
     createQuickPopup(
         "Revert",
@@ -549,7 +585,7 @@ void HistoryLayer::onSquashPressed() {
         return;
     }
 
-    auto commits = sharedCommitStore().listSummaries(m_levelKey);
+    auto const& commits = m_commits;
 
     // commits is DESC by createdAt, build oldest-first selected list.
     auto idsOldestFirst = selectedOldestFirst(commits, m_selected);
@@ -605,8 +641,8 @@ void HistoryLayer::onSquashConfirmed(std::vector<CommitId> idsOldestFirst, std::
 
 void HistoryLayer::runSquash(std::vector<CommitId> idsOldestFirst, std::string message) {
     Ref<HistoryLayer> self(this);
-    Ref<LevelEditorLayer> editorRef(m_editor);
-    Ref<EditorPauseLayer> pauseRef(m_pauseLayer);
+    Ref<LevelEditorLayer> editorRef(m_editor.data());
+    Ref<EditorPauseLayer> pauseRef(m_pauseLayer.data());
     std::string levelKey = m_levelKey;
     ui_action_runner::runWorkerResult<Result<LevelState>>(
         [levelKey, idsOldestFirst, message]() {

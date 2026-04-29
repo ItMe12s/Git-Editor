@@ -83,13 +83,8 @@ Result<CommitId> GitService::commit(
 
     auto blob = dumpDelta(delta);
 
-    auto id = m_store.insert(canonicalKey, parent, std::nullopt, message, blob);
-    if (!id) return logAndFail<CommitId>("DB insert failed");
-    if (!m_store.setHead(canonicalKey, *id)) {
-        return logAndFail<CommitId>(
-            "DB setHead failed (stranded commit " + std::to_string(*id) + ")"
-        );
-    }
+    auto id = m_store.insertAndSetHead(canonicalKey, parent, std::nullopt, message, blob);
+    if (!id) return logAndFail<CommitId>("DB insert/head transaction failed");
 
     this->cachePut(*id, std::move(incoming));
 
@@ -129,12 +124,9 @@ Result<LevelState> GitService::checkout(LevelKey const& levelKey, CommitId targe
     }
     std::string msg = "Checkout: " + (targetRow ? shortPreview(targetRow->message) : std::to_string(target));
 
-    auto id = m_store.insert(canonicalKey, *head, target, msg, blob);
+    auto id = m_store.insertAndSetHead(canonicalKey, *head, target, msg, blob);
     if (!id) {
-        return failResult<LevelState>("DB insert failed");
-    }
-    if (!m_store.setHead(canonicalKey, *id)) {
-        return failResult<LevelState>("DB setHead failed");
+        return failResult<LevelState>("DB insert/head transaction failed");
     }
 
     this->cachePut(*id, *targetState);
@@ -180,12 +172,9 @@ Result<RevertPayload> GitService::revert(LevelKey const& levelKey, CommitId targ
     auto blob              = dumpDelta(persistedDelta);
 
     std::string msg = "Revert: " + shortPreview(targetRow->message);
-    auto id = m_store.insert(canonicalKey, *head, target, msg, blob);
+    auto id = m_store.insertAndSetHead(canonicalKey, *head, target, msg, blob);
     if (!id) {
-        return failResult<RevertPayload>("DB insert failed");
-    }
-    if (!m_store.setHead(canonicalKey, *id)) {
-        return failResult<RevertPayload>("DB setHead failed");
+        return failResult<RevertPayload>("DB insert/head transaction failed");
     }
 
     this->cachePut(*id, value.state);
@@ -372,10 +361,10 @@ Result<MergeSinglePayload> GitService::mergeSingleGdge(
     auto head = m_store.getHead(canonicalDest);
     if (!head) {
         auto blob = dumpDelta(diff(LevelState {}, *theirs));
-        auto id = m_store.insert(
+        auto id = m_store.insertAndSetHead(
             canonicalDest, std::nullopt, std::nullopt, "Import .gdge: " + git_editor::pathUtf8(inPath.filename()), blob
         );
-        if (!id || !m_store.setHead(canonicalDest, *id)) {
+        if (!id) {
             out.error = "failed to persist imported level";
             return out;
         }
@@ -405,10 +394,10 @@ Result<MergeSinglePayload> GitService::mergeSingleGdge(
 
     auto persistDelta = diff(*ours, *merged);
     auto blob = dumpDelta(persistDelta);
-    auto id = m_store.insert(
+    auto id = m_store.insertAndSetHead(
         canonicalDest, *head, std::nullopt, "Merge import: " + git_editor::pathUtf8(inPath.filename()), blob
     );
-    if (!id || !m_store.setHead(canonicalDest, *id)) {
+    if (!id) {
         out.error = "failed to persist merge commit";
         return out;
     }
@@ -483,8 +472,8 @@ Result<MergeSinglePayload> GitService::smartMergeMany(
     auto message = shortPreview(
         fmt::format("Smart merge: {} imports ({})", paths.size(), preview), 120
     );
-    auto id = m_store.insert(canonicalDest, head, std::nullopt, message, blob);
-    if (!id || !m_store.setHead(canonicalDest, *id)) {
+    auto id = m_store.insertAndSetHead(canonicalDest, head, std::nullopt, message, blob);
+    if (!id) {
         out.error = "failed to persist merge commit";
         return out;
     }

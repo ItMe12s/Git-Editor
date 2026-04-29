@@ -24,6 +24,8 @@
 #include <Geode/ui/Notification.hpp>
 #include <Geode/utils/cocos.hpp>
 
+#include <fmt/format.h>
+
 #include <algorithm>
 #include <optional>
 
@@ -204,12 +206,14 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
     void onGitCommit() {
         auto editor = m_editorLayer;
         if (!requireActiveEditor(editor)) return;
+        Ref<LevelEditorLayer> editorRef(editor);
 
         auto popup = git_editor::CommitMessageLayer::create(
-            [editor](std::string const& message) {
-                auto levelKey = requireValidLevelKey(editor);
+            [editorRef](std::string const& message) {
+                auto* editorPtr = editorRef.data();
+                auto levelKey = requireValidLevelKey(editorPtr);
                 if (!levelKey) return;
-                auto levelStr = git_editor::captureLevelString(editor);
+                auto levelStr = git_editor::captureLevelString(editorPtr);
                 if (levelStr.empty()) {
                     Notification::create(
                         "Level is empty", NotificationIcon::Warning
@@ -240,7 +244,9 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
         auto editor = m_editorLayer;
         auto levelKey = requireValidLevelKey(editor);
         if (!levelKey) return;
-        if (auto popup = git_editor::HistoryLayer::create(*levelKey, editor, this)) {
+        Ref<LevelEditorLayer> editorRef(editor);
+        Ref<EditorPauseLayer> pauseRef(this);
+        if (auto popup = git_editor::HistoryLayer::create(*levelKey, editorRef.data(), pauseRef.data())) {
             popup->show();
         }
     }
@@ -248,7 +254,9 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
     void onGitLevels() {
         auto* editor = m_editorLayer;
         if (!requireActiveEditor(editor)) return;
-        if (auto popup = git_editor::LevelBrowserLayer::create(editor, this)) {
+        Ref<LevelEditorLayer> editorRef(editor);
+        Ref<EditorPauseLayer> pauseRef(this);
+        if (auto popup = git_editor::LevelBrowserLayer::create(editorRef.data(), pauseRef.data())) {
             popup->show();
         }
     }

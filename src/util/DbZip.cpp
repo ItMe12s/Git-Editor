@@ -7,6 +7,14 @@
 #include <array>
 #include <cstring>
 #include <fstream>
+#include <string_view>
+
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
 namespace git_editor {
 
@@ -15,6 +23,24 @@ namespace {
 constexpr std::string_view kSqliteMagic = "SQLite format 3\000";
 constexpr std::size_t      kSqliteMagicLen = 16;
 constexpr std::array<std::uint8_t, 4> kZipMagic = { 0x50, 0x4B, 0x03, 0x04 };
+
+bool replaceFileAtomic(std::filesystem::path const& from, std::filesystem::path const& to) {
+#ifdef _WIN32
+    if (!MoveFileExW(from.c_str(), to.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        geode::log::error("replaceFileAtomic: MoveFileExW failed: {}", GetLastError());
+        return false;
+    }
+    return true;
+#else
+    std::error_code ec;
+    std::filesystem::rename(from, to, ec);
+    if (ec) {
+        geode::log::error("replaceFileAtomic: rename failed: {}", ec.message());
+        return false;
+    }
+    return true;
+#endif
+}
 
 } // namespace
 
@@ -66,16 +92,8 @@ bool writeZipAtomic(std::filesystem::path const& outZip,
         }
     }
 
-    {
-        // Allow re-export: replace existing outZip (e.g. user exports twice to the same name).
-        std::error_code oec;
-        (void)std::filesystem::remove(outZip, oec);
-    }
-
-    std::error_code ec;
-    std::filesystem::rename(tmpPath, outZip, ec);
-    if (ec) {
-        geode::log::error("writeZipAtomic: rename failed: {}", ec.message());
+    if (!replaceFileAtomic(tmpPath, outZip)) {
+        std::error_code ec;
         std::filesystem::remove(tmpPath, ec);
         return false;
     }

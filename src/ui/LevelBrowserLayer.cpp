@@ -122,7 +122,30 @@ void LevelBrowserLayer::rebuildList() {
     auto* content = m_scroll->m_contentLayer;
     content->removeAllChildren();
 
-    auto levels = sharedCommitStore().listLevels();
+    auto loading = CCLabelBMFont::create("Loading levels...", "bigFont.fnt");
+    loading->setID("git-editor-levels-loading"_spr);
+    loading->setScale(.5f);
+    loading->setOpacity(160);
+    content->addChild(loading);
+    content->updateLayout();
+
+    auto const serial = ++m_loadSerial;
+    Ref<LevelBrowserLayer> self(this);
+    ui_action_runner::runWorkerResult<std::vector<LevelSummary>>(
+        []() { return sharedCommitStore().listLevels(); },
+        [self, serial](std::vector<LevelSummary> levels) mutable {
+            if (!self || serial != self->m_loadSerial) return;
+            self->renderList(std::move(levels));
+        }
+    );
+}
+
+void LevelBrowserLayer::renderList(std::vector<LevelSummary> levels) {
+    if (!m_scroll) return;
+
+    auto* content = m_scroll->m_contentLayer;
+    content->removeAllChildren();
+
     float const rowWidth = content->getContentSize().width;
 
     if (levels.empty()) {
@@ -137,7 +160,9 @@ void LevelBrowserLayer::rebuildList() {
     }
 
     Ref<LevelBrowserLayer> self(this);
-    std::string const      destKey = levelKeyFor(m_editor->m_level);
+    auto* editor = m_editor.data();
+    if (!editor) return;
+    std::string const      destKey = levelKeyFor(editor->m_level);
 
     auto makeDeleteBtn = [](geode::Function<void(CCMenuItemSpriteExtra*)> cb)
         -> CCMenuItemSpriteExtra* {
@@ -223,12 +248,12 @@ void LevelBrowserLayer::rebuildList() {
                             if (self) finishBusyAction(self->m_busy);
                             return;
                         }
-                        if (!self || !self->m_editor) {
+                        if (!self || !self->m_editor.data()) {
                             if (self) finishBusyAction(self->m_busy);
                             return;
                         }
-                        Ref<LevelEditorLayer> editorRef(self->m_editor);
-                        Ref<EditorPauseLayer> pauseRef(self->m_pauseLayer);
+                        Ref<LevelEditorLayer> editorRef(self->m_editor.data());
+                        Ref<EditorPauseLayer> pauseRef(self->m_pauseLayer.data());
                         Ref<LevelBrowserLayer> alive(self.data());
                         ui_action_runner::runWorkerResult<Result<LevelState>>(
                             [levelKey, destKey]() {
