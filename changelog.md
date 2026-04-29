@@ -3,11 +3,20 @@
 Check if your version update crosses a version with a wipe (e.g. Beta 1 -> Beta 4 crosses Beta 3 so it's wiped).
 Crossing these versions will result in a database wipe:
 
+- 1.0.0-beta.6
 - 1.0.0-beta.3
 
 ## Known issues
 
 - Failed exports may leave behind temp files, This should not happen unless the mod is directly tampered with.
+
+## 1.0.0-beta.6
+
+THIS UPDATE WIPES YOUR DATABASE!
+
+- Added blob compression (with zlib). This also make the old gdge `.gdge` file invalid.
+- File size estimation in the mod's level page.
+- Internal improvements like using more Geode's utils. You can read more technical changes on GitHub.
 
 ## 1.0.0-beta.5
 
@@ -25,7 +34,7 @@ Crossing these versions will result in a database wipe:
 
 ## 1.0.0-beta.3
 
-THIS UPDATE WIPES YOUR DATABASE
+THIS UPDATE WIPES YOUR DATABASE!
 
 - Switched level keying to Editor Level ID API (`cvolton.level-id-api`).
 - Switched to Geode's async runtime for background git and database work.

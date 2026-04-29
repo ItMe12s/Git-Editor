@@ -1,6 +1,6 @@
 # Git Editor
 
-A Geometry Dash (Geode) mod: per-level commit history, checkout/revert/squash, level browser, and `.gdge` import/export/merge. Normal user info in [about.md](about.md).
+A Geometry Dash (Geode SDK) mod: per-level commit history, checkout/revert/squash, level browser, and `.gdge` import/export/merge. Normal user info in [about.md](about.md). Full release history in [changelog.md](changelog.md).
 
 ## Core model
 
@@ -24,7 +24,7 @@ A Geometry Dash (Geode) mod: per-level commit history, checkout/revert/squash, l
 ## TO-DO
 
 - Password/encryption.
-- Compression for main database.
+- Compression for entire database file as a single artifact (Distinct from per-commit blob zlib in beta.6).
 - Git Stash.
 - Specific header metadata support: Song and nong ID (Not needed for a solo project or collab but useful).
 
@@ -36,4 +36,5 @@ A Geometry Dash (Geode) mod: per-level commit history, checkout/revert/squash, l
 ## Build
 
 - **SQLite 3.53.0** is vendored at `src/sqlite/sqlite3.c` and compiled directly into the mod. See [CMakeLists.txt](CMakeLists.txt).
+- **ZLIB** is required for blob decompression/compression (system `ZLIB`, or CMake FetchContent to zlib 1.3.2 if not found).
 - For manual testing, see [testing-checklist.md](testing-checklist.md).
