@@ -12,13 +12,19 @@ All of these are in the editor pause menu at the top :3
 
 ### Commit: name and save your changes into a delta snapshot in the history
 
+I recommend committing small changes like adding deco, triggers, buffing a section instead of doing one big commit.
+
 ### History: a list of all commits for the level you're in
+
+Long histories may briefly show **Loading commits...** while the list prepares.
 
 - **Revert**: undo a commit without undoing other ones.
 - **Checkout**: load a commit's state into the editor, you can revert this after you're done *checking out.* Heh.
 - **Squash**: combine adjacent commits into a single commit.
 
 ### Levels: a list of all levels with a commit history
+
+Having a lot of levels can show **Loading levels...** for a moment.
 
 - **Load**: overwrite the current level data with the data and history from another level.
 - **Delete**: permanently delete the history of the selected level.

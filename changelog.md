@@ -8,7 +8,14 @@ Crossing these versions will result in a database wipe:
 
 ## Known issues
 
-- Failed exports may leave behind temp files, This should not happen unless the mod is directly tampered with.
+- Failed exports may leave a `.tmp` zip next to the destination, compressed export also builds a `.sqlite-tmp` that is removed after packing. Incomplete runs are less likely to delete the existing `.gdge` before the new file is safely in place.
+
+## 1.0.0-beta.7
+
+- SQLite prepared statements finalized on all paths where it mattered, new commits that advance HEAD persist insert + HEAD in one transaction.
+- Added import/export decompress cap for stored blob size
+- Added atomic replace for zip exports on Windows
+- Moved History and Levels load lists (and History rename) on to the git worker with a loading label. You can read more technical changes on GitHub.
 
 ## 1.0.0-beta.6
 

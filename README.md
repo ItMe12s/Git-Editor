@@ -16,7 +16,9 @@ A Geometry Dash (Geode SDK) mod: per-level commit history, checkout/revert/squas
 - Revert applies `diff(target, target.parent)` onto current HEAD, reports conflicts.
 - Squash requires 2+ contiguous selected commits.
 - Editor levels use `id:<n>` as the level key, from **cvolton.level-id-api** (see [mod.json](mod.json) dependencies and `levelKeyFor` in the source).
-- Heavy git/DB work is serialized on a worker via `postToGitWorker` (see [GitWorker.cpp](src/util/GitWorker.cpp)). The UI can still read the store on the main thread. See `CommitStore` and the worker header.
+- Heavy git/DB work is serialized on a worker via `postToGitWorker` (see [GitWorker.cpp](src/util/GitWorker.cpp)). History (`listSummaries`) and Levels (`listLevels`), plus commit rename in History, load on that worker so the pause menu stays responsive on large histories. Other main-thread calls to the store may still exist (e.g. quick delta preview from a row). See `CommitStore` and the worker header.
+- New commits that update HEAD use a single SQLite transaction (`insert` + `refs` update) so a failed HEAD update does not leave a stray commit row.
+- [BlobCodec](src/util/BlobCodec.cpp) caps declared uncompressed size before allocating a decompression buffer (mitigates corrupt or hostile stored blobs). [DbZip](src/util/DbZip.cpp) replaces existing export paths with an atomic move on Windows (`MoveFileEx`) instead of delete-then-rename.
 - Path strings for logs, SQLite, and on-screen file names use `geode::utils::string::pathToString`, mostly through [`PathUtf8.hpp`](src/util/PathUtf8.hpp) (`DbZip` uses `pathToString` directly in one error string). The mod save directory is created with `geode::utils::file::createDirectoryAll` before opening `git-editor.db`.
 - The editor pause menu and History / Levels / commit message / delta popups set stable `imes.git-editor/…` node ids (mod-prefixed ids per Geode’s usual `"name"_spr` pattern) for compatibility, see [testing-checklist.md](testing-checklist.md).
 - [DbZip.cpp](src/util/DbZip.cpp) peeks the first 16 bytes to classify a file as SQLite, zip, or unknown (used for `.gdge` on disk, not the live DB path). The running mod stores history only in a plain `git-editor.db` file.
@@ -30,7 +32,7 @@ A Geometry Dash (Geode SDK) mod: per-level commit history, checkout/revert/squas
 
 ## Weird edge cases that might happen
 
-- Main thread and worker race on in-memory state if the user somehow commits while the UI is in a bugged overlapping state and would NEVER happen in game ever.
+- Main-thread reads vs worker writes on `sharedCommitStore` can still contend (e.g. `SQLITE_BUSY`), History/Levels mitigate jank by offloading the heaviest queries.
 - `PRAGMA foreign_keys=ON;` is assumed, swapping in an unusual SQLite build could surprise you.
 
 ## Build
