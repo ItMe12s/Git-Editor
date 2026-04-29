@@ -1,14 +1,16 @@
-# Git Editor
+# <c-FFF9C4>G</c><c-FFF59D>i</c><c-FFF176>t</c> <c-FFEE58>E</c><c-FFEB3B>d</c><c-FDD835>i</c><c-FBC02D>t</c><c-F9A825>o</c><c-F57F17>r</c>
 
-CHECK CHANGELOG BEFORE UPDATING!!! Read at the bottom for collab guide.
-
-A real diff-based history for the editor.
+**A real diff-based history for the editor.
 Every commit stores a delta against its parent,
-so you can revert a change without reverting the whole level.
+so you can revert a change without reverting the whole level.**
+
+**CHECK CHANGELOG BEFORE UPDATING!!!** Read at the bottom for collab guide.
+
+---
 
 ## Features
 
-All of these are in the editor pause menu at the top :3
+**All of these are in the editor pause menu at the top :3**
 
 ### Commit: name and save your changes into a delta snapshot in the history
 
@@ -37,10 +39,14 @@ Having a lot of levels can show **Loading levels...** for a moment.
 
 Everything is saved offline as a SQLite database inside the mod save folder (`git-editor.db`). Exported `.gdge` files are compressed with zip by default to save disk space, which can be toggled in the mod settings under "Compress Export Files". Imported `.gdge` files are detected automatically, both compressed and uncompressed work.
 
+---
+
 ## Some Examples
 
 - **Time travel**: you can checkout an earlier commit to go back in time, make a change, and commit it. Then you can revert the checkout to *rewrite history* with that new commit. Also squash them into one commit.
 - **Backup mod**: keep a full history of your levels (Pro tip: You can zip/compress `git-editor.db` so its 10% of the size and you can put it anywhere like Google Drive or Discord).
+
+---
 
 ## Current Limits
 
@@ -50,6 +56,8 @@ Everything is saved offline as a SQLite database inside the mod save folder (`gi
   - This is a cost-of-matching trade-off, not a correctness issue.
 - **Commit messages**: capped at 120 characters.
 - **Breaking updates**: databases using an old format will be wiped if the mod updates with a new one (your actual level won't be deleted). So make sure to backup your database file first, this rarely happens unless there's a new massive feature. This is because I don't wanna make a migration script.
+
+---
 
 ## Collab Guide
 
