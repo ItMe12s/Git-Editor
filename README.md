@@ -23,23 +23,10 @@ A Geometry Dash (Geode) mod: per-level commit history, checkout/revert/squash, l
 
 ## TO-DO
 
-- ~~File compression.~~ Beta 4
-- Password/encryption. Beta 7+
-- Git Stash. Beta 6
-- Specific header metadata support: Song and nong ID (Not needed for a solo project or collab but useful). Beta 6
-- ~~Less boilerplate on Git Service, Gd Header, Level Parser.~~ Beta 4
-  - Combined parsers.
-  - Added result template.
-  - Reworked Git Service, Revert return value.
-- ~~Make more use or just remove some of State Cache, Conflict Kind.~~ Beta 4
-  - Combined missing types into one.
-  - Reworked LRU cache to just a simple map and flush-on-full.
-- ~~Finally clean up LevelKeyResolver, HistorySelectionModel.~~ Beta 4
-  - Removed LevelKeyResolver, canonical key still via resolveCanonicalKey.
-  - Put history selection model in HistoryLayer.cpp.
-  - GdgeImportPlanner keep separate from GitService (planning vs service).
-- ~~Should rename async queue to like job queue or something.~~ Beta 4
-  - Renamed to GitWorker.
+- Password/encryption.
+- Compression for main database.
+- Git Stash.
+- Specific header metadata support: Song and nong ID (Not needed for a solo project or collab but useful).
 
 ## Weird edge cases that might happen
 
