@@ -18,6 +18,7 @@ inline constexpr char kSuiteSquash[]   = "Squash";
 inline constexpr char kSuiteGdge[]       = "ImportExport";
 inline constexpr char kSuiteHistory[]  = "LoadLevelHistory";
 inline constexpr char kSuiteCollab[]    = "Collab";
+inline constexpr char kSuiteAdvancedCollab[] = "AdvancedCollab";
 inline constexpr char kSuiteEdge[]       = "Edge";
 inline constexpr char kSuiteManual[]    = "ManualChecklist";
 
@@ -34,6 +35,13 @@ inline LevelKey const kCollabLay{"__git_editor_at_collab_layout"};
 inline LevelKey const kDecA{"__git_editor_at_dec_a"};
 inline LevelKey const kDecB{"__git_editor_at_dec_b"};
 inline LevelKey const kOther{"__git_editor_at_other_root"};
+inline LevelKey const kAdvCollabBase{"__git_editor_at_adv_collab_base"};
+inline LevelKey const kAdvCollabIntegrator{"__git_editor_at_adv_collab_integrator"};
+inline LevelKey const kAdvCollabAlice{"__git_editor_at_adv_collab_alice"};
+inline LevelKey const kAdvCollabBob{"__git_editor_at_adv_collab_bob"};
+inline LevelKey const kAdvCollabScratch{"__git_editor_at_adv_collab_scratch"};
+inline LevelKey const kAdvCollabCara{"__git_editor_at_adv_collab_cara"};
+inline LevelKey const kAdvCollabLegacy{"__git_editor_at_adv_collab_legacy"};
 
 struct ReportBuilder {
     AutomatedTestSummary& out;
@@ -76,6 +84,7 @@ void runSquashTests(GitService& git, CommitStore& st, ReportBuilder& R);
 void runGdgeExportImportTests(GitService& git, CommitStore& st, std::filesystem::path const& testDir, ReportBuilder& R);
 void runHistoryCopyTest(GitService& git, CommitStore& st, ReportBuilder& R);
 void runCollabPlanTest(GitService& git, CommitStore& st, std::filesystem::path const& testDir, ReportBuilder& R);
+void runAdvancedCollabSimulatorTests(GitService& git, CommitStore& st, std::filesystem::path const& testDir, ReportBuilder& R);
 void runEdgeTests(GitService& git, CommitStore& st, std::filesystem::path const& testDir, ReportBuilder& R);
 void appendManualSkips(ReportBuilder& R);
 

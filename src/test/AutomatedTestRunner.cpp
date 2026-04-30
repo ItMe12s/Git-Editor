@@ -85,6 +85,8 @@ AutomatedTestSummary runAutomatedTests(std::filesystem::path const& saveDir, std
         runHistoryCopyTest(git, st, R);
         R.addAction("Runner", "suite Collab");
         runCollabPlanTest(git, st, testDir, R);
+        R.addAction("Runner", "suite AdvancedCollab");
+        runAdvancedCollabSimulatorTests(git, st, testDir, R);
         R.addAction("Runner", "suite Edge");
         runEdgeTests(git, st, testDir, R);
         R.addAction("Runner", "suite ManualChecklist skips");

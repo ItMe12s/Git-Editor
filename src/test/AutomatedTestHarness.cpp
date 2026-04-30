@@ -113,7 +113,9 @@ namespace {
 std::vector<LevelKey> allTestKeys() {
     return {
         kCheckout, kRevert, kSquash, kRawEx, kZipEx, kMix,
-        kHistSrc, kHistDst, kCollabBase, kCollabLay, kDecA, kDecB, kOther
+        kHistSrc, kHistDst, kCollabBase, kCollabLay, kDecA, kDecB, kOther,
+        kAdvCollabBase, kAdvCollabIntegrator, kAdvCollabAlice, kAdvCollabBob,
+        kAdvCollabScratch, kAdvCollabCara, kAdvCollabLegacy
     };
 }
 
