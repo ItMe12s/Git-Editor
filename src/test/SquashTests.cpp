@@ -9,7 +9,9 @@ namespace git_editor {
 
 void runSquashTests(GitService& git, CommitStore& st, ReportBuilder& R) {
     ScopedTimer T;
+    R.addAction(kSuiteSquash, fmt::format("deleteLevel {}", kSquash));
     st.deleteLevel(kSquash);
+    R.addAction(kSuiteSquash, "commit s1 s2 s3 s4");
     if (!git.commit(kSquash, "s1", levelAt(0)).ok
         || !git.commit(kSquash, "s2", levelAt(10)).ok
         || !git.commit(kSquash, "s3", levelAt(20)).ok
@@ -24,6 +26,8 @@ void runSquashTests(GitService& git, CommitStore& st, ReportBuilder& R) {
     }
     CommitId const c2 = chain[1];
     CommitId const c3 = chain[2];
+    R.addAction(kSuiteSquash, fmt::format("chain {} commits c2={} c3={}", chain.size(), c2, c3));
+
     auto headBefore = st.getHead(kSquash);
     auto reconHeadBefore = headBefore ? git.reconstruct(*headBefore) : std::nullopt;
     if (!reconHeadBefore) {
@@ -31,7 +35,9 @@ void runSquashTests(GitService& git, CommitStore& st, ReportBuilder& R) {
         return;
     }
     auto const hashBefore = hashLevelState(*reconHeadBefore);
+    R.addAction(kSuiteSquash, fmt::format("HEAD before squash hash {}", hashBefore));
 
+    R.addAction(kSuiteSquash, fmt::format("squash range c2 {} c3 {} msg TEST_SQUASH_RANGE", c2, c3));
     auto sq = git.squash(kSquash, { c2, c3 }, "TEST_SQUASH_RANGE");
     if (!sq.ok) {
         R.addFail(kSuiteSquash, "squash_range", sq.error, T.ms());
@@ -48,6 +54,8 @@ void runSquashTests(GitService& git, CommitStore& st, ReportBuilder& R) {
         R.addFail(kSuiteSquash, "find_squash_row", "squash commit not found", T.ms());
         return;
     }
+    R.addAction(kSuiteSquash, "squash commit row TEST_SQUASH_RANGE found");
+
     auto chainAfterRange = chainOldestToNewest(st, kSquash);
     if (chainAfterRange.size() != 3) {
         R.addFail(
@@ -58,12 +66,15 @@ void runSquashTests(GitService& git, CommitStore& st, ReportBuilder& R) {
         );
         return;
     }
+    R.addAction(kSuiteSquash, fmt::format("chain after range len {}", chainAfterRange.size()));
+
     auto headAfterRange = st.getHead(kSquash);
     auto reconAfterRange = headAfterRange ? git.reconstruct(*headAfterRange) : std::nullopt;
     if (!reconAfterRange || hashLevelState(*reconAfterRange) != hashBefore) {
         R.addFail(kSuiteSquash, "state_after_range_squash", "HEAD state drift after range squash", T.ms());
         return;
     }
+    R.addAction(kSuiteSquash, "HEAD state stable after range squash");
 
     CommitId squashRangeId = 0;
     for (auto const& r : st.list(kSquash)) {
@@ -76,13 +87,17 @@ void runSquashTests(GitService& git, CommitStore& st, ReportBuilder& R) {
         R.addFail(kSuiteSquash, "squash_range_id", "squash commit id not found", T.ms());
         return;
     }
+    R.addAction(kSuiteSquash, fmt::format("revert squash commit {}", squashRangeId));
     auto revSq = git.revert(kSquash, squashRangeId);
     if (!revSq.ok) {
         R.addFail(kSuiteSquash, "revert_range_squash", revSq.error, T.ms());
         return;
     }
+    R.addAction(kSuiteSquash, "revert range squash OK");
 
+    R.addAction(kSuiteSquash, fmt::format("deleteLevel reset {}", kSquash));
     st.deleteLevel(kSquash);
+    R.addAction(kSuiteSquash, "commit t1 t2 t3 for squash all");
     if (!git.commit(kSquash, "t1", levelAt(0)).ok
         || !git.commit(kSquash, "t2", levelAt(11)).ok
         || !git.commit(kSquash, "t3", levelAt(22)).ok) {
@@ -94,6 +109,8 @@ void runSquashTests(GitService& git, CommitStore& st, ReportBuilder& R) {
         R.addFail(kSuiteSquash, "chain_b_len", fmt::format("got {}", chainB.size()), T.ms());
         return;
     }
+    R.addAction(kSuiteSquash, fmt::format("chainB len {}", chainB.size()));
+
     auto headB = st.getHead(kSquash);
     auto reconB = headB ? git.reconstruct(*headB) : std::nullopt;
     if (!reconB) {
@@ -101,7 +118,9 @@ void runSquashTests(GitService& git, CommitStore& st, ReportBuilder& R) {
         return;
     }
     auto const hashB = hashLevelState(*reconB);
+    R.addAction(kSuiteSquash, fmt::format("hash before full squash {}", hashB));
 
+    R.addAction(kSuiteSquash, "squash all chainB msg TEST_SQUASH_ALL");
     auto sqFull = git.squash(kSquash, chainB, "TEST_SQUASH_ALL");
     if (!sqFull.ok) {
         R.addFail(kSuiteSquash, "squash_all", sqFull.error, T.ms());
@@ -118,6 +137,7 @@ void runSquashTests(GitService& git, CommitStore& st, ReportBuilder& R) {
         R.addFail(kSuiteSquash, "full_squash_state", "squashed-all state != HEAD hash before squash-all", T.ms());
         return;
     }
+    R.addAction(kSuiteSquash, fmt::format("full squash single head {} hash match", *headOne));
     R.addPass(
         kSuiteSquash,
         "squash_chain",

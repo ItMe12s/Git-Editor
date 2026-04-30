@@ -38,6 +38,7 @@ inline LevelKey const kOther{"__git_editor_at_other_root"};
 struct ReportBuilder {
     AutomatedTestSummary& out;
 
+    void addAction(std::string const& suite, std::string const& text);
     void addPass(std::string const& suite, std::string const& name, std::string detail, double ms);
     void addFail(std::string const& suite, std::string const& name, std::string detail, double ms);
     void addSkip(std::string const& suite, std::string const& name, std::string detail, double ms);

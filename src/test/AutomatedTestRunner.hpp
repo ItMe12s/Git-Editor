@@ -19,6 +19,7 @@ struct AutomatedTestSummary {
     int                 failCount = 0;
     int                 skipCount = 0;
     std::string         reportText;
+    std::vector<std::string> actionLog;
     std::vector<AutomatedTestCaseResult> rows;
 };
 

@@ -19,6 +19,7 @@ void appendManualSkips(ReportBuilder& R) {
         { "node_ids_devtools", "needs geode.node-ids querySelector" },
     };
     for (auto const& it : kItems) {
+        R.addAction(kSuiteManual, std::string("SKIP ") + it.name + ": " + it.reason);
         ScopedTimer rowT;
         R.addSkip(kSuiteManual, it.name, it.reason, rowT.ms());
     }

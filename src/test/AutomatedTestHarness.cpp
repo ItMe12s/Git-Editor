@@ -58,6 +58,10 @@ bool setCompressExportFiles(bool value, bool* outPrevious) {
 
 } // namespace
 
+void ReportBuilder::addAction(std::string const& suite, std::string const& text) {
+    out.actionLog.push_back(fmt::format("[{}] {}", suite, text));
+}
+
 void ReportBuilder::addPass(std::string const& suite, std::string const& name, std::string detail, double ms) {
     out.rows.push_back({ suite, name, "PASS", std::move(detail), ms });
     ++out.passCount;
@@ -176,6 +180,16 @@ void formatReport(AutomatedTestSummary& s, std::filesystem::path const& saveDir,
         os << "mod_id: " << modId << "\n";
     }
     os << "summary: PASS " << s.passCount << " FAIL " << s.failCount << " SKIP " << s.skipCount << "\n\n";
+
+    os << "actions:\n";
+    if (s.actionLog.empty()) {
+        os << "(none)\n";
+    } else {
+        for (auto const& line : s.actionLog) {
+            os << line << '\n';
+        }
+    }
+    os << '\n';
 
     std::string lastSuite;
     os << std::fixed << std::setprecision(2);
