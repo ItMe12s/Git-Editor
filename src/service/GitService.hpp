@@ -45,7 +45,7 @@ struct ImportPlan {
 // Linear history, checkout adds forward commit to target state (no rewind HEAD). Persist then setHead then cache.
 class GitService {
 public:
-    explicit GitService(CommitStore& store, std::size_t cacheCapacity = 16);
+    explicit GitService(CommitStore& store, std::size_t cacheCapacity = 64);
 
     Result<CommitId> commit(LevelKey const& levelKey,
                             std::string const& message,

@@ -1,7 +1,10 @@
 #include "LevelParser.hpp"
 #include "../util/Parsing.hpp"
 
+#include <fmt/format.h>
+
 #include <algorithm>
+#include <iterator>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -27,11 +30,19 @@ FieldMap readKvChunk(std::string_view chunk) {
 
 std::string serializeFields(FieldMap const& m) {
     std::string out;
+    std::size_t cap = 0;
+    for (auto const& [k, v] : m) {
+        cap += 12 + v.size();
+    }
+    if (!m.empty()) {
+        cap += 2 * m.size() - 1;
+    }
+    out.reserve(cap);
     bool first = true;
     for (auto const& [k, v] : m) {
         if (!first) out.push_back(',');
         first = false;
-        out.append(std::to_string(k));
+        fmt::format_to(std::back_inserter(out), "{}", k);
         out.push_back(',');
         out.append(v);
     }

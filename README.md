@@ -7,7 +7,7 @@ A Geometry Dash (Geode SDK) mod: per-level commit history, checkout/revert/squas
 - Linear history per level key, no branches.
 - Commits store a JSON `Delta` against the parent in `git-editor.db` (under the mod save directory).
 - Delta keys: `h` (header), `+` (adds), `-` (removes), `~` (modifies).
-- State reconstruction replays from root to HEAD, with an in-memory state cache (default capacity 16, if the map is at capacity, inserting a new commit id clears the entire cache, see [StateCache.hpp](src/service/StateCache.hpp)).
+- State reconstruction replays from root to HEAD, with an in-memory state cache (default capacity 64, if the map is at capacity, inserting a new commit id clears the entire cache, see [StateCache.hpp](src/service/StateCache.hpp)).
 - `GitService` returns [`Result<T>`](src/service/Result.hpp) (success payload in `value`, failure message in `error`). Payload structs in [GitService.hpp](src/service/GitService.hpp) group multi-field outcomes (e.g. revert with conflicts, multi-file `.gdge` import stats).
 
 ## Other info not in about.md

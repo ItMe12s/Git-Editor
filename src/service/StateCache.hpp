@@ -11,7 +11,7 @@ namespace git_editor {
 
 class StateCache {
 public:
-    explicit StateCache(std::size_t cap = 16);
+    explicit StateCache(std::size_t cap = 64);
 
     void clear();
     void put(CommitId const& id, LevelState state);
