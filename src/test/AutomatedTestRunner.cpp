@@ -67,6 +67,10 @@ std::string levelAt(int x) {
     return fmt::format(";1,1,2,{},3,0", x);
 }
 
+std::string levelAtFixedX(int y) {
+    return fmt::format(";1,1,2,10,3,{}", y);
+}
+
 std::vector<LevelKey> allTestKeys() {
     return {
         kCheckout, kRevert, kSquash, kRawEx, kZipEx, kMix,
@@ -249,8 +253,8 @@ void runRevertTests(GitService& git, CommitStore& st, ReportBuilder& R) {
     st.deleteLevel(kRevert);
     if (!git.commit(kRevert, "r1", levelAt(0)).ok
         || !git.commit(kRevert, "r2", levelAt(10)).ok
-        || !git.commit(kRevert, "r3", levelAt(20)).ok
-        || !git.commit(kRevert, "r4", levelAt(30)).ok) {
+        || !git.commit(kRevert, "r3", levelAtFixedX(20)).ok
+        || !git.commit(kRevert, "r4", levelAtFixedX(30)).ok) {
         R.addFail(kSuiteRevert, "setup_four", "commit failed", T.ms());
         return;
     }
