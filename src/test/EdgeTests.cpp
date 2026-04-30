@@ -7,62 +7,67 @@
 namespace git_editor {
 
 void runEdgeTests(GitService& git, CommitStore& st, std::filesystem::path const& testDir, ReportBuilder& R) {
-    ScopedTimer T;
     if (!st.dbPath().empty()) {
+        ScopedTimer dbCheck;
         auto p = st.dbPath();
         R.addAction(kSuiteEdge, fmt::format("dbPath {}", pathUtf8(p)));
         if (!std::filesystem::exists(p)) {
-            R.addFail(kSuiteEdge, "db_exists", fmt::format("missing {}", pathUtf8(p)), T.ms());
+            R.addFail(kSuiteEdge, "db_exists", fmt::format("missing {}", pathUtf8(p)), dbCheck.ms());
         } else {
             R.addAction(kSuiteEdge, "db file exists");
-            R.addPass(kSuiteEdge, "db_under_save", pathUtf8(p), T.ms());
+            R.addPass(kSuiteEdge, "db_under_save", pathUtf8(p), dbCheck.ms());
         }
     } else {
+        ScopedTimer dbEmpty;
         R.addAction(kSuiteEdge, "dbPath empty branch");
-        R.addFail(kSuiteEdge, "db_path_empty", "CommitStore db path empty", T.ms());
+        R.addFail(kSuiteEdge, "db_path_empty", "CommitStore db path empty", dbEmpty.ms());
     }
 
     R.addAction(kSuiteEdge, fmt::format("unicode roundtrip prepare delete {}", kZipEx));
+    ScopedTimer unicodeRoundtrip;
     st.deleteLevel(kZipEx);
     R.addAction(kSuiteEdge, "commit unicode_setup kZipEx");
     if (!git.commit(kZipEx, "unicode_path", levelAt(7)).ok) {
-        R.addFail(kSuiteEdge, "unicode_setup", "commit failed", T.ms());
+        R.addFail(kSuiteEdge, "unicode_setup", "commit failed", unicodeRoundtrip.ms());
         return;
     }
     std::filesystem::path unicodeFile = testDir / std::filesystem::path(std::u8string(u8"at_\u0442\u0435\u0441\u0442.gdge"));
     R.addAction(kSuiteEdge, fmt::format("unicode export {}", pathUtf8(unicodeFile)));
     if (auto ex = git.exportLevelToGdge(kZipEx, unicodeFile); !ex.ok) {
-        R.addSkip(kSuiteEdge, "unicode_export", ex.error, T.ms());
+        R.addSkip(kSuiteEdge, "unicode_export", ex.error, unicodeRoundtrip.ms());
     } else {
         R.addAction(kSuiteEdge, "unicode importMany kMix");
         auto imp = git.importManyFromGdge(kMix, { unicodeFile });
         if (!imp.ok) {
-            R.addFail(kSuiteEdge, "unicode_import", imp.error, T.ms());
+            R.addFail(kSuiteEdge, "unicode_import", imp.error, unicodeRoundtrip.ms());
         } else {
-            R.addPass(kSuiteEdge, "unicode_roundtrip", pathUtf8(unicodeFile), T.ms());
+            R.addPass(kSuiteEdge, "unicode_roundtrip", pathUtf8(unicodeFile), unicodeRoundtrip.ms());
         }
     }
 
     R.addAction(kSuiteEdge, fmt::format("first commit reconstruct test delete {}", kHistDst));
+    ScopedTimer firstCommitOnly;
     st.deleteLevel(kHistDst);
     R.addAction(kSuiteEdge, "commit root_only kHistDst");
     auto firstCommit = git.commit(kHistDst, "root_only", levelAt(0));
     if (!firstCommit.ok) {
-        R.addFail(kSuiteEdge, "first_commit", firstCommit.error, T.ms());
+        R.addFail(kSuiteEdge, "first_commit", firstCommit.error, firstCommitOnly.ms());
         return;
     }
     R.addAction(kSuiteEdge, fmt::format("commit id {}", firstCommit.value));
 
-    auto recon = git.reconstruct(firstCommit.value);
-    if (!recon) {
-        R.addFail(kSuiteEdge, "reconstruct_first", "failed", T.ms());
+    ScopedTimer reconstructRoot;
+    auto reconstructed = git.reconstruct(firstCommit.value);
+    if (!reconstructed) {
+        R.addFail(kSuiteEdge, "reconstruct_first", "failed", reconstructRoot.ms());
         return;
     }
-    R.addPass(kSuiteEdge, "first_commit_recon", "root reconstruct OK", T.ms());
+    R.addPass(kSuiteEdge, "first_commit_recon", "root reconstruct OK", reconstructRoot.ms());
 
     R.addAction(kSuiteEdge, fmt::format("deleteLevel fresh {}", kHistDst));
+    ScopedTimer deleteFresh;
     st.deleteLevel(kHistDst);
-    R.addPass(kSuiteEdge, "delete_level", "fresh key after deleteLevel", T.ms());
+    R.addPass(kSuiteEdge, "delete_level", "fresh key after deleteLevel", deleteFresh.ms());
 }
 
 } // namespace git_editor
