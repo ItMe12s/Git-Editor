@@ -10,6 +10,12 @@ Crossing these versions will result in a database wipe:
 
 - Failed exports may leave a `.tmp` zip next to the destination, compressed export also builds a `.sqlite-tmp` that is removed after packing. Incomplete runs are less likely to delete the existing `.gdge` before the new file is safely in place.
 
+## 1.0.0-beta.8
+
+- Added automated test suite, button in settings menu.
+- Increased state cache size.
+- Internal improvements like reusing prepared statement and level parser optimization. You can read more technical changes on GitHub.
+
 ## 1.0.0-beta.7
 
 - SQLite prepared statements finalized on all paths where it mattered, new commits that advance HEAD persist insert + HEAD in one transaction.
