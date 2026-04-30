@@ -44,6 +44,14 @@
 			"description": "Compress exported .gdge files using zip. Imported files are detected automatically regardless of compression.",
 			"type": "bool",
 			"default": true
+		},
+		"run-automated-test": {
+			"type": "button",
+			"name": "Run Automated Test",
+			"description": "Runs service-level checks (see testing-checklist.md). Writes test-result.txt in mod save data directory.",
+			"buttons": {
+				"run": "Run Automated Test"
+			}
 		}
 	}
 }
