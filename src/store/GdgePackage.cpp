@@ -24,7 +24,7 @@ namespace {
 using SqlitePtr = sqlite3*;
 using SqliteStmtPtr = sqlite3_stmt*;
 
-std::int64_t nowSeconds() {
+std::int64_t gdgePackageNowSeconds() {
     using namespace std::chrono;
     return duration_cast<seconds>(system_clock::now().time_since_epoch()).count();
 }
@@ -152,7 +152,7 @@ bool writeGdgePackageSqlite(std::filesystem::path const& outPath,
               );
 
     if (ok) {
-        std::int64_t exportedAt = data.metadata.exportedAt > 0 ? data.metadata.exportedAt : nowSeconds();
+        std::int64_t exportedAt = data.metadata.exportedAt > 0 ? data.metadata.exportedAt : gdgePackageNowSeconds();
         ok = setMeta(db, "format_version", data.metadata.formatVersion)
           && setMeta(db, "root_hash", data.metadata.rootHash)
           && setMeta(db, "source_level_key", data.metadata.sourceLevelKey)

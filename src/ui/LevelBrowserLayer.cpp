@@ -31,15 +31,15 @@ namespace git_editor {
 
 namespace {
 
-constexpr float kPopupWidth     = 420.f;
-constexpr float kPopupHeight    = 280.f;
-constexpr float kListPadX       = 20.f;
-constexpr float kListPadTop     = 36.f;
-constexpr float kListPadBottom  = 16.f;
-constexpr float kRowHeight      = 50.f;
+constexpr float browserPopupWidth     = 420.f;
+constexpr float browserPopupHeight    = 280.f;
+constexpr float browserListPadX       = 20.f;
+constexpr float browserListPadTop     = 36.f;
+constexpr float browserListPadBottom  = 16.f;
+constexpr float browserRowHeight      = 50.f;
 constexpr float kRowMenuWidth   = 144.f;
 
-bool canApplyEditorResult(LevelEditorLayer* editor) {
+bool browserCanApplyEditorResult(LevelEditorLayer* editor) {
     return editor != nullptr && editor->getParent() != nullptr;
 }
 
@@ -68,7 +68,7 @@ bool LevelBrowserLayer::init(
     m_editor     = editor;
     m_pauseLayer = pauseLayer;
 
-    if (!Popup::init(kPopupWidth, kPopupHeight)) {
+    if (!Popup::init(browserPopupWidth, browserPopupHeight)) {
         return false;
     }
 
@@ -91,8 +91,8 @@ bool LevelBrowserLayer::init(
         );
     }
 
-    float const innerW = kPopupWidth - kListPadX * 2.f;
-    float const innerH = kPopupHeight - kListPadTop - kListPadBottom;
+    float const innerW = browserPopupWidth - browserListPadX * 2.f;
+    float const innerH = browserPopupHeight - browserListPadTop - browserListPadBottom;
 
     m_scroll = ScrollLayer::create({innerW, innerH});
     m_scroll->setID("git-editor-levels-scroll"_spr);
@@ -181,11 +181,11 @@ void LevelBrowserLayer::renderList(std::vector<LevelSummary> levels) {
     for (auto const& lv : levels) {
         auto row = CCNode::create();
         row->setID("git-editor-levels-row"_spr);
-        row->setContentSize({rowWidth, kRowHeight});
+        row->setContentSize({rowWidth, browserRowHeight});
         row->setAnchorPoint({0.f, 0.f});
         row->setLayout(AnchorLayout::create());
 
-        auto bg = CCLayerColor::create({0, 0, 0, 60}, rowWidth, kRowHeight);
+        auto bg = CCLayerColor::create({0, 0, 0, 60}, rowWidth, browserRowHeight);
         bg->ignoreAnchorPointForPosition(false);
         bg->setAnchorPoint({.5f, .5f});
         row->addChildAtPosition(bg, Anchor::Center);
@@ -209,7 +209,7 @@ void LevelBrowserLayer::renderList(std::vector<LevelSummary> levels) {
 
         auto menu = CCMenu::create();
         menu->setID("git-editor-levels-row-menu"_spr);
-        menu->setContentSize({kRowMenuWidth, kRowHeight});
+        menu->setContentSize({kRowMenuWidth, browserRowHeight});
         menu->setAnchorPoint({1.f, .5f});
         menu->setLayout(
             RowLayout::create()
@@ -271,7 +271,7 @@ void LevelBrowserLayer::renderList(std::vector<LevelSummary> levels) {
                                     )->show();
                                     return;
                                 }
-                                if (!canApplyEditorResult(editor)) {
+                                if (!browserCanApplyEditorResult(editor)) {
                                     Notification::create(
                                         "Load succeeded but editor is no longer active",
                                         NotificationIcon::Warning

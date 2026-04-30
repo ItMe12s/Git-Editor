@@ -52,18 +52,18 @@ std::vector<CommitId> selectedOldestFirst(
     return ids;
 }
 
-constexpr float kPopupWidth    = 420.f;
-constexpr float kPopupHeight   = 280.f;
-constexpr float kListPadX      = 20.f;
-constexpr float kListPadTop    = 36.f;
-constexpr float kListPadBottom = 16.f;
-constexpr float kRowHeight     = 46.f;
+constexpr float histPopupWidth    = 420.f;
+constexpr float histPopupHeight   = 280.f;
+constexpr float histListPadX      = 20.f;
+constexpr float histListPadTop    = 36.f;
+constexpr float histListPadBottom = 16.f;
+constexpr float histRowHeight     = 46.f;
 constexpr ccColor3B kAddColor  = {64, 227, 72};
 constexpr ccColor3B kModColor  = {50, 200, 255};
 constexpr ccColor3B kDelColor  = {255, 90, 90};
 constexpr ccColor3B kHdrColor  = {255, 210, 70};
 
-bool canApplyEditorResult(LevelEditorLayer* editor) {
+bool histCanApplyEditorResult(LevelEditorLayer* editor) {
     return editor != nullptr && editor->getParent() != nullptr;
 }
 
@@ -140,7 +140,7 @@ bool HistoryLayer::init(
     LevelEditorLayer* editor,
     EditorPauseLayer* pauseLayer
 ) {
-    if (!Popup::init(kPopupWidth, kPopupHeight)) return false;
+    if (!Popup::init(histPopupWidth, histPopupHeight)) return false;
 
     m_levelKey   = std::move(levelKey);
     m_editor     = editor;
@@ -148,8 +148,8 @@ bool HistoryLayer::init(
 
     this->setTitle("History");
 
-    float const innerW = kPopupWidth  - kListPadX * 2.f;
-    float const innerH = kPopupHeight - kListPadTop - kListPadBottom;
+    float const innerW = histPopupWidth  - histListPadX * 2.f;
+    float const innerH = histPopupHeight - histListPadTop - histListPadBottom;
 
     m_scroll = ScrollLayer::create({innerW, innerH});
     m_scroll->setID("git-editor-history-scroll"_spr);
@@ -288,11 +288,11 @@ void HistoryLayer::renderList(std::vector<CommitSummary> loadedCommits) {
     for (auto const& c : commits) {
         auto row = CCNode::create();
         row->setID("git-editor-history-row"_spr);
-        row->setContentSize({rowWidth, kRowHeight});
+        row->setContentSize({rowWidth, histRowHeight});
         row->setAnchorPoint({0.f, 0.f});
         row->setLayout(AnchorLayout::create());
 
-        auto bg = CCLayerColor::create({0, 0, 0, 60}, rowWidth, kRowHeight);
+        auto bg = CCLayerColor::create({0, 0, 0, 60}, rowWidth, histRowHeight);
         bg->ignoreAnchorPointForPosition(false);
         bg->setAnchorPoint({.5f, .5f});
         row->addChildAtPosition(bg, Anchor::Center);
@@ -346,7 +346,7 @@ void HistoryLayer::renderList(std::vector<CommitSummary> loadedCommits) {
 
         auto menu = CCMenu::create();
         menu->setID("git-editor-history-row-menu"_spr);
-        menu->setContentSize({210.f, kRowHeight});
+        menu->setContentSize({210.f, histRowHeight});
         menu->setAnchorPoint({1.f, .5f});
         menu->setLayout(
             RowLayout::create()
@@ -472,7 +472,7 @@ void HistoryLayer::applyAndNotify(
     bool              hasConflicts,
     bool              closeAndResume
 ) {
-    if (!canApplyEditorResult(editor)) {
+    if (!histCanApplyEditorResult(editor)) {
         Notification::create(
             (std::string(noun) + " succeeded but editor is no longer active").c_str(),
             NotificationIcon::Warning

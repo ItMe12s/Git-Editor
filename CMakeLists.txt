@@ -8,11 +8,34 @@ else()
 endif()
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 
-project(GitEditor VERSION 1.0.0)
+project(GitEditor VERSION 1.0.0 LANGUAGES C CXX)
 
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS src/*.cpp)
+
+add_library(sqlite3 STATIC src/sqlite/sqlite3.c)
+target_include_directories(sqlite3 PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/sqlite)
+target_compile_definitions(sqlite3 PRIVATE
+    SQLITE_THREADSAFE=1
+    SQLITE_DEFAULT_MEMSTATUS=0
+    SQLITE_DQS=0
+    SQLITE_OMIT_LOAD_EXTENSION
+    SQLITE_OMIT_DEPRECATED
+)
+set_target_properties(sqlite3 PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 add_library(${PROJECT_NAME} SHARED ${SOURCES})
 target_include_directories(${PROJECT_NAME} PRIVATE src)
+target_link_libraries(${PROJECT_NAME} sqlite3)
+
+set_target_properties(${PROJECT_NAME} PROPERTIES
+    UNITY_BUILD ON
+    UNITY_BUILD_BATCH_SIZE 12
+)
+
+if(MSVC)
+    target_compile_options(${PROJECT_NAME} PRIVATE /MP)
+endif()
 
 if (NOT DEFINED ENV{GEODE_SDK})
     message(FATAL_ERROR "Unable to find Geode SDK! Please define GEODE_SDK environment variable to point to Geode")
@@ -22,12 +45,13 @@ endif()
 
 add_subdirectory($ENV{GEODE_SDK} ${CMAKE_CURRENT_BINARY_DIR}/geode)
 
-# Vendored SQLite 3.53.0 amalgamation (src/sqlite/).
-target_sources(${PROJECT_NAME} PRIVATE src/sqlite/sqlite3.c)
-target_include_directories(${PROJECT_NAME} PRIVATE src/sqlite)
-
-find_package(ZLIB QUIET)
+find_package(ZLIB CONFIG QUIET)
 if(NOT ZLIB_FOUND)
+    find_package(ZLIB QUIET)
+endif()
+if(TARGET ZLIB::ZLIB)
+    target_link_libraries(${PROJECT_NAME} ZLIB::ZLIB)
+else()
     include(FetchContent)
     FetchContent_Declare(
         zlib
@@ -41,17 +65,6 @@ if(NOT ZLIB_FOUND)
         set_target_properties(zlibstatic PROPERTIES POSITION_INDEPENDENT_CODE ON)
     endif()
     target_link_libraries(${PROJECT_NAME} zlibstatic)
-else()
-    target_link_libraries(${PROJECT_NAME} ZLIB::ZLIB)
 endif()
-
-# Tiny build profile. JSON1 and serialize/deserialize stay on by default.
-target_compile_definitions(${PROJECT_NAME} PRIVATE
-    SQLITE_THREADSAFE=1
-    SQLITE_DEFAULT_MEMSTATUS=0
-    SQLITE_DQS=0
-    SQLITE_OMIT_LOAD_EXTENSION
-    SQLITE_OMIT_DEPRECATED
-)
 
 setup_geode_mod(${PROJECT_NAME})

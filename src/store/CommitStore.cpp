@@ -20,7 +20,7 @@ namespace git_editor {
 
 namespace {
 
-std::int64_t nowSeconds() {
+std::int64_t commitStoreNowSeconds() {
     using namespace std::chrono;
     return duration_cast<seconds>(system_clock::now().time_since_epoch()).count();
 }
@@ -220,7 +220,7 @@ std::optional<CommitId> CommitStore::insert(
     std::string const&      message,
     std::string const&      deltaBlob
 ) {
-    return this->insertAt(levelKey, parent, reverts, message, nowSeconds(), deltaBlob);
+    return this->insertAt(levelKey, parent, reverts, message, commitStoreNowSeconds(), deltaBlob);
 }
 
 std::optional<CommitId> CommitStore::insertAndSetHead(
@@ -236,7 +236,7 @@ std::optional<CommitId> CommitStore::insertAndSetHead(
     commit_schema::DeferredFkTransaction tx(m_db);
     if (!tx.begin()) return std::nullopt;
 
-    auto const id = this->insertAt(canonicalKey, parent, reverts, message, nowSeconds(), deltaBlob);
+    auto const id = this->insertAt(canonicalKey, parent, reverts, message, commitStoreNowSeconds(), deltaBlob);
     if (!id) {
         tx.rollback();
         return std::nullopt;
@@ -378,7 +378,7 @@ std::optional<CommitId> CommitStore::squash(
     // position in DESC-by-time list. Otherwise the squash jumps to the top
     // and rows above it become misclickable (revert hits squash instead of
     // intended newer commit).
-    std::int64_t squashCreatedAt = nowSeconds();
+    std::int64_t squashCreatedAt = commitStoreNowSeconds();
     if (auto newestRow = this->get(newest)) {
         squashCreatedAt = newestRow->createdAt;
     }

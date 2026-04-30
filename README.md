@@ -37,6 +37,7 @@ A Geometry Dash (Geode SDK) mod: per-level commit history, checkout/revert/squas
 
 ## Build
 
-- **SQLite 3.53.0** is vendored at `src/sqlite/sqlite3.c` and compiled directly into the mod. See [CMakeLists.txt](CMakeLists.txt).
-- **ZLIB** is required for blob decompression/compression (system `ZLIB`, or CMake FetchContent to zlib 1.3.2 if not found).
+- **SQLite 3.53.0** is vendored at `src/sqlite/sqlite3.c`, built as a static library and linked into the mod. See [CMakeLists.txt](CMakeLists.txt).
+- **ZLIB** is required for blob decompression/compression (CMake `find_package(ZLIB)` first, including CONFIG mode for vcpkg-style installs, FetchContent to zlib 1.3.2 if no suitable target is found).
+- **CLI builds**: Prefer Ninja (`cmake -G Ninja ...`) and a high parallel job count (`cmake --build . -j <cores>` or `CMAKE_BUILD_PARALLEL_LEVEL`) for faster incremental compiles.
 - For manual testing, see [testing-checklist.md](testing-checklist.md).
