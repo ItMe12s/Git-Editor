@@ -12,7 +12,7 @@ Crossing these versions will result in a database wipe:
 
 ## 1.0.0-beta.8
 
-- Added automated test suite, button in settings menu.
+- Added automated test, check settings menu.
 - Increased state cache size.
 - Internal improvements like reusing prepared statement and level parser optimization. You can read more technical changes on GitHub.
 
