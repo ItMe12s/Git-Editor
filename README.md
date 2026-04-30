@@ -1,26 +1,22 @@
 # Git Editor
 
-A Geometry Dash (Geode SDK) mod: per-level commit history, checkout/revert/squash, level browser, and `.gdge` import/export/merge. Normal user info in [about.md](about.md). Full release history in [changelog.md](changelog.md).
+A Geometry Dash (Geode SDK) mod: per-level commit history, checkout/revert/squash, level browser, and `.gdge` import/export/merge. Normal user info in [about.md](about.md).
 
-## Core model
+## Other info not in about.md
 
 - Linear history per level key, no branches.
 - Commits store a JSON `Delta` against the parent in `git-editor.db` (under the mod save directory).
 - Delta keys: `h` (header), `+` (adds), `-` (removes), `~` (modifies).
 - State reconstruction replays from root to HEAD, with an in-memory state cache (default capacity 64, if the map is at capacity, inserting a new commit id clears the entire cache, see [StateCache.hpp](src/service/StateCache.hpp)).
 - `GitService` returns [`Result<T>`](src/service/Result.hpp) (success payload in `value`, failure message in `error`). Payload structs in [GitService.hpp](src/service/GitService.hpp) group multi-field outcomes (e.g. revert with conflicts, multi-file `.gdge` import stats).
-
-## Other info not in about.md
-
 - Checkout is forward-only: inserts a new commit with `diff(HEAD, target)`.
 - Revert applies `diff(target, target.parent)` onto current HEAD, reports conflicts.
 - Squash requires 2+ contiguous selected commits.
 - Editor levels use `id:<n>` as the level key, from **cvolton.level-id-api** (see [mod.json](mod.json) dependencies and `levelKeyFor` in the source).
-- Heavy git/DB work is serialized on a worker via `postToGitWorker` (see [GitWorker.cpp](src/util/GitWorker.cpp)). History (`listSummaries`) and Levels (`listLevels`), plus commit rename in History, load on that worker so the pause menu stays responsive on large histories. Other main-thread calls to the store may still exist (e.g. quick delta preview from a row). See `CommitStore` and the worker header.
+- Heavy git/DB operations run on a worker thread (`postToGitWorker`, see [GitWorker.cpp](src/util/GitWorker.cpp)) to keep the UI responsive. Some quick store calls may still run on the main thread.
 - New commits that update HEAD use a single SQLite transaction (`insert` + `refs` update) so a failed HEAD update does not leave a stray commit row.
 - [BlobCodec](src/util/BlobCodec.cpp) caps declared uncompressed size before allocating a decompression buffer (mitigates corrupt or hostile stored blobs). [DbZip](src/util/DbZip.cpp) replaces existing export paths with an atomic move on Windows (`MoveFileEx`) instead of delete-then-rename.
-- Path strings for logs, SQLite, and on-screen file names use `geode::utils::string::pathToString`, mostly through [`PathUtf8.hpp`](src/util/PathUtf8.hpp) (`DbZip` uses `pathToString` directly in one error string). The mod save directory is created with `geode::utils::file::createDirectoryAll` before opening `git-editor.db`.
-- The editor pause menu and History / Levels / commit message / delta popups set stable `imes.git-editor/…` node ids (mod-prefixed ids per Geode’s usual `"name"_spr` pattern) for compatibility, see [testing-checklist.md](testing-checklist.md).
+- Path strings for logs, SQLite, and on-screen file names use `geode::utils::string::pathToString`, mostly through [`PathUtf8.hpp`](src/util/PathUtf8.hpp) (`DbZip` uses `pathToString` directly in one error string).
 - [DbZip.cpp](src/util/DbZip.cpp) peeks the first 16 bytes to classify a file as SQLite, zip, or unknown (used for `.gdge` on disk, not the live DB path). The running mod stores history only in a plain `git-editor.db` file.
 
 ## TO-DO
@@ -39,5 +35,4 @@ A Geometry Dash (Geode SDK) mod: per-level commit history, checkout/revert/squas
 
 - **SQLite 3.53.0** is vendored at `src/sqlite/sqlite3.c`, built as a static library and linked into the mod. See [CMakeLists.txt](CMakeLists.txt).
 - **ZLIB** is required for blob decompression/compression (CMake `find_package(ZLIB)` first, including CONFIG mode for vcpkg-style installs, FetchContent to zlib 1.3.2 if no suitable target is found).
-- **CLI builds**: Prefer Ninja (`cmake -G Ninja ...`) and a high parallel job count (`cmake --build . -j <cores>` or `CMAKE_BUILD_PARALLEL_LEVEL`) for faster incremental compiles.
 - For manual testing, see [testing-checklist.md](testing-checklist.md).
