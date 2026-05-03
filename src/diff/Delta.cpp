@@ -14,15 +14,6 @@ namespace git_editor {
 
 namespace {
 
-bool parseIntKey(std::string_view s, int& out) {
-    if (s.empty()) return false;
-    int value = 0;
-    auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), value);
-    if (ec != std::errc() || ptr != s.data() + s.size()) return false;
-    out = value;
-    return true;
-}
-
 bool parseUInt64Full(std::string_view s, std::uint64_t& out) {
     if (s.empty()) return false;
     std::uint64_t value = 0;
@@ -35,7 +26,7 @@ bool parseUInt64Full(std::string_view s, std::uint64_t& out) {
 matjson::Value fieldMapToJson(FieldMap const& m) {
     auto obj = matjson::Value::object();
     for (auto const& [k, v] : m) {
-        obj.set(std::to_string(k), v);
+        obj.set(k, v);
     }
     return obj;
 }
@@ -46,12 +37,8 @@ FieldMap fieldMapFromJson(matjson::Value const& v) {
     for (auto const& entry : v) {
         auto key = entry.getKey();
         if (!key) continue;
-        int k = 0;
-        if (!parseIntKey(std::string_view(key->data(), key->size()), k)) {
-            continue;
-        }
         auto asStr = entry.asString();
-        if (asStr.isOk()) out.emplace(k, asStr.unwrap());
+        if (asStr.isOk()) out.emplace(std::string(key->data(), key->size()), asStr.unwrap());
     }
     return out;
 }
@@ -103,25 +90,21 @@ FieldChange fieldChangeFromJson(matjson::Value const& v) {
     return c;
 }
 
-matjson::Value headerChangesToJson(std::map<int, FieldChange> const& hc) {
+matjson::Value headerChangesToJson(std::map<std::string, FieldChange> const& hc) {
     auto obj = matjson::Value::object();
     for (auto const& [k, c] : hc) {
-        obj.set(std::to_string(k), fieldChangeToJson(c));
+        obj.set(k, fieldChangeToJson(c));
     }
     return obj;
 }
 
-std::map<int, FieldChange> headerChangesFromJson(matjson::Value const& v) {
-    std::map<int, FieldChange> out;
+std::map<std::string, FieldChange> headerChangesFromJson(matjson::Value const& v) {
+    std::map<std::string, FieldChange> out;
     if (!v.isObject()) return out;
     for (auto const& entry : v) {
         auto key = entry.getKey();
         if (!key) continue;
-        int k = 0;
-        if (!parseIntKey(std::string_view(key->data(), key->size()), k)) {
-            continue;
-        }
-        out.emplace(k, fieldChangeFromJson(entry));
+        out.emplace(std::string(key->data(), key->size()), fieldChangeFromJson(entry));
     }
     return out;
 }
@@ -131,7 +114,7 @@ matjson::Value modifyToJson(Delta::Modify const& m) {
     obj.set("uuid", std::to_string(m.uuid));
     auto fields = matjson::Value::object();
     for (auto const& [k, c] : m.fields) {
-        fields.set(std::to_string(k), fieldChangeToJson(c));
+        fields.set(k, fieldChangeToJson(c));
     }
     obj.set("fields", fields);
     return obj;
@@ -157,25 +140,20 @@ Delta::Modify modifyFromJson(matjson::Value const& v) {
             for (auto const& entry : fields) {
                 auto key = entry.getKey();
                 if (!key) continue;
-                int k = 0;
-                if (!parseIntKey(std::string_view(key->data(), key->size()), k)) {
-                    continue;
-                }
-                m.fields.emplace(k, fieldChangeFromJson(entry));
+                m.fields.emplace(std::string(key->data(), key->size()), fieldChangeFromJson(entry));
             }
         }
     }
     return m;
 }
 
-std::string fieldKeyName(int k) {
-    using namespace key;
-    if (k == kType)     return "type";
-    if (k == kX)        return "x";
-    if (k == kY)        return "y";
-    if (k == kRotation) return "rotation";
-    if (k == kGroups)   return "groups";
-    return "field " + std::to_string(k);
+std::string fieldKeyName(std::string const& k) {
+    if (k == key::kType)     return "type";
+    if (k == key::kX)        return "x";
+    if (k == key::kY)        return "y";
+    if (k == key::kRotation) return "rotation";
+    if (k == key::kGroups)   return "groups";
+    return "field " + k;
 }
 
 } // namespace

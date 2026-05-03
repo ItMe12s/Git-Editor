@@ -16,12 +16,12 @@ std::optional<LevelState> mergeStates3Way(
     LevelState merged = ours;
 
     auto mergeFieldMap = [&](FieldMap& target, FieldMap const& b, FieldMap const& o, FieldMap const& t) {
-        std::set<int> keys;
+        std::set<std::string> keys;
         for (auto const& [k, _] : b) keys.insert(k);
         for (auto const& [k, _] : o) keys.insert(k);
         for (auto const& [k, _] : t) keys.insert(k);
-        for (int k : keys) {
-            auto get = [](FieldMap const& m, int key) -> std::string {
+        for (auto const& k : keys) {
+            auto get = [](FieldMap const& m, std::string const& key) -> std::string {
                 auto it = m.find(key);
                 return it == m.end() ? "" : it->second;
             };

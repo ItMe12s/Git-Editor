@@ -7,8 +7,8 @@ namespace git_editor {
 namespace {
 
 // Missing key modeled as empty string, absent and empty-string merge. True presence distinction would need extra state.
-std::map<int, FieldChange> diffFields(FieldMap const& a, FieldMap const& b) {
-    std::map<int, FieldChange> out;
+std::map<std::string, FieldChange> diffFields(FieldMap const& a, FieldMap const& b) {
+    std::map<std::string, FieldChange> out;
 
     auto itA = a.begin();
     auto itB = b.begin();
@@ -95,21 +95,21 @@ LevelState apply(LevelState base, Delta const& d, std::vector<Conflict>* out) {
         std::string current = (it != base.header.end()) ? it->second : "";
         if (current != c.before) {
             report({ Conflict::Kind::ModifyStale, 0, k,
-                "header field " + std::to_string(k) + " drifted" });
+                "header field " + k + " drifted" });
         }
         if (c.after.empty()) base.header.erase(k);
         else                 base.header[k] = c.after;
     }
     if (d.rawHeaderChange.has_value()) {
         if (base.rawHeader != d.rawHeaderChange->before) {
-            report({ Conflict::Kind::ModifyStale, 0, 0, "raw header drifted" });
+            report({ Conflict::Kind::ModifyStale, 0, "", "raw header drifted" });
         }
         base.rawHeader = d.rawHeaderChange->after;
     }
 
     for (auto const& o : d.adds) {
         if (base.objects.contains(o.uuid)) {
-            report({ Conflict::Kind::AddAlreadyExists, o.uuid, 0,
+            report({ Conflict::Kind::AddAlreadyExists, o.uuid, "",
                 "object already present, add skipped" });
             continue;
         }
@@ -119,7 +119,7 @@ LevelState apply(LevelState base, Delta const& d, std::vector<Conflict>* out) {
     for (auto const& o : d.removes) {
         auto it = base.objects.find(o.uuid);
         if (it == base.objects.end()) {
-            report({ Conflict::Kind::Missing, o.uuid, 0,
+            report({ Conflict::Kind::Missing, o.uuid, "",
                 "object already removed, remove skipped" });
             continue;
         }
@@ -129,7 +129,7 @@ LevelState apply(LevelState base, Delta const& d, std::vector<Conflict>* out) {
     for (auto const& m : d.modifies) {
         auto it = base.objects.find(m.uuid);
         if (it == base.objects.end()) {
-            report({ Conflict::Kind::Missing, m.uuid, 0,
+            report({ Conflict::Kind::Missing, m.uuid, "",
                 "target of modify is gone, modify skipped" });
             continue;
         }
@@ -139,7 +139,7 @@ LevelState apply(LevelState base, Delta const& d, std::vector<Conflict>* out) {
             std::string current = (fit != fields.end()) ? fit->second : "";
             if (current != c.before) {
                 report({ Conflict::Kind::ModifyStale, m.uuid, k,
-                    "field " + std::to_string(k) + " drifted since commit" });
+                    "field " + k + " drifted since commit" });
                 continue;
             }
             if (c.after.empty()) fields.erase(k);

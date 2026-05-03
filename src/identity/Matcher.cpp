@@ -32,7 +32,7 @@ ObjectUuid freshUuid() {
     return v;
 }
 
-double parseDoubleOr(FieldMap const& m, int key, double fallback) {
+double parseDoubleOr(FieldMap const& m, std::string const& key, double fallback) {
     auto it = m.find(key);
     if (it == m.end() || it->second.empty()) return fallback;
     auto const& s = it->second;
@@ -46,7 +46,7 @@ double parseDoubleOr(FieldMap const& m, int key, double fallback) {
     return out;
 }
 
-std::string fieldOrEmpty(FieldMap const& m, int key) {
+std::string fieldOrEmpty(FieldMap const& m, std::string const& key) {
     auto it = m.find(key);
     return (it == m.end()) ? std::string{} : it->second;
 }
