@@ -7,8 +7,8 @@
 		"ios": "2.2081"
 	},
 	"id": "imes.git-editor",
-	"name": "Git Editor (Level/Collab Merger, History, Backups)",
-	"version": "v1.0.0-beta.9",
+	"name": "Git Editor (Collab, History, Backup)",
+	"version": "v1.0.0-beta.10",
 	"developer": "imes",
 	"description": "Per-level commit history for the GD editor, collab merging, and more.",
 	"links": {

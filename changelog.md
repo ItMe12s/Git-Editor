@@ -11,6 +11,16 @@ Crossing these versions will result in a database wipe:
 - Failed exports may leave a `.tmp` zip next to the destination, compressed export also builds a `.sqlite-tmp` that is removed after packing. Incomplete runs are less likely to delete the existing `.gdge` before the new file is safely in place.
 - Some updates will not be able to properly read old `.gdge` files.
 
+---
+
+## 1.0.0-beta.10
+
+Going forward, I'll be adding auto-migrations once the mod leaves beta.
+However, migration scripts likely won't be needed as the save format is now finalized.
+TL;DR You can daily drive this mod.
+
+- New icon and about page.
+
 ## 1.0.0-beta.9
 
 - Fixed crash when opening "Edit Object" on a startpos (actually any objects that uses kA*/kS*/whatever) after a revert or checkout.

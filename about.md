@@ -1,8 +1,7 @@
 # <c-FFF9C4>G</c><c-FFF59D>i</c><c-FFF176>t</c> <c-FFEE58>E</c><c-FFEB3B>d</c><c-FDD835>i</c><c-FBC02D>t</c><c-F9A825>o</c><c-F57F17>r</c>
 
-**A real diff-based history for the editor.
-Every commit stores a delta against its parent,
-so you can revert a change without reverting the whole level.**
+**A real diff-based history for the editor,
+so you can undo a change without reverting the whole level.**
 
 **CHECK CHANGELOG BEFORE UPDATING!!!** Read at the bottom for collab guide.
 
@@ -12,50 +11,53 @@ so you can revert a change without reverting the whole level.**
 
 **All of these are in the editor pause menu at the top :3**
 
-### Commit: name and save your changes into a delta snapshot in the history
+### Commit
 
+Name and save your changes into a delta snapshot in the history.
 I recommend committing small changes like adding deco, triggers, buffing a section instead of doing one big commit.
 
-### History: a list of all commits for the level you're in
+### History
 
+A list of all commits for the level you're in.
 Long histories may briefly show **Loading commits...** while the list prepares.
 
 - **Revert**: undo a commit without undoing other ones.
 - **Checkout**: load a commit's state into the editor, you can revert this after you're done *checking out.* Heh.
 - **Squash**: combine adjacent commits into a single commit.
 
-### Levels: a list of all levels with a commit history
+### Levels
 
+A list of all levels with a commit history.
 Having a lot of levels can show **Loading levels...** for a moment.
 
 - **Load**: overwrite the current level data with the data and history from another level.
 - **Delete**: permanently delete the history of the selected level.
 
-### Merge: combine multiple databases (levels)
+### Merge
 
-- **.gdge**: Geometry Dash Git Editor mod's custom file format.
+Combine multiple levels (databases) into one.
+
+- **.gdge**: it stands for Geometry Dash Git Editor
 - **Export/Import**: export current level history to `.gdge` and import the same `.gdge` but modified and it will try to use smart merge.
 - **3-Way Merge**: the mod understands the base of your level and resolves conflicts for you. (does NOT fix bad collab hosts giving out incorrect color channel and group id).
 
-Everything is saved offline as a SQLite database inside the mod save folder (`git-editor.db`). Exported `.gdge` files are compressed with zip by default to save disk space, which can be toggled in the mod settings under "Compress Export Files". Imported `.gdge` files are detected automatically, both compressed and uncompressed work.
+Everything is saved offline as a SQLite database inside the mod save folder (`git-editor.db`). Exported `.gdge` files are compressed with zip by default to save disk space.
 
 ---
 
 ## Some Examples
 
 - **Time travel**: you can checkout an earlier commit to go back in time, make a change, and commit it. Then you can revert the checkout to *rewrite history* with that new commit. Also squash them into one commit.
-- **Backup mod**: keep a full history of your levels (Pro tip: You can zip/compress `git-editor.db` so its 10% of the size and you can put it anywhere like Google Drive or Discord).
+- **Backup mod**: keep a full history of your levels (Pro tip: You can add `git-editor.db` to a zip file so its *10%* of the size and you can put it anywhere like Google Drive or Discord).
 
 ---
 
 ## Current Limits
 
-- **No branches, or rebasing yet...**
-  - Tho you can checkout -> copy objects -> revert checkout -> paste objects -> commit, this is a manual merge.
-- **Object identity**: across very large edits (overlapping stacks, bulk rotations) may create add+remove pairs instead of modifies.
-  - This is a cost-of-matching trade-off, not a correctness issue.
+- **No branches, or rebasing yet**: tho you can checkout -> copy objects -> revert checkout -> paste objects -> commit, this is a manual merge.
+- **Object identity**: large edits may show add+remove instead of modify, this isn't a bug.
 - **Commit messages**: capped at 120 characters.
-- **Breaking updates**: databases using an old format will be wiped if the mod updates with a new one (your actual level won't be deleted). So make sure to backup your database file first, this rarely happens unless there's a new massive feature. This is because I don't wanna make a migration script.
+- **No auto migration**: you can *contact me* on Discord for help. This will not be an issue once it's out of beta.
 
 ---
 
