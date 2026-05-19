@@ -3,6 +3,7 @@
 #include "../ui/CommitMessageLayer.hpp"
 #include "../ui/HistoryLayer.hpp"
 #include "../ui/LevelBrowserLayer.hpp"
+#include "../ui/common/GitUiActionRunner.hpp"
 #include "../util/GitWorker.hpp"
 #include "../util/LevelKey.hpp"
 #include "../util/PathUtf8.hpp"
@@ -96,6 +97,156 @@ std::string planBody(git_editor::ImportPlan const& plan) {
     addBucket("Skipped (unreadable)", plan.invalid);
     if (!body.empty()) body += "\nProceed?";
     return body;
+}
+
+void notifyCommitOutcome(git_editor::Result<git_editor::CommitId> const& outcome) {
+    if (outcome.ok) {
+        Notification::create("Committed", NotificationIcon::Success)->show();
+    } else {
+        Notification::create(
+            ("Commit failed: " + outcome.error).c_str(),
+            NotificationIcon::Error
+        )->show();
+    }
+}
+
+void notifyExportOutcome(git_editor::Result<void> const& outcome) {
+    if (!outcome.ok) {
+        Notification::create(
+            ("Export failed: " + outcome.error).c_str(),
+            NotificationIcon::Error
+        )->show();
+        return;
+    }
+    Notification::create("Exported .gdge", NotificationIcon::Success)->show();
+}
+
+void notifyImportMergeOutcome(
+    git_editor::Result<void> const& fin,
+    git_editor::ImportManyPayload const& payload
+) {
+    if (!fin.ok) {
+        Notification::create(
+            ("Editor merged but DB write failed: " + fin.error).c_str(),
+            NotificationIcon::Error
+        )->show();
+        return;
+    }
+    Notification::create(
+        fmt::format(
+            "Merged {} smart + {} sequential, conflicts {}, skipped {}",
+            payload.smartCount,
+            payload.sequentialCount,
+            payload.conflictCount,
+            payload.skippedCount
+        ).c_str(),
+        NotificationIcon::Success
+    )->show();
+}
+
+bool tryApplyImportMerge(LevelEditorLayer* editor, git_editor::LevelState const& state) {
+    if (!editor->getParent()) {
+        Notification::create(
+            "Merge ready but editor is no longer active, aborted before DB write",
+            NotificationIcon::Warning
+        )->show();
+        return false;
+    }
+    if (!git_editor::applyLevelState(editor, state)) {
+        Notification::create(
+            "Editor refused merge, aborted before DB write",
+            NotificationIcon::Warning
+        )->show();
+        return false;
+    }
+    return true;
+}
+
+void runImportMergeFinalize(git_editor::PendingMergeImport pending, git_editor::ImportManyPayload payload) {
+    git_editor::ui_action_runner::runWorkerResult<git_editor::Result<void>>(
+        [pending = std::move(pending), payload]() mutable {
+            return git_editor::sharedGitService().finalizeImportManyFromGdge(pending, payload.state);
+        },
+        [payload](git_editor::Result<void> fin) {
+            notifyImportMergeOutcome(fin, payload);
+        }
+    );
+}
+
+void runImportMergePrepare(
+    Ref<EditorPauseLayer> alive,
+    Ref<LevelEditorLayer> editorRef,
+    std::string levelKey,
+    std::vector<std::filesystem::path> paths
+) {
+    git_editor::ui_action_runner::runWorkerResult<git_editor::Prepared<git_editor::ImportManyPayload>>(
+        [levelKey, paths = std::move(paths)]() mutable {
+            return git_editor::sharedGitService().prepareImportManyFromGdge(levelKey, paths);
+        },
+        [alive, editorRef](git_editor::Prepared<git_editor::ImportManyPayload> prep) mutable {
+            auto* editorPtr = editorRef.data();
+            if (!alive || !editorPtr) return;
+            if (!prep.result.ok) {
+                Notification::create(
+                    ("Multi-merge failed: " + prep.result.error).c_str(),
+                    NotificationIcon::Error
+                )->show();
+                return;
+            }
+            if (!tryApplyImportMerge(editorPtr, prep.result.value.state)) return;
+            if (!prep.pendingMergeImport || prep.pendingMergeImport->commits.empty()) {
+                // No writes to replay (rare), editor already updated.
+                return;
+            }
+            auto payload = prep.result.value;
+            auto pending = std::move(*prep.pendingMergeImport);
+            runImportMergeFinalize(std::move(pending), payload);
+        }
+    );
+}
+
+void showImportPlanPopup(
+    Ref<EditorPauseLayer> alive,
+    Ref<LevelEditorLayer> editorRef,
+    std::string levelKey,
+    std::vector<std::filesystem::path> paths,
+    git_editor::ImportPlan plan
+) {
+    auto* editorPtr = editorRef.data();
+    if (!alive || !editorPtr) return;
+    if (plan.smart.empty() && plan.sequential.empty()) {
+        Notification::create(
+            "No valid .gdge files selected",
+            NotificationIcon::Error
+        )->show();
+        return;
+    }
+    createQuickPopup(
+        "Import plan",
+        planBody(plan).c_str(),
+        "Cancel", "Merge",
+        [alive, editorRef, levelKey, paths = std::move(paths)](FLAlertLayer*, bool yes) mutable {
+            auto* editorPtr = editorRef.data();
+            if (!yes || !alive || !editorPtr) return;
+            runImportMergePrepare(alive, editorRef, levelKey, std::move(paths));
+        }
+    );
+}
+
+void startImportGdgeFlow(
+    Ref<EditorPauseLayer> alive,
+    Ref<LevelEditorLayer> editorRef,
+    std::string levelKey,
+    std::vector<std::filesystem::path> paths
+) {
+    git_editor::ui_action_runner::runWorkerResult<git_editor::ImportPlan>(
+        [levelKey, paths]() {
+            return git_editor::sharedGitService().planImport(levelKey, paths);
+        },
+        [alive, editorRef, levelKey, paths = std::move(paths)](git_editor::ImportPlan plan) mutable {
+            showImportPlanPopup(alive, editorRef, levelKey, std::move(paths), std::move(plan));
+        }
+    );
 }
 
 } // namespace
@@ -220,21 +371,14 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
                     )->show();
                     return;
                 }
-                git_editor::postToGitWorker([levelKey = *levelKey, message, levelStr]() {
-                    auto outcome = git_editor::sharedGitService().commit(
-                        levelKey, message, levelStr
-                    );
-                    geode::queueInMainThread([outcome = std::move(outcome)]() {
-                        if (outcome.ok) {
-                            Notification::create("Committed", NotificationIcon::Success)->show();
-                        } else {
-                            Notification::create(
-                                ("Commit failed: " + outcome.error).c_str(),
-                                NotificationIcon::Error
-                            )->show();
-                        }
-                    });
-                });
+                git_editor::ui_action_runner::runWorkerResult<git_editor::Result<git_editor::CommitId>>(
+                    [levelKey = *levelKey, message, levelStr]() {
+                        return git_editor::sharedGitService().commit(levelKey, message, levelStr);
+                    },
+                    [](git_editor::Result<git_editor::CommitId> outcome) {
+                        notifyCommitOutcome(outcome);
+                    }
+                );
             }
         );
         if (popup) popup->show();
@@ -279,19 +423,14 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
                 auto pickedPath = picked.unwrap();
                 if (!pickedPath) return;
                 auto path = *pickedPath;
-                git_editor::postToGitWorker([levelKey, path]() {
-                    auto outcome = git_editor::sharedGitService().exportLevelToGdge(levelKey, path);
-                    geode::queueInMainThread([outcome = std::move(outcome)]() {
-                        if (!outcome.ok) {
-                            Notification::create(
-                                ("Export failed: " + outcome.error).c_str(),
-                                NotificationIcon::Error
-                            )->show();
-                            return;
-                        }
-                        Notification::create("Exported .gdge", NotificationIcon::Success)->show();
-                    });
-                });
+                git_editor::ui_action_runner::runWorkerResult<git_editor::Result<void>>(
+                    [levelKey, path]() {
+                        return git_editor::sharedGitService().exportLevelToGdge(levelKey, path);
+                    },
+                    [](git_editor::Result<void> outcome) {
+                        notifyExportOutcome(outcome);
+                    }
+                );
             }
         );
     }
@@ -304,7 +443,7 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
         geode::utils::file::FilePickOptions options;
         options.defaultPath = geode::Mod::get()->getSaveDir();
         options.filters.push_back({ "Git Editor Level Package", { "*.gdge" } });
-        Ref<GitEditorPauseHook> alive(this);
+        Ref<EditorPauseLayer> alive(this);
         Ref<LevelEditorLayer> editorRef(editor);
 
         geode::async::spawn(
@@ -320,93 +459,7 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
                 std::vector<std::filesystem::path> paths;
                 paths.reserve(picks.size());
                 for (auto const& p : picks) paths.push_back(p);
-                git_editor::postToGitWorker([alive, editorRef, levelKey, paths = std::move(paths)]() mutable {
-                    auto plan = git_editor::sharedGitService().planImport(levelKey, paths);
-                    geode::queueInMainThread(
-                        [alive, editorRef, levelKey, paths = std::move(paths), plan = std::move(plan)]() mutable {
-                            auto* editorPtr = editorRef.data();
-                            if (!alive || !editorPtr) return;
-                            if (plan.smart.empty() && plan.sequential.empty()) {
-                                Notification::create(
-                                    "No valid .gdge files selected",
-                                    NotificationIcon::Error
-                                )->show();
-                                return;
-                            }
-                            createQuickPopup(
-                                "Import plan",
-                                planBody(plan).c_str(),
-                                "Cancel", "Merge",
-                                [alive, editorRef, levelKey, paths = std::move(paths)](FLAlertLayer*, bool yes) mutable {
-                                    auto* editorPtr = editorRef.data();
-                                    if (!yes || !alive || !editorPtr) return;
-                                    git_editor::postToGitWorker(
-                                        [alive, editorRef, levelKey, paths = std::move(paths)]() mutable {
-                                            auto prep = git_editor::sharedGitService().prepareImportManyFromGdge(levelKey, paths);
-                                            geode::queueInMainThread([alive, editorRef, prep = std::move(prep)]() mutable {
-                                                auto* editorPtr = editorRef.data();
-                                                if (!alive || !editorPtr) return;
-                                                if (!prep.result.ok) {
-                                                    Notification::create(
-                                                        ("Multi-merge failed: " + prep.result.error).c_str(),
-                                                        NotificationIcon::Error
-                                                    )->show();
-                                                    return;
-                                                }
-                                                if (!editorPtr->getParent()) {
-                                                    Notification::create(
-                                                        "Merge ready but editor is no longer active, aborted before DB write",
-                                                        NotificationIcon::Warning
-                                                    )->show();
-                                                    return;
-                                                }
-                                                if (!git_editor::applyLevelState(editorPtr, prep.result.value.state)) {
-                                                    Notification::create(
-                                                        "Editor refused merge; aborted before DB write",
-                                                        NotificationIcon::Warning
-                                                    )->show();
-                                                    return;
-                                                }
-                                                if (!prep.pendingMergeImport || prep.pendingMergeImport->commits.empty()) {
-                                                    // No writes to replay (rare); editor already updated.
-                                                    return;
-                                                }
-                                                auto payload = prep.result.value;
-                                                auto pending = std::move(*prep.pendingMergeImport);
-                                                git_editor::postToGitWorker(
-                                                    [pending = std::move(pending), payload]() mutable {
-                                                        auto fin = git_editor::sharedGitService().finalizeImportManyFromGdge(
-                                                            pending, payload.state
-                                                        );
-                                                        geode::queueInMainThread([fin = std::move(fin), payload]() {
-                                                            if (!fin.ok) {
-                                                                Notification::create(
-                                                                    ("Editor merged but DB write failed: " + fin.error).c_str(),
-                                                                    NotificationIcon::Error
-                                                                )->show();
-                                                                return;
-                                                            }
-                                                            Notification::create(
-                                                                fmt::format(
-                                                                    "Merged {} smart + {} sequential, conflicts {}, skipped {}",
-                                                                    payload.smartCount,
-                                                                    payload.sequentialCount,
-                                                                    payload.conflictCount,
-                                                                    payload.skippedCount
-                                                                ).c_str(),
-                                                                NotificationIcon::Success
-                                                            )->show();
-                                                        });
-                                                    }
-                                                );
-                                            });
-                                        }
-                                    );
-                                }
-                            );
-                        }
-                    );
-                });
+                startImportGdgeFlow(alive, editorRef, levelKey, std::move(paths));
             }
         );
     }
