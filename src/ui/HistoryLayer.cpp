@@ -72,19 +72,10 @@ struct HistoryLoadResult {
     std::vector<CommitSummary> commits;
 };
 
-// On miss, retry with canonical-key repair, then with the active editor's key.
+// Canonical key is `id:{EditorIDs}` (no alias table today), so resolveOrCreateCanonicalKey is a
+// no-op and a repair branch would never fire. On miss, fall back only to the active editor's key.
 HistoryLoadResult loadHistory(LevelKey levelKey, LevelKey const& activeEditorLevelKey) {
     auto commits = sharedCommitStore().listSummaries(levelKey);
-    if (commits.empty()) {
-        auto const repairedKey = sharedCommitStore().resolveOrCreateCanonicalKey(levelKey);
-        if (repairedKey != levelKey) {
-            auto repairedCommits = sharedCommitStore().listSummaries(repairedKey);
-            if (!repairedCommits.empty()) {
-                levelKey = repairedKey;
-                commits  = std::move(repairedCommits);
-            }
-        }
-    }
     if (commits.empty() && !activeEditorLevelKey.empty() && activeEditorLevelKey != levelKey) {
         auto activeCommits = sharedCommitStore().listSummaries(activeEditorLevelKey);
         if (!activeCommits.empty()) {
@@ -463,38 +454,33 @@ void HistoryLayer::renderList(std::vector<CommitSummary> loadedCommits) {
     m_scroll->scrollToTop();
 }
 
-void HistoryLayer::applyAndNotify(
+bool HistoryLayer::tryApplyToEditor(
     char const*       noun,
-    char const*       pastTense,
     LevelEditorLayer* editor,
-    EditorPauseLayer* pauseLayer,
     LevelState const& state,
-    bool              hasConflicts,
-    bool              closeAndResume
+    bool              hasConflicts
 ) {
     if (!histCanApplyEditorResult(editor)) {
         Notification::create(
-            (std::string(noun) + " succeeded but editor is no longer active").c_str(),
+            (std::string(noun) + " ready but editor is no longer active, aborted before DB write").c_str(),
             NotificationIcon::Warning
         )->show();
-        return;
+        return false;
     }
     if (!applyLevelState(editor, state)) {
         Notification::create(
-            (std::string(noun) + " applied to DB but editor refused").c_str(),
+            (std::string(noun) + " ready but editor refused, aborted before DB write").c_str(),
             NotificationIcon::Warning
         )->show();
-    } else if (hasConflicts) {
+        return false;
+    }
+    if (hasConflicts) {
         Notification::create(
-            (std::string(pastTense) + " with conflicts").c_str(), NotificationIcon::Warning
+            (std::string(noun) + ": conflicts merged into editor state").c_str(),
+            NotificationIcon::Warning
         )->show();
-    } else {
-        Notification::create(pastTense, NotificationIcon::Success)->show();
     }
-    if (closeAndResume) {
-        this->onClose(nullptr);
-        if (pauseLayer) pauseLayer->onResume(nullptr);
-    }
+    return true;
 }
 
 void HistoryLayer::startCheckoutFlow(CommitId commitId, std::string const& commitMsg) {
@@ -514,21 +500,51 @@ void HistoryLayer::startCheckoutFlow(CommitId commitId, std::string const& commi
                 return;
             }
             if (!self) return;
-            ui_action_runner::runWorkerResult<Result<LevelState>>(
-                [levelKey, commitId]() { return sharedGitService().checkout(levelKey, commitId); },
-                [self, editorRef, pauseRef](Result<LevelState> outcome) mutable {
+            ui_action_runner::runWorkerResult<Prepared<LevelState>>(
+                [levelKey, commitId]() {
+                    return sharedGitService().prepareCheckout(levelKey, commitId);
+                },
+                [self, editorRef, pauseRef](Prepared<LevelState> prep) mutable {
                     if (!self) return;
-                    finishBusyAction(self->m_busy);
-                    if (!outcome.ok) {
+                    if (!prep.result.ok) {
+                        finishBusyAction(self->m_busy);
                         Notification::create(
-                            ("Checkout failed: " + outcome.error).c_str(), NotificationIcon::Error
+                            ("Checkout failed: " + prep.result.error).c_str(), NotificationIcon::Error
                         )->show();
                         return;
                     }
-                    self->applyAndNotify(
-                        "Checkout", "Checked out",
-                        editorRef.data(), pauseRef.data(),
-                        outcome.value, /*hasConflicts*/ false, /*closeAndResume*/ true
+                    if (!self->tryApplyToEditor("Checkout", editorRef.data(), prep.result.value, false)) {
+                        finishBusyAction(self->m_busy);
+                        return;
+                    }
+                    if (!prep.pendingHead) {
+                        // head == target short-circuit: nothing to persist.
+                        finishBusyAction(self->m_busy);
+                        Notification::create("Checked out", NotificationIcon::Success)->show();
+                        self->onClose(nullptr);
+                        if (pauseRef.data()) pauseRef.data()->onResume(nullptr);
+                        return;
+                    }
+                    LevelState applied = prep.result.value;
+                    PendingHeadUpdate pending = *prep.pendingHead;
+                    Ref<EditorPauseLayer> pauseLocal = pauseRef;
+                    ui_action_runner::runWorkerResult<Result<CommitId>>(
+                        [pending, applied]() {
+                            return sharedGitService().finalizeCheckout(pending, applied);
+                        },
+                        [self, pauseLocal](Result<CommitId> fin) mutable {
+                            if (self) finishBusyAction(self->m_busy);
+                            if (!fin.ok) {
+                                Notification::create(
+                                    ("Editor applied but DB write failed: " + fin.error + ". Re-commit to persist.").c_str(),
+                                    NotificationIcon::Error
+                                )->show();
+                                return;
+                            }
+                            Notification::create("Checked out", NotificationIcon::Success)->show();
+                            if (self) self->onClose(nullptr);
+                            if (pauseLocal.data()) pauseLocal.data()->onResume(nullptr);
+                        }
                     );
                 }
             );
@@ -553,24 +569,55 @@ void HistoryLayer::startRevertFlow(CommitId commitId, std::string const& commitM
                 return;
             }
             if (!self) return;
-            ui_action_runner::runWorkerResult<Result<RevertPayload>>(
-                [levelKey, commitId]() { return sharedGitService().revert(levelKey, commitId); },
-                [self, editorRef, pauseRef](Result<RevertPayload> outcome) mutable {
+            ui_action_runner::runWorkerResult<Prepared<RevertPayload>>(
+                [levelKey, commitId]() {
+                    return sharedGitService().prepareRevert(levelKey, commitId);
+                },
+                [self, editorRef, pauseRef](Prepared<RevertPayload> prep) mutable {
                     if (!self) return;
-                    finishBusyAction(self->m_busy);
-                    if (!outcome.ok) {
+                    if (!prep.result.ok) {
+                        finishBusyAction(self->m_busy);
                         Notification::create(
-                            ("Revert failed: " + outcome.error).c_str(), NotificationIcon::Error
+                            ("Revert failed: " + prep.result.error).c_str(), NotificationIcon::Error
                         )->show();
                         return;
                     }
-                    self->applyAndNotify(
-                        "Revert", "Reverted",
-                        editorRef.data(), pauseRef.data(),
-                        outcome.value.state,
-                        !outcome.value.conflicts.empty(), /*closeAndResume*/ true
+                    bool const hasConflicts = !prep.result.value.conflicts.empty();
+                    if (!self->tryApplyToEditor("Revert", editorRef.data(), prep.result.value.state, hasConflicts)) {
+                        finishBusyAction(self->m_busy);
+                        return;
+                    }
+                    if (!prep.pendingHead) {
+                        finishBusyAction(self->m_busy);
+                        Notification::create("Reverted", NotificationIcon::Success)->show();
+                        showConflictSummary(prep.result.value.conflicts);
+                        self->onClose(nullptr);
+                        if (pauseRef.data()) pauseRef.data()->onResume(nullptr);
+                        return;
+                    }
+                    LevelState applied = prep.result.value.state;
+                    PendingHeadUpdate pending = *prep.pendingHead;
+                    std::vector<Conflict> conflicts = prep.result.value.conflicts;
+                    Ref<EditorPauseLayer> pauseLocal = pauseRef;
+                    ui_action_runner::runWorkerResult<Result<CommitId>>(
+                        [pending, applied]() {
+                            return sharedGitService().finalizeRevert(pending, applied);
+                        },
+                        [self, pauseLocal, conflicts](Result<CommitId> fin) mutable {
+                            if (self) finishBusyAction(self->m_busy);
+                            if (!fin.ok) {
+                                Notification::create(
+                                    ("Editor applied but DB write failed: " + fin.error + ". Re-commit to persist.").c_str(),
+                                    NotificationIcon::Error
+                                )->show();
+                                return;
+                            }
+                            Notification::create("Reverted", NotificationIcon::Success)->show();
+                            showConflictSummary(conflicts);
+                            if (self) self->onClose(nullptr);
+                            if (pauseLocal.data()) pauseLocal.data()->onResume(nullptr);
+                        }
                     );
-                    showConflictSummary(outcome.value.conflicts);
                 }
             );
         }
@@ -644,28 +691,51 @@ void HistoryLayer::runSquash(std::vector<CommitId> idsOldestFirst, std::string m
     Ref<LevelEditorLayer> editorRef(m_editor.data());
     Ref<EditorPauseLayer> pauseRef(m_pauseLayer.data());
     std::string levelKey = m_levelKey;
-    ui_action_runner::runWorkerResult<Result<LevelState>>(
+    ui_action_runner::runWorkerResult<Prepared<LevelState>>(
         [levelKey, idsOldestFirst, message]() {
-            return sharedGitService().squash(levelKey, idsOldestFirst, message);
+            return sharedGitService().prepareSquash(levelKey, idsOldestFirst, message);
         },
-        [self, editorRef, pauseRef](Result<LevelState> outcome) mutable {
+        [self, editorRef, pauseRef](Prepared<LevelState> prep) mutable {
             if (!self) return;
-            finishBusyAction(self->m_busy);
-            if (!outcome.ok) {
+            if (!prep.result.ok) {
+                finishBusyAction(self->m_busy);
                 Notification::create(
-                    ("Squash failed: " + outcome.error).c_str(), NotificationIcon::Error
+                    ("Squash failed: " + prep.result.error).c_str(), NotificationIcon::Error
                 )->show();
                 return;
             }
-            self->applyAndNotify(
-                "Squash", "Squashed",
-                editorRef.data(), pauseRef.data(),
-                outcome.value, /*hasConflicts*/ false, /*closeAndResume*/ false
+            if (!self->tryApplyToEditor("Squash", editorRef.data(), prep.result.value, false)) {
+                finishBusyAction(self->m_busy);
+                return;
+            }
+            if (!prep.pendingSquash) {
+                // prepareSquash always emits pending when result.ok, defensive bail.
+                finishBusyAction(self->m_busy);
+                return;
+            }
+            LevelState applied = prep.result.value;
+            PendingSquash pending = *prep.pendingSquash;
+            ui_action_runner::runWorkerResult<Result<CommitId>>(
+                [pending, applied]() {
+                    return sharedGitService().finalizeSquash(pending, applied);
+                },
+                [self](Result<CommitId> fin) mutable {
+                    if (self) finishBusyAction(self->m_busy);
+                    if (!fin.ok) {
+                        Notification::create(
+                            ("Editor applied but DB squash failed: " + fin.error).c_str(),
+                            NotificationIcon::Error
+                        )->show();
+                        return;
+                    }
+                    Notification::create("Squashed", NotificationIcon::Success)->show();
+                    if (!self) return;
+                    self->m_squashMode = false;
+                    self->m_selected.clear();
+                    self->rebuildHeader();
+                    self->rebuildList();
+                }
             );
-            self->m_squashMode = false;
-            self->m_selected.clear();
-            self->rebuildHeader();
-            self->rebuildList();
         }
     );
 }

@@ -1,5 +1,8 @@
 #include "DbZip.hpp"
 
+#include "BlobCodec.hpp"
+#include "FileAtomic.hpp"
+
 #include <Geode/loader/Log.hpp>
 #include <Geode/utils/file.hpp>
 #include <Geode/utils/string.hpp>
@@ -9,13 +12,6 @@
 #include <fstream>
 #include <string_view>
 
-#ifdef _WIN32
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-#endif
-
 namespace git_editor {
 
 namespace {
@@ -23,24 +19,6 @@ namespace {
 constexpr std::string_view kSqliteMagic = "SQLite format 3\000";
 constexpr std::size_t      kSqliteMagicLen = 16;
 constexpr std::array<std::uint8_t, 4> kZipMagic = { 0x50, 0x4B, 0x03, 0x04 };
-
-bool replaceFileAtomic(std::filesystem::path const& from, std::filesystem::path const& to) {
-#ifdef _WIN32
-    if (!MoveFileExW(from.c_str(), to.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-        geode::log::error("replaceFileAtomic: MoveFileExW failed: {}", GetLastError());
-        return false;
-    }
-    return true;
-#else
-    std::error_code ec;
-    std::filesystem::rename(from, to, ec);
-    if (ec) {
-        geode::log::error("replaceFileAtomic: rename failed: {}", ec.message());
-        return false;
-    }
-    return true;
-#endif
-}
 
 } // namespace
 
@@ -118,6 +96,10 @@ Result<ByteVector> readZipEntry(std::filesystem::path const& inZip,
             out.error = "readZipEntry: zip has no entries";
             return out;
         }
+        if (entries.size() != 1) {
+            out.error = "readZipEntry: zip must contain exactly one entry when no name given";
+            return out;
+        }
         target = entries[0];
     } else {
         target = entryName;
@@ -135,7 +117,14 @@ Result<ByteVector> readZipEntry(std::filesystem::path const& inZip,
         return out;
     }
 
-    out.value = std::move(bytesRes).unwrap();
+    auto bytes = std::move(bytesRes).unwrap();
+    if (bytes.size() > kMaxBlobFootprintBytes) {
+        out.error = "readZipEntry: extracted size " + std::to_string(bytes.size())
+            + " exceeds cap " + std::to_string(kMaxBlobFootprintBytes);
+        return out;
+    }
+
+    out.value = std::move(bytes);
     out.ok = true;
     return out;
 }

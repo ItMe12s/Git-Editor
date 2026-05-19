@@ -40,17 +40,14 @@ protected:
     void startCheckoutFlow(CommitId commitId, std::string const& commitMsg);
     void startRevertFlow(CommitId commitId, std::string const& commitMsg);
 
-    // Common post-worker step: apply state to editor (or warn), notify, close, resume.
-    // pastTense: "Checked out"/"Reverted"/"Squashed" - notification on success.
-    // noun: "Checkout"/"Revert"/"Squash" - prefix for warnings.
-    void applyAndNotify(
+    // Apply state to editor, notify only on failure (editor gone / refused). Success notification
+    // is intentionally NOT fired here so callers can defer it until the matching finalize* on the
+    // worker has persisted the head update. Returns true iff the editor accepted the state.
+    bool tryApplyToEditor(
         char const*       noun,
-        char const*       pastTense,
         LevelEditorLayer* editor,
-        EditorPauseLayer* pauseLayer,
         LevelState const& state,
-        bool              hasConflicts,
-        bool              closeAndResume
+        bool              hasConflicts
     );
 
     std::string                     m_levelKey;

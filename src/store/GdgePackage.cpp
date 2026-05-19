@@ -4,6 +4,7 @@
 #include "../diff/Differ.hpp"
 #include "../util/BlobCodec.hpp"
 #include "../util/DbZip.hpp"
+#include "../util/FileAtomic.hpp"
 #include "../util/PathUtf8.hpp"
 
 #include <Geode/loader/Log.hpp>
@@ -179,9 +180,14 @@ bool writeGdgePackageSqlite(std::filesystem::path const& outPath,
                 if (c.revertsIndex) sqlite3_bind_int64(st, 3, *c.revertsIndex);
                 else sqlite3_bind_null(st, 3);
                 auto const stored = compressBlob(c.deltaBlob);
+                if (!stored) {
+                    geode::log::error("gdge export: compressBlob refused payload (size={})", c.deltaBlob.size());
+                    ok = false;
+                    break;
+                }
                 ok = bindText(st, 4, c.message)
                   && sqlite3_bind_int64(st, 5, c.createdAt) == SQLITE_OK
-                  && sqlite3_bind_blob(st, 6, stored.data(), static_cast<int>(stored.size()), SQLITE_TRANSIENT) == SQLITE_OK
+                  && sqlite3_bind_blob(st, 6, stored->data(), static_cast<int>(stored->size()), SQLITE_TRANSIENT) == SQLITE_OK
                   && sqlite3_step(st) == SQLITE_DONE;
                 if (!ok) break;
             }
@@ -214,7 +220,19 @@ bool writeGdgePackage(std::filesystem::path const& outPath, GdgePackageData cons
         geode::Mod::get()->getSettingValue<bool>("compress-export-files");
 
     if (!compressExports) {
-        return writeGdgePackageSqlite(outPath, data);
+        auto tmpPath = outPath;
+        tmpPath += ".tmp";
+        if (!writeGdgePackageSqlite(tmpPath, data)) {
+            std::error_code ec;
+            std::filesystem::remove(tmpPath, ec);
+            return false;
+        }
+        if (!replaceFileAtomic(tmpPath, outPath)) {
+            std::error_code ec;
+            std::filesystem::remove(tmpPath, ec);
+            return false;
+        }
+        return true;
     }
 
     // Use a distinct name from writeZipAtomic's outPath+".tmp" so we never hand the same path to

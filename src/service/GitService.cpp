@@ -93,26 +93,32 @@ Result<CommitId> GitService::commit(
     return out;
 }
 
-Result<LevelState> GitService::checkout(LevelKey const& levelKey, CommitId target) {
-    Result<LevelState> out;
+Prepared<LevelState> GitService::prepareCheckout(LevelKey const& levelKey, CommitId target) {
+    Prepared<LevelState> out;
     auto const canonicalKey = m_store.resolveCanonicalKey(levelKey);
 
     auto head = m_store.getHead(canonicalKey);
     if (!head) {
-        return failResult<LevelState>("no HEAD for this level");
+        out.result = failResult<LevelState>("no HEAD for this level");
+        return out;
     }
     if (*head == target) {
+        // No-op checkout: HEAD already there. Skip pending; UI re-applies recon state for parity.
         auto recon = this->reconstruct(target);
-        if (!recon) return failResult<LevelState>("reconstruct HEAD failed");
-        out.ok    = true;
-        out.value = std::move(*recon);
+        if (!recon) {
+            out.result = failResult<LevelState>("reconstruct HEAD failed");
+            return out;
+        }
+        out.result.ok    = true;
+        out.result.value = std::move(*recon);
         return out;
     }
 
     auto headState   = this->reconstruct(*head);
     auto targetState = this->reconstruct(target);
     if (!headState || !targetState) {
-        return logAndFail<LevelState>("checkout reconstruct failed");
+        out.result = logAndFail<LevelState>("checkout reconstruct failed");
+        return out;
     }
 
     auto revertDelta = diff(*headState, *targetState);
@@ -120,46 +126,69 @@ Result<LevelState> GitService::checkout(LevelKey const& levelKey, CommitId targe
 
     auto targetRow = m_store.get(target);
     if (targetRow && targetRow->levelKey != canonicalKey) {
-        return failResult<LevelState>("target commit belongs to a different level");
+        out.result = failResult<LevelState>("target commit belongs to a different level");
+        return out;
     }
     std::string msg = "Checkout: " + (targetRow ? shortPreview(targetRow->message) : std::to_string(target));
 
-    auto id = m_store.insertAndSetHead(canonicalKey, *head, target, msg, blob);
-    if (!id) {
-        return failResult<LevelState>("DB insert/head transaction failed");
-    }
+    PendingHeadUpdate pending;
+    pending.levelKey  = canonicalKey;
+    pending.parent    = *head;
+    pending.reverts   = target;
+    pending.message   = std::move(msg);
+    pending.deltaBlob = std::move(blob);
+    out.pendingHead   = std::move(pending);
 
-    this->cachePut(*id, *targetState);
-
-    out.ok    = true;
-    out.value = std::move(*targetState);
+    out.result.ok    = true;
+    out.result.value = std::move(*targetState);
     return out;
 }
 
-Result<RevertPayload> GitService::revert(LevelKey const& levelKey, CommitId target) {
+Result<CommitId> GitService::finalizeCheckout(
+    PendingHeadUpdate const& pending,
+    LevelState const&        applied
+) {
+    auto id = m_store.insertAndSetHead(
+        pending.levelKey, pending.parent, pending.reverts, pending.message, pending.deltaBlob
+    );
+    if (!id) return failResult<CommitId>("DB insert/head transaction failed");
+    this->cachePut(*id, applied);
+    Result<CommitId> r;
+    r.ok    = true;
+    r.value = *id;
+    return r;
+}
+
+Prepared<RevertPayload> GitService::prepareRevert(LevelKey const& levelKey, CommitId target) {
+    Prepared<RevertPayload> out;
     auto const canonicalKey = m_store.resolveCanonicalKey(levelKey);
 
     auto head = m_store.getHead(canonicalKey);
     if (!head) {
-        return failResult<RevertPayload>("no HEAD for this level");
+        out.result = failResult<RevertPayload>("no HEAD for this level");
+        return out;
     }
 
     auto targetRow = m_store.get(target);
     if (!targetRow) {
-        return failResult<RevertPayload>("target commit not found");
+        out.result = failResult<RevertPayload>("target commit not found");
+        return out;
     }
     if (targetRow->levelKey != canonicalKey) {
-        return failResult<RevertPayload>("target commit belongs to a different level");
+        out.result = failResult<RevertPayload>("target commit belongs to a different level");
+        return out;
     }
     if (!targetRow->parent) {
-        return failResult<RevertPayload>("can't revert the initial commit (it has no parent)");
+        out.result = failResult<RevertPayload>("can't revert the initial commit (it has no parent)");
+        return out;
     }
 
     auto parentState = this->reconstruct(*targetRow->parent);
     auto targetState = this->reconstruct(target);
     auto headState   = this->reconstruct(*head);
     if (!parentState || !targetState || !headState) {
-        return failResult<RevertPayload>("reconstruct failed");
+        out.result = failResult<RevertPayload>("reconstruct failed");
+        return out;
     }
 
     // diff(target, parent) not inverse(stored delta): ops use current UUIDs if chain drifted.
@@ -171,30 +200,37 @@ Result<RevertPayload> GitService::revert(LevelKey const& levelKey, CommitId targ
     auto persistedDelta    = diff(headCopy, value.state);
     auto blob              = dumpDelta(persistedDelta);
 
-    std::string msg = "Revert: " + shortPreview(targetRow->message);
-    auto id = m_store.insertAndSetHead(canonicalKey, *head, target, msg, blob);
-    if (!id) {
-        return failResult<RevertPayload>("DB insert/head transaction failed");
-    }
+    PendingHeadUpdate pending;
+    pending.levelKey  = canonicalKey;
+    pending.parent    = *head;
+    pending.reverts   = target;
+    pending.message   = "Revert: " + shortPreview(targetRow->message);
+    pending.deltaBlob = std::move(blob);
+    out.pendingHead   = std::move(pending);
 
-    this->cachePut(*id, value.state);
-
-    Result<RevertPayload> r;
-    r.ok    = true;
-    r.value = std::move(value);
-    return r;
+    out.result.ok    = true;
+    out.result.value = std::move(value);
+    return out;
 }
 
-Result<LevelState> GitService::squash(
+Result<CommitId> GitService::finalizeRevert(
+    PendingHeadUpdate const& pending,
+    LevelState const&        applied
+) {
+    // Same shape as finalizeCheckout; kept distinct for call-site readability and future hooks.
+    return this->finalizeCheckout(pending, applied);
+}
+
+Prepared<LevelState> GitService::prepareSquash(
     LevelKey const&              levelKey,
     std::vector<CommitId> const& idsOldestFirst,
     std::string const&           message
 ) {
-    Result<LevelState> out;
+    Prepared<LevelState> out;
     auto const canonicalKey = m_store.resolveCanonicalKey(levelKey);
 
     if (idsOldestFirst.size() < 2) {
-        out.error = "Squash needs at least 2 commits";
+        out.result.error = "Squash needs at least 2 commits";
         return out;
     }
 
@@ -203,11 +239,11 @@ Result<LevelState> GitService::squash(
     for (auto id : idsOldestFirst) {
         auto row = m_store.get(id);
         if (!row) {
-            out.error = "Commit " + std::to_string(id) + " not found";
+            out.result.error = "Commit " + std::to_string(id) + " not found";
             return out;
         }
         if (row->levelKey != canonicalKey) {
-            out.error = "Commit " + std::to_string(id) + " belongs to a different level";
+            out.result.error = "Commit " + std::to_string(id) + " belongs to a different level";
             return out;
         }
         rows.push_back(std::move(*row));
@@ -215,7 +251,7 @@ Result<LevelState> GitService::squash(
 
     for (std::size_t i = 1; i < rows.size(); ++i) {
         if (!rows[i].parent || *rows[i].parent != rows[i - 1].id) {
-            out.error = "Selected commits are not contiguous";
+            out.result.error = "Selected commits are not contiguous";
             return out;
         }
     }
@@ -225,54 +261,95 @@ Result<LevelState> GitService::squash(
     LevelState base;
     if (parentOfOldest) {
         auto recon = this->reconstruct(*parentOfOldest);
-        if (!recon) { out.error = "reconstruct base failed"; return out; }
+        if (!recon) { out.result.error = "reconstruct base failed"; return out; }
         base = std::move(*recon);
     }
 
     auto target = this->reconstruct(rows.back().id);
-    if (!target) { out.error = "reconstruct target failed"; return out; }
+    if (!target) { out.result.error = "reconstruct target failed"; return out; }
 
     auto combined = diff(base, *target);
     auto blob     = dumpDelta(combined);
 
-    auto newId = m_store.squash(canonicalKey, idsOldestFirst, parentOfOldest, message, blob);
-    if (!newId) {
-        out.error = "DB squash failed";
-        return out;
-    }
+    PendingSquash pending;
+    pending.levelKey       = canonicalKey;
+    pending.idsOldestFirst = idsOldestFirst;
+    pending.parentOfOldest = parentOfOldest;
+    pending.message        = message;
+    pending.deltaBlob      = std::move(blob);
+    out.pendingSquash      = std::move(pending);
 
-    this->clearReconstructCache();
-
-    out.ok     = true;
-    out.value  = std::move(*target);
+    out.result.ok    = true;
+    out.result.value = std::move(*target);
     return out;
 }
 
-Result<LevelState> GitService::importLevelFrom(LevelKey const& dest, LevelKey const& src) {
-    Result<LevelState> out;
+Result<CommitId> GitService::finalizeSquash(
+    PendingSquash const& pending,
+    LevelState const&    applied
+) {
+    auto newId = m_store.squash(
+        pending.levelKey, pending.idsOldestFirst, pending.parentOfOldest,
+        pending.message, pending.deltaBlob
+    );
+    if (!newId) return failResult<CommitId>("DB squash failed");
+
+    this->clearReconstructCache();
+    this->cachePut(*newId, applied);
+
+    Result<CommitId> r;
+    r.ok    = true;
+    r.value = *newId;
+    return r;
+}
+
+Prepared<LevelState> GitService::prepareImportLevelFrom(
+    LevelKey const& dest,
+    LevelKey const& src
+) {
+    Prepared<LevelState> out;
     auto const canonicalDest = m_store.resolveOrCreateCanonicalKey(dest);
     auto const canonicalSrc  = m_store.resolveCanonicalKey(src);
     if (canonicalDest == canonicalSrc) {
-        out.error = "source and destination are the same";
+        out.result.error = "source and destination are the same";
         return out;
     }
-    if (!m_store.replaceLevelHistoryFrom(canonicalDest, canonicalSrc)) {
+    auto const srcHead = m_store.getHead(canonicalSrc);
+    if (!srcHead) {
+        out.result.error = "source has no HEAD";
+        return out;
+    }
+    auto srcState = this->reconstruct(*srcHead);
+    if (!srcState) {
+        out.result.error = "reconstruct source HEAD failed";
+        return out;
+    }
+
+    PendingHistoryReplace pending;
+    pending.dest = canonicalDest;
+    pending.src  = canonicalSrc;
+    out.pendingReplace = std::move(pending);
+
+    out.result.ok    = true;
+    out.result.value = std::move(*srcState);
+    return out;
+}
+
+Result<void> GitService::finalizeImportLevelFrom(
+    PendingHistoryReplace const& pending,
+    LevelState const&            applied
+) {
+    Result<void> out;
+    if (!m_store.replaceLevelHistoryFrom(pending.dest, pending.src)) {
         out.error = "failed to copy level history";
         return out;
     }
     this->clearReconstructCache();
-    auto const head = m_store.getHead(canonicalDest);
-    if (!head) {
-        out.error = "no HEAD after import";
-        return out;
+    if (auto const head = m_store.getHead(pending.dest)) {
+        // Prime cache so the very next reconstruct doesn't replay the entire copied chain.
+        this->cachePut(*head, applied);
     }
-    auto st = this->reconstruct(*head);
-    if (!st) {
-        out.error = "reconstruct after import failed";
-        return out;
-    }
-    out.ok     = true;
-    out.value  = std::move(*st);
+    out.ok = true;
     return out;
 }
 
@@ -566,6 +643,46 @@ Result<ImportManyPayload> GitService::importManyFromGdge(
 
 void GitService::clearReconstructCache() {
     m_cache.clear();
+}
+
+Result<LevelState> GitService::checkout(LevelKey const& levelKey, CommitId target) {
+    auto prep = this->prepareCheckout(levelKey, target);
+    if (!prep.result.ok) return prep.result;
+    if (!prep.pendingHead) return prep.result;
+    auto fin = this->finalizeCheckout(*prep.pendingHead, prep.result.value);
+    if (!fin.ok) return failResult<LevelState>(fin.error);
+    return prep.result;
+}
+
+Result<RevertPayload> GitService::revert(LevelKey const& levelKey, CommitId target) {
+    auto prep = this->prepareRevert(levelKey, target);
+    if (!prep.result.ok) return prep.result;
+    if (!prep.pendingHead) return prep.result;
+    auto fin = this->finalizeRevert(*prep.pendingHead, prep.result.value.state);
+    if (!fin.ok) return failResult<RevertPayload>(fin.error);
+    return prep.result;
+}
+
+Result<LevelState> GitService::squash(
+    LevelKey const&              levelKey,
+    std::vector<CommitId> const& idsOldestFirst,
+    std::string const&           message
+) {
+    auto prep = this->prepareSquash(levelKey, idsOldestFirst, message);
+    if (!prep.result.ok) return prep.result;
+    if (!prep.pendingSquash) return prep.result;
+    auto fin = this->finalizeSquash(*prep.pendingSquash, prep.result.value);
+    if (!fin.ok) return failResult<LevelState>(fin.error);
+    return prep.result;
+}
+
+Result<LevelState> GitService::importLevelFrom(LevelKey const& dest, LevelKey const& src) {
+    auto prep = this->prepareImportLevelFrom(dest, src);
+    if (!prep.result.ok) return prep.result;
+    if (!prep.pendingReplace) return prep.result;
+    auto fin = this->finalizeImportLevelFrom(*prep.pendingReplace, prep.result.value);
+    if (!fin.ok) return failResult<LevelState>(fin.error);
+    return prep.result;
 }
 
 std::optional<LevelState> GitService::reconstruct(CommitId commitId) {

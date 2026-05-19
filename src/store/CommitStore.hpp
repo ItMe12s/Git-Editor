@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
@@ -43,9 +44,9 @@ struct CommitSummary {
     int          removeCount = 0;
 };
 
-// One sqlite3* per process (sharedCommitStore). The UI may read on the main thread, mutating
-// operations are usually scheduled on Geode's async blocking pool via postToGitWorker. The worker
-// mutex serializes only jobs posted to postToGitWorker, not all store access. If
+// One sqlite3* per process (sharedCommitStore). Opened with SQLITE_OPEN_FULLMUTEX and every
+// public method takes m_mutex, so UI-thread reads and worker writes can interleave safely.
+// Mutex is recursive because squash/replaceLevelHistoryFrom call other public methods. If
 // schema_meta.version < kSchemaVersion:
 // drop commits/refs, no migration.
 class CommitStore {
@@ -127,6 +128,7 @@ private:
 
     static void resetStatement(sqlite3_stmt* st);
 
+    mutable std::recursive_mutex m_mutex;
     sqlite3*              m_db    = nullptr;
     std::filesystem::path m_dbPath;
 

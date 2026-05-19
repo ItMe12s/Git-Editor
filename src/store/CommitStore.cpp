@@ -137,6 +137,7 @@ bool CommitStore::prepareStatements() {
 }
 
 bool CommitStore::init(std::filesystem::path const& dbPath) {
+    std::lock_guard<std::recursive_mutex> lk(m_mutex);
     if (m_db) return true;
 
     m_dbPath = dbPath;
@@ -144,7 +145,7 @@ bool CommitStore::init(std::filesystem::path const& dbPath) {
 
     int rc = sqlite3_open_v2(
         utf8.c_str(), &m_db,
-        SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
+        SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX,
         nullptr
     );
     if (rc != SQLITE_OK) {
@@ -198,8 +199,13 @@ std::optional<CommitId> CommitStore::insertAt(
     );
     sqlite3_bind_int64(m_stmtInsert, 5, createdAt);
     auto const stored = compressBlob(deltaBlob);
+    if (!stored) {
+        geode::log::error("insertAt: compressBlob refused payload (size={})", deltaBlob.size());
+        this->resetStatement(m_stmtInsert);
+        return std::nullopt;
+    }
     sqlite3_bind_blob(
-        m_stmtInsert, 6, stored.data(), static_cast<int>(stored.size()), SQLITE_TRANSIENT
+        m_stmtInsert, 6, stored->data(), static_cast<int>(stored->size()), SQLITE_TRANSIENT
     );
 
     std::optional<CommitId> out;
@@ -220,6 +226,7 @@ std::optional<CommitId> CommitStore::insert(
     std::string const&      message,
     std::string const&      deltaBlob
 ) {
+    std::lock_guard<std::recursive_mutex> lk(m_mutex);
     return this->insertAt(levelKey, parent, reverts, message, commitStoreNowSeconds(), deltaBlob);
 }
 
@@ -230,6 +237,7 @@ std::optional<CommitId> CommitStore::insertAndSetHead(
     std::string const&      message,
     std::string const&      deltaBlob
 ) {
+    std::lock_guard<std::recursive_mutex> lk(m_mutex);
     if (!m_db) return std::nullopt;
     auto const canonicalKey = this->resolveOrCreateCanonicalKey(levelKey);
 
@@ -280,6 +288,7 @@ CommitRow rowFromStatement(sqlite3_stmt* st, bool includeBlob) {
 } // namespace
 
 std::optional<CommitRow> CommitStore::get(CommitId id) {
+    std::lock_guard<std::recursive_mutex> lk(m_mutex);
     if (!m_db) return std::nullopt;
 
     this->resetStatement(m_stmtGet);
@@ -294,6 +303,7 @@ std::optional<CommitRow> CommitStore::get(CommitId id) {
 }
 
 std::vector<CommitRow> CommitStore::list(LevelKey const& levelKey) {
+    std::lock_guard<std::recursive_mutex> lk(m_mutex);
     std::vector<CommitRow> out;
     if (!m_db) return out;
     auto const canonicalKey = this->resolveCanonicalKey(levelKey);
@@ -311,6 +321,7 @@ std::vector<CommitRow> CommitStore::list(LevelKey const& levelKey) {
 }
 
 std::vector<CommitSummary> CommitStore::listSummaries(LevelKey const& levelKey) {
+    std::lock_guard<std::recursive_mutex> lk(m_mutex);
     std::vector<CommitSummary> out;
     if (!m_db) return out;
     auto const canonicalKey = this->resolveCanonicalKey(levelKey);
@@ -348,6 +359,7 @@ std::vector<CommitSummary> CommitStore::listSummaries(LevelKey const& levelKey) 
 }
 
 bool CommitStore::updateMessage(CommitId id, std::string const& message) {
+    std::lock_guard<std::recursive_mutex> lk(m_mutex);
     if (!m_db) return false;
 
     this->resetStatement(m_stmtUpdateMessage);
@@ -368,6 +380,7 @@ std::optional<CommitId> CommitStore::squash(
     std::string const&           message,
     std::string const&           deltaBlob
 ) {
+    std::lock_guard<std::recursive_mutex> lk(m_mutex);
     if (!m_db) return std::nullopt;
     if (idsOldestFirst.size() < 2) return std::nullopt;
     auto const canonicalKey = this->resolveCanonicalKey(levelKey);
@@ -448,6 +461,7 @@ std::optional<CommitId> CommitStore::squash(
 }
 
 std::vector<LevelSummary> CommitStore::listLevels() {
+    std::lock_guard<std::recursive_mutex> lk(m_mutex);
     std::vector<LevelSummary> out;
     if (!m_db) return out;
 
@@ -502,6 +516,7 @@ bool CommitStore::deleteCommitsAndRefsForKeyNoTransaction(
 }
 
 bool CommitStore::deleteLevel(LevelKey const& levelKey) {
+    std::lock_guard<std::recursive_mutex> lk(m_mutex);
     if (!m_db) return false;
 
     commit_schema::DeferredFkTransaction tx(m_db);
@@ -517,6 +532,7 @@ bool CommitStore::deleteLevel(LevelKey const& levelKey) {
 }
 
 bool CommitStore::replaceLevelHistoryFrom(LevelKey const& dest, LevelKey const& src) {
+    std::lock_guard<std::recursive_mutex> lk(m_mutex);
     if (!m_db) return false;
     auto const canonicalDest = this->resolveCanonicalKey(dest);
     auto const canonicalSrc  = this->resolveCanonicalKey(src);
@@ -642,6 +658,7 @@ bool CommitStore::replaceLevelHistoryFrom(LevelKey const& dest, LevelKey const& 
 }
 
 std::optional<CommitId> CommitStore::getHead(LevelKey const& levelKey) {
+    std::lock_guard<std::recursive_mutex> lk(m_mutex);
     if (!m_db) return std::nullopt;
     auto const canonicalKey = this->resolveCanonicalKey(levelKey);
 
@@ -659,6 +676,7 @@ std::optional<CommitId> CommitStore::getHead(LevelKey const& levelKey) {
 }
 
 bool CommitStore::setHead(LevelKey const& levelKey, CommitId head) {
+    std::lock_guard<std::recursive_mutex> lk(m_mutex);
     if (!m_db) return false;
     auto const canonicalKey = this->resolveOrCreateCanonicalKey(levelKey);
 
@@ -674,10 +692,15 @@ bool CommitStore::setHead(LevelKey const& levelKey, CommitId head) {
 }
 
 LevelKey CommitStore::resolveCanonicalKey(LevelKey const& observedKey) {
+    std::lock_guard<std::recursive_mutex> lk(m_mutex);
+    // Canonical key is just `id:{EditorIDs}` today. No alias table; this method is a placeholder
+    // that returns the observed key unchanged. Do not assume it ever rewrites the key.
     return observedKey;
 }
 
 LevelKey CommitStore::resolveOrCreateCanonicalKey(LevelKey const& observedKey) {
+    std::lock_guard<std::recursive_mutex> lk(m_mutex);
+    // See resolveCanonicalKey: identity until an alias table exists.
     return observedKey;
 }
 

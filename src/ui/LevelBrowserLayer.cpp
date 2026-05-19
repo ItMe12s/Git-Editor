@@ -255,41 +255,62 @@ void LevelBrowserLayer::renderList(std::vector<LevelSummary> levels) {
                         Ref<LevelEditorLayer> editorRef(self->m_editor.data());
                         Ref<EditorPauseLayer> pauseRef(self->m_pauseLayer.data());
                         Ref<LevelBrowserLayer> alive(self.data());
-                        ui_action_runner::runWorkerResult<Result<LevelState>>(
+                        ui_action_runner::runWorkerResult<Prepared<LevelState>>(
                             [levelKey, destKey]() {
-                                return sharedGitService().importLevelFrom(destKey, levelKey);
+                                return sharedGitService().prepareImportLevelFrom(destKey, levelKey);
                             },
-                            [alive, editorRef, pauseRef](Result<LevelState> outcome) mutable {
+                            [alive, editorRef, pauseRef](Prepared<LevelState> prep) mutable {
                                 if (!alive) return;
-                                finishBusyAction(alive->m_busy);
                                 auto* editor = editorRef.data();
-                                auto* pause = pauseRef.data();
-                                if (!outcome.ok) {
+                                if (!prep.result.ok) {
+                                    finishBusyAction(alive->m_busy);
                                     Notification::create(
-                                        ("Load failed: " + outcome.error).c_str(),
+                                        ("Load failed: " + prep.result.error).c_str(),
                                         NotificationIcon::Error
                                     )->show();
                                     return;
                                 }
                                 if (!browserCanApplyEditorResult(editor)) {
+                                    finishBusyAction(alive->m_busy);
                                     Notification::create(
-                                        "Load succeeded but editor is no longer active",
+                                        "Load ready but editor is no longer active; aborted before DB write",
                                         NotificationIcon::Warning
                                     )->show();
                                     return;
                                 }
-                                if (!applyLevelState(editor, outcome.value)) {
+                                if (!applyLevelState(editor, prep.result.value)) {
+                                    finishBusyAction(alive->m_busy);
                                     Notification::create(
-                                        "Load saved to the mod, but the editor would not apply the level",
+                                        "Editor refused load; aborted before DB write",
                                         NotificationIcon::Warning
                                     )->show();
-                                } else {
-                                    Notification::create("Level loaded", NotificationIcon::Success)->show();
+                                    return;
                                 }
-                                alive->onClose(nullptr);
-                                if (pause) {
-                                    pause->onResume(nullptr);
+                                if (!prep.pendingReplace) {
+                                    finishBusyAction(alive->m_busy);
+                                    return;
                                 }
+                                LevelState applied = prep.result.value;
+                                PendingHistoryReplace pending = *prep.pendingReplace;
+                                Ref<EditorPauseLayer> pauseLocal = pauseRef;
+                                ui_action_runner::runWorkerResult<Result<void>>(
+                                    [pending, applied]() {
+                                        return sharedGitService().finalizeImportLevelFrom(pending, applied);
+                                    },
+                                    [alive, pauseLocal](Result<void> fin) mutable {
+                                        if (alive) finishBusyAction(alive->m_busy);
+                                        if (!fin.ok) {
+                                            Notification::create(
+                                                ("Editor applied but history copy failed: " + fin.error).c_str(),
+                                                NotificationIcon::Error
+                                            )->show();
+                                            return;
+                                        }
+                                        Notification::create("Level loaded", NotificationIcon::Success)->show();
+                                        if (alive) alive->onClose(nullptr);
+                                        if (pauseLocal.data()) pauseLocal.data()->onResume(nullptr);
+                                    }
+                                );
                             }
                         );
                     }
@@ -315,7 +336,9 @@ void LevelBrowserLayer::renderList(std::vector<LevelSummary> levels) {
                     Ref<LevelBrowserLayer> alive(self.data());
                     ui_action_runner::runWorkerResult<bool>(
                         [levelKey]() {
-                            return sharedCommitStore().deleteLevel(levelKey);
+                            bool ok = sharedCommitStore().deleteLevel(levelKey);
+                            if (ok) sharedGitService().clearReconstructCache();
+                            return ok;
                         },
                         [alive](bool ok) {
                             if (!alive) return;
