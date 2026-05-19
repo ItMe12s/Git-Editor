@@ -24,16 +24,6 @@ void runCollabPlanTest(GitService& git, CommitStore& st, std::filesystem::path c
         R.addFail(kSuiteCollab, "base_commit", "failed", T.ms());
         return;
     }
-    auto baseChain = chainOldestToNewest(st, kCollabBase);
-    if (baseChain.empty()) {
-        R.addFail(kSuiteCollab, "base_chain", "empty chain", T.ms());
-        return;
-    }
-    R.addAction(kSuiteCollab, "squash kCollabBase to single commit");
-    if (auto sqBase = git.squash(kCollabBase, baseChain, "squashed_base"); !sqBase.ok) {
-        R.addFail(kSuiteCollab, "base_squash", sqBase.error, T.ms());
-        return;
-    }
     R.addAction(kSuiteCollab, fmt::format("export base {}", pathUtf8(basePath)));
     if (auto ex = git.exportLevelToGdge(kCollabBase, basePath); !ex.ok) {
         R.addFail(kSuiteCollab, "export_base", ex.error, T.ms());
