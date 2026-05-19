@@ -342,41 +342,63 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
                                     if (!yes || !alive || !editorPtr) return;
                                     git_editor::postToGitWorker(
                                         [alive, editorRef, levelKey, paths = std::move(paths)]() mutable {
-                                            auto outcome = git_editor::sharedGitService().importManyFromGdge(levelKey, paths);
-                                            geode::queueInMainThread([alive, editorRef, outcome = std::move(outcome)]() mutable {
+                                            auto prep = git_editor::sharedGitService().prepareImportManyFromGdge(levelKey, paths);
+                                            geode::queueInMainThread([alive, editorRef, prep = std::move(prep)]() mutable {
                                                 auto* editorPtr = editorRef.data();
                                                 if (!alive || !editorPtr) return;
-                                                if (!outcome.ok) {
+                                                if (!prep.result.ok) {
                                                     Notification::create(
-                                                        ("Multi-merge failed: " + outcome.error).c_str(),
+                                                        ("Multi-merge failed: " + prep.result.error).c_str(),
                                                         NotificationIcon::Error
                                                     )->show();
                                                     return;
                                                 }
-                                                if (!editorPtr || !editorPtr->getParent()) {
+                                                if (!editorPtr->getParent()) {
                                                     Notification::create(
-                                                        "Merge succeeded but editor is gone",
+                                                        "Merge ready but editor is no longer active, aborted before DB write",
                                                         NotificationIcon::Warning
                                                     )->show();
                                                     return;
                                                 }
-                                                if (!git_editor::applyLevelState(editorPtr, outcome.value.state)) {
+                                                if (!git_editor::applyLevelState(editorPtr, prep.result.value.state)) {
                                                     Notification::create(
-                                                        "Merge saved but editor apply failed",
+                                                        "Editor refused merge; aborted before DB write",
                                                         NotificationIcon::Warning
                                                     )->show();
                                                     return;
                                                 }
-                                                Notification::create(
-                                                    fmt::format(
-                                                        "Merged {} smart + {} sequential, conflicts {}, skipped {}",
-                                                        outcome.value.smartCount,
-                                                        outcome.value.sequentialCount,
-                                                        outcome.value.conflictCount,
-                                                        outcome.value.skippedCount
-                                                    ).c_str(),
-                                                    NotificationIcon::Success
-                                                )->show();
+                                                if (!prep.pendingMergeImport || prep.pendingMergeImport->commits.empty()) {
+                                                    // No writes to replay (rare); editor already updated.
+                                                    return;
+                                                }
+                                                auto payload = prep.result.value;
+                                                auto pending = std::move(*prep.pendingMergeImport);
+                                                git_editor::postToGitWorker(
+                                                    [pending = std::move(pending), payload]() mutable {
+                                                        auto fin = git_editor::sharedGitService().finalizeImportManyFromGdge(
+                                                            pending, payload.state
+                                                        );
+                                                        geode::queueInMainThread([fin = std::move(fin), payload]() {
+                                                            if (!fin.ok) {
+                                                                Notification::create(
+                                                                    ("Editor merged but DB write failed: " + fin.error).c_str(),
+                                                                    NotificationIcon::Error
+                                                                )->show();
+                                                                return;
+                                                            }
+                                                            Notification::create(
+                                                                fmt::format(
+                                                                    "Merged {} smart + {} sequential, conflicts {}, skipped {}",
+                                                                    payload.smartCount,
+                                                                    payload.sequentialCount,
+                                                                    payload.conflictCount,
+                                                                    payload.skippedCount
+                                                                ).c_str(),
+                                                                NotificationIcon::Success
+                                                            )->show();
+                                                        });
+                                                    }
+                                                );
                                             });
                                         }
                                     );

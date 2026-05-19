@@ -60,10 +60,9 @@ Result<CommitId> GitService::commit(
     std::string const& liveLevelStr
 ) {
     Result<CommitId> out;
-    auto const canonicalKey = m_store.resolveOrCreateCanonicalKey(levelKey);
 
     LevelState headState;
-    std::optional<CommitId> parent = m_store.getHead(canonicalKey);
+    std::optional<CommitId> parent = m_store.getHead(levelKey);
     if (parent) {
         auto recon = this->reconstruct(*parent);
         if (!recon) return logAndFail<CommitId>("failed to reconstruct HEAD, refusing to commit");
@@ -83,7 +82,7 @@ Result<CommitId> GitService::commit(
 
     auto blob = dumpDelta(delta);
 
-    auto id = m_store.insertAndSetHead(canonicalKey, parent, std::nullopt, message, blob);
+    auto id = m_store.insertAndSetHead(levelKey, parent, std::nullopt, message, blob);
     if (!id) return logAndFail<CommitId>("DB insert/head transaction failed");
 
     this->cachePut(*id, std::move(incoming));
@@ -95,9 +94,8 @@ Result<CommitId> GitService::commit(
 
 Prepared<LevelState> GitService::prepareCheckout(LevelKey const& levelKey, CommitId target) {
     Prepared<LevelState> out;
-    auto const canonicalKey = m_store.resolveCanonicalKey(levelKey);
 
-    auto head = m_store.getHead(canonicalKey);
+    auto head = m_store.getHead(levelKey);
     if (!head) {
         out.result = failResult<LevelState>("no HEAD for this level");
         return out;
@@ -125,14 +123,14 @@ Prepared<LevelState> GitService::prepareCheckout(LevelKey const& levelKey, Commi
     auto blob        = dumpDelta(revertDelta);
 
     auto targetRow = m_store.get(target);
-    if (targetRow && targetRow->levelKey != canonicalKey) {
+    if (targetRow && targetRow->levelKey != levelKey) {
         out.result = failResult<LevelState>("target commit belongs to a different level");
         return out;
     }
     std::string msg = "Checkout: " + (targetRow ? shortPreview(targetRow->message) : std::to_string(target));
 
     PendingHeadUpdate pending;
-    pending.levelKey  = canonicalKey;
+    pending.levelKey  = levelKey;
     pending.parent    = *head;
     pending.reverts   = target;
     pending.message   = std::move(msg);
@@ -161,9 +159,8 @@ Result<CommitId> GitService::finalizeCheckout(
 
 Prepared<RevertPayload> GitService::prepareRevert(LevelKey const& levelKey, CommitId target) {
     Prepared<RevertPayload> out;
-    auto const canonicalKey = m_store.resolveCanonicalKey(levelKey);
 
-    auto head = m_store.getHead(canonicalKey);
+    auto head = m_store.getHead(levelKey);
     if (!head) {
         out.result = failResult<RevertPayload>("no HEAD for this level");
         return out;
@@ -174,7 +171,7 @@ Prepared<RevertPayload> GitService::prepareRevert(LevelKey const& levelKey, Comm
         out.result = failResult<RevertPayload>("target commit not found");
         return out;
     }
-    if (targetRow->levelKey != canonicalKey) {
+    if (targetRow->levelKey != levelKey) {
         out.result = failResult<RevertPayload>("target commit belongs to a different level");
         return out;
     }
@@ -201,7 +198,7 @@ Prepared<RevertPayload> GitService::prepareRevert(LevelKey const& levelKey, Comm
     auto blob              = dumpDelta(persistedDelta);
 
     PendingHeadUpdate pending;
-    pending.levelKey  = canonicalKey;
+    pending.levelKey  = levelKey;
     pending.parent    = *head;
     pending.reverts   = target;
     pending.message   = "Revert: " + shortPreview(targetRow->message);
@@ -227,7 +224,6 @@ Prepared<LevelState> GitService::prepareSquash(
     std::string const&           message
 ) {
     Prepared<LevelState> out;
-    auto const canonicalKey = m_store.resolveCanonicalKey(levelKey);
 
     if (idsOldestFirst.size() < 2) {
         out.result.error = "Squash needs at least 2 commits";
@@ -242,7 +238,7 @@ Prepared<LevelState> GitService::prepareSquash(
             out.result.error = "Commit " + std::to_string(id) + " not found";
             return out;
         }
-        if (row->levelKey != canonicalKey) {
+        if (row->levelKey != levelKey) {
             out.result.error = "Commit " + std::to_string(id) + " belongs to a different level";
             return out;
         }
@@ -272,7 +268,7 @@ Prepared<LevelState> GitService::prepareSquash(
     auto blob     = dumpDelta(combined);
 
     PendingSquash pending;
-    pending.levelKey       = canonicalKey;
+    pending.levelKey       = levelKey;
     pending.idsOldestFirst = idsOldestFirst;
     pending.parentOfOldest = parentOfOldest;
     pending.message        = message;
@@ -308,13 +304,11 @@ Prepared<LevelState> GitService::prepareImportLevelFrom(
     LevelKey const& src
 ) {
     Prepared<LevelState> out;
-    auto const canonicalDest = m_store.resolveOrCreateCanonicalKey(dest);
-    auto const canonicalSrc  = m_store.resolveCanonicalKey(src);
-    if (canonicalDest == canonicalSrc) {
+    if (dest == src) {
         out.result.error = "source and destination are the same";
         return out;
     }
-    auto const srcHead = m_store.getHead(canonicalSrc);
+    auto const srcHead = m_store.getHead(src);
     if (!srcHead) {
         out.result.error = "source has no HEAD";
         return out;
@@ -326,8 +320,8 @@ Prepared<LevelState> GitService::prepareImportLevelFrom(
     }
 
     PendingHistoryReplace pending;
-    pending.dest = canonicalDest;
-    pending.src  = canonicalSrc;
+    pending.dest = dest;
+    pending.src  = src;
     out.pendingReplace = std::move(pending);
 
     out.result.ok    = true;
@@ -355,14 +349,13 @@ Result<void> GitService::finalizeImportLevelFrom(
 
 Result<void> GitService::exportLevelToGdge(LevelKey const& levelKey, std::filesystem::path const& outPath) {
     Result<void> out;
-    auto const canonical = m_store.resolveCanonicalKey(levelKey);
-    auto rows = m_store.list(canonical);
+    auto rows = m_store.list(levelKey);
     if (rows.empty()) {
         out.error = "no commits to export";
         return out;
     }
     std::reverse(rows.begin(), rows.end());
-    auto head = m_store.getHead(canonical);
+    auto head = m_store.getHead(levelKey);
     if (!head) {
         out.error = "missing HEAD";
         return out;
@@ -400,10 +393,10 @@ Result<void> GitService::exportLevelToGdge(LevelKey const& levelKey, std::filesy
         c.deltaBlob = r.deltaBlob;
         pkg.commits.push_back(std::move(c));
     }
-    pkg.metadata.sourceLevelKey = canonical;
+    pkg.metadata.sourceLevelKey = levelKey;
     pkg.metadata.headIndex = indexById.at(*head);
 
-    auto root = reconstructRoot(m_store, *this, canonical);
+    auto root = reconstructRoot(m_store, *this, levelKey);
     if (!root) {
         out.error = "failed to reconstruct root";
         return out;
@@ -418,156 +411,13 @@ Result<void> GitService::exportLevelToGdge(LevelKey const& levelKey, std::filesy
     return out;
 }
 
-Result<MergeSinglePayload> GitService::mergeSingleGdge(
-    LevelKey const& canonicalDest,
-    std::filesystem::path const& inPath
-) {
-    Result<MergeSinglePayload> out;
-    auto pkg = readGdgePackage(inPath);
-    if (!pkg || pkg->commits.empty() || !pkg->metadata.headIndex) {
-        out.error = "invalid .gdge file";
-        return out;
-    }
-
-    auto theirs = reconstructPackageHead(*pkg);
-    if (!theirs) {
-        out.error = "package history graph invalid";
-        return out;
-    }
-
-    auto head = m_store.getHead(canonicalDest);
-    if (!head) {
-        auto blob = dumpDelta(diff(LevelState {}, *theirs));
-        auto id = m_store.insertAndSetHead(
-            canonicalDest, std::nullopt, std::nullopt, "Import .gdge: " + git_editor::pathUtf8(inPath.filename()), blob
-        );
-        if (!id) {
-            out.error = "failed to persist imported level";
-            return out;
-        }
-        this->cachePut(*id, *theirs);
-        out.ok             = true;
-        out.value.state    = std::move(*theirs);
-        out.value.conflictCount = 0;
-        return out;
-    }
-    auto root = reconstructRoot(m_store, *this, canonicalDest);
-    if (!root) {
-        out.error = "failed to reconstruct current root";
-        return out;
-    }
-    auto ours = this->reconstruct(*head);
-    if (!ours) {
-        out.error = "failed to reconstruct local state";
-        return out;
-    }
-
-    int conflicts = 0;
-    auto merged = mergeStates3Way(*root, *ours, *theirs, conflicts);
-    if (!merged) {
-        out.error = "3-way merge failed";
-        return out;
-    }
-
-    auto persistDelta = diff(*ours, *merged);
-    auto blob = dumpDelta(persistDelta);
-    auto id = m_store.insertAndSetHead(
-        canonicalDest, *head, std::nullopt, "Merge import: " + git_editor::pathUtf8(inPath.filename()), blob
-    );
-    if (!id) {
-        out.error = "failed to persist merge commit";
-        return out;
-    }
-    this->cachePut(*id, *merged);
-    out.ok                  = true;
-    out.value.conflictCount = conflicts;
-    out.value.state         = std::move(*merged);
-    return out;
-}
-
-Result<MergeSinglePayload> GitService::smartMergeMany(
-    LevelKey const& canonicalDest,
-    std::vector<std::filesystem::path> const& paths
-) {
-    Result<MergeSinglePayload> out;
-    if (paths.empty()) {
-        out.error = "no smart-mergeable files";
-        return out;
-    }
-
-    auto head = m_store.getHead(canonicalDest);
-    std::optional<LevelState> root = reconstructRoot(m_store, *this, canonicalDest);
-    if (!root) {
-        out.error = "failed to reconstruct current root";
-        return out;
-    }
-    LevelState base = *root;
-    LevelState ours;
-    if (head) {
-        auto recon = this->reconstruct(*head);
-        if (!recon) {
-            out.error = "failed to reconstruct local state";
-            return out;
-        }
-        ours = std::move(*recon);
-    }
-    LevelState merged = ours;
-    int totalConflicts = 0;
-
-    std::vector<std::string> names;
-    names.reserve(paths.size());
-    for (auto const& inPath : paths) {
-        auto pkg = readGdgePackage(inPath);
-        if (!pkg || pkg->commits.empty() || !pkg->metadata.headIndex) {
-            out.error = "invalid .gdge file";
-            return out;
-        }
-        auto theirs = reconstructPackageHead(*pkg);
-        if (!theirs) {
-            out.error = "package history graph invalid";
-            return out;
-        }
-        int conflicts = 0;
-        auto step = mergeStates3Way(base, merged, *theirs, conflicts);
-        if (!step) {
-            out.error = "3-way merge failed";
-            return out;
-        }
-        merged = std::move(*step);
-        totalConflicts += conflicts;
-        names.push_back(git_editor::pathUtf8(inPath.filename()));
-    }
-
-    auto persistDelta = diff(ours, merged);
-    auto blob = dumpDelta(persistDelta);
-    std::string preview;
-    for (std::size_t i = 0; i < names.size(); ++i) {
-        if (i > 0) preview += ", ";
-        preview += names[i];
-        if (preview.size() >= 80) break;
-    }
-    auto message = shortPreview(
-        fmt::format("Smart merge: {} imports ({})", paths.size(), preview), 120
-    );
-    auto id = m_store.insertAndSetHead(canonicalDest, head, std::nullopt, message, blob);
-    if (!id) {
-        out.error = "failed to persist merge commit";
-        return out;
-    }
-    this->cachePut(*id, merged);
-    out.ok                  = true;
-    out.value.conflictCount = totalConflicts;
-    out.value.state         = std::move(merged);
-    return out;
-}
-
 ImportPlan GitService::classifyImports(
-    LevelKey const& canonicalDest,
+    LevelKey const& dest,
     std::vector<std::filesystem::path> const& inPaths
 ) {
     ImportPlan plan;
-    plan.noLocalCommits = !m_store.getHead(canonicalDest).has_value();
-    auto root = reconstructRoot(m_store, *this, canonicalDest);
+    plan.noLocalCommits = !m_store.getHead(dest).has_value();
+    auto root = reconstructRoot(m_store, *this, dest);
     auto classified = gdge_import_planner::classifyImports(m_store, root, inPaths);
     plan.localRootHash = std::move(classified.localRootHash);
     plan.smart = std::move(classified.smart);
@@ -581,61 +431,214 @@ ImportPlan GitService::planImport(
     std::vector<std::filesystem::path> const& inPaths
 ) {
     if (inPaths.empty()) return {};
-    auto const canonicalDest = m_store.resolveOrCreateCanonicalKey(dest);
-    return this->classifyImports(canonicalDest, inPaths);
+    return this->classifyImports(dest, inPaths);
 }
 
-Result<ImportManyPayload> GitService::importManyFromGdge(
+Prepared<ImportManyPayload> GitService::prepareImportManyFromGdge(
     LevelKey const& dest,
     std::vector<std::filesystem::path> const& inPaths
 ) {
-    Result<ImportManyPayload> out;
+    Prepared<ImportManyPayload> out;
     if (inPaths.empty()) {
-        out.error = "no files selected";
+        out.result.error = "no files selected";
         return out;
     }
 
-    auto const canonicalDest = m_store.resolveOrCreateCanonicalKey(dest);
-    auto plan = this->classifyImports(canonicalDest, inPaths);
-    out.value.skippedCount += static_cast<int>(plan.invalid.size());
+    auto plan = this->classifyImports(dest, inPaths);
+    ImportManyPayload payload;
+    payload.skippedCount += static_cast<int>(plan.invalid.size());
 
+    auto headBefore = m_store.getHead(dest);
+    LevelState ours;
+    LevelState rootBefore;
+    if (headBefore) {
+        auto root = reconstructRoot(m_store, *this, dest);
+        if (!root) {
+            out.result.error = "failed to reconstruct current root";
+            return out;
+        }
+        rootBefore = std::move(*root);
+        auto recon = this->reconstruct(*headBefore);
+        if (!recon) {
+            out.result.error = "failed to reconstruct local state";
+            return out;
+        }
+        ours = std::move(*recon);
+    }
+    // No head: rootBefore stays empty; ours stays empty.
+
+    PendingMergeImport pendingMerge;
+    LevelState runningState = ours;
     bool anyMerged = false;
     std::string lastError;
 
     if (!plan.smart.empty()) {
-        auto smart = this->smartMergeMany(canonicalDest, plan.smart);
-        if (!smart.ok) {
-            out.value.skippedCount += static_cast<int>(plan.smart.size());
-            if (lastError.empty()) lastError = smart.error;
+        LevelState merged = ours;
+        int conflicts = 0;
+        std::vector<std::string> names;
+        names.reserve(plan.smart.size());
+        bool ok = true;
+        std::string err;
+        for (auto const& inPath : plan.smart) {
+            auto pkg = readGdgePackage(inPath);
+            if (!pkg || pkg->commits.empty() || !pkg->metadata.headIndex) {
+                err = "invalid .gdge file";
+                ok = false;
+                break;
+            }
+            auto theirs = reconstructPackageHead(*pkg);
+            if (!theirs) {
+                err = "package history graph invalid";
+                ok = false;
+                break;
+            }
+            int stepConflicts = 0;
+            auto step = mergeStates3Way(rootBefore, merged, *theirs, stepConflicts);
+            if (!step) {
+                err = "3-way merge failed";
+                ok = false;
+                break;
+            }
+            merged = std::move(*step);
+            conflicts += stepConflicts;
+            names.push_back(git_editor::pathUtf8(inPath.filename()));
+        }
+        if (!ok) {
+            payload.skippedCount += static_cast<int>(plan.smart.size());
+            if (lastError.empty()) lastError = err;
         } else {
+            std::string preview;
+            for (std::size_t i = 0; i < names.size(); ++i) {
+                if (i > 0) preview += ", ";
+                preview += names[i];
+                if (preview.size() >= 80) break;
+            }
+            auto message = shortPreview(
+                fmt::format("Smart merge: {} imports ({})", plan.smart.size(), preview), 120
+            );
+            PendingHeadUpdate p;
+            p.levelKey  = dest;
+            p.parent    = headBefore;
+            p.message   = std::move(message);
+            p.deltaBlob = dumpDelta(diff(ours, merged));
+            pendingMerge.commits.push_back(std::move(p));
+
             anyMerged = true;
-            out.value.smartCount = static_cast<int>(plan.smart.size());
-            out.value.mergedCount += out.value.smartCount;
-            out.value.conflictCount += smart.value.conflictCount;
-            out.value.state = std::move(smart.value.state);
+            payload.smartCount = static_cast<int>(plan.smart.size());
+            payload.mergedCount += payload.smartCount;
+            payload.conflictCount += conflicts;
+            runningState = std::move(merged);
+            payload.state = runningState;
+            if (!headBefore) {
+                // No prior head: smart commit is parent=none and becomes the root for subsequent
+                // sequential merges to 3-way-merge against.
+                rootBefore = runningState;
+            }
         }
     }
 
     for (auto const& path : plan.sequential) {
-        auto merged = this->mergeSingleGdge(canonicalDest, path);
-        if (!merged.ok) {
-            out.value.skippedCount++;
+        auto pkg = readGdgePackage(path);
+        if (!pkg || pkg->commits.empty() || !pkg->metadata.headIndex) {
+            payload.skippedCount++;
             if (lastError.empty()) {
-                lastError = git_editor::pathUtf8(path.filename()) + ": " + merged.error;
+                lastError = git_editor::pathUtf8(path.filename()) + ": invalid .gdge file";
             }
             continue;
         }
+        auto theirs = reconstructPackageHead(*pkg);
+        if (!theirs) {
+            payload.skippedCount++;
+            if (lastError.empty()) {
+                lastError = git_editor::pathUtf8(path.filename()) + ": package history graph invalid";
+            }
+            continue;
+        }
+
+        bool const freshRoot = !headBefore && pendingMerge.commits.empty();
+
+        PendingHeadUpdate p;
+        p.levelKey = dest;
+        if (freshRoot) {
+            // First commit on an empty chain: empty parent, blob = diff(empty, theirs). This
+            // commit becomes the root, so rootBefore must advance for subsequent 3-way merges.
+            p.message    = "Import .gdge: " + git_editor::pathUtf8(path.filename());
+            p.deltaBlob  = dumpDelta(diff(LevelState {}, *theirs));
+            runningState = *theirs;
+            rootBefore   = *theirs;
+        } else {
+            int conflicts = 0;
+            auto merged = mergeStates3Way(rootBefore, runningState, *theirs, conflicts);
+            if (!merged) {
+                payload.skippedCount++;
+                if (lastError.empty()) {
+                    lastError = git_editor::pathUtf8(path.filename()) + ": 3-way merge failed";
+                }
+                continue;
+            }
+            p.message   = "Merge import: " + git_editor::pathUtf8(path.filename());
+            p.deltaBlob = dumpDelta(diff(runningState, *merged));
+            if (!pendingMerge.commits.empty()) {
+                p.parentPendingIx = pendingMerge.commits.size() - 1;
+            } else {
+                p.parent = headBefore;
+            }
+            payload.conflictCount += conflicts;
+            runningState = std::move(*merged);
+        }
+        pendingMerge.commits.push_back(std::move(p));
         anyMerged = true;
-        out.value.sequentialCount++;
-        out.value.mergedCount++;
-        out.value.conflictCount += merged.value.conflictCount;
-        out.value.state = std::move(merged.value.state);
+        payload.sequentialCount++;
+        payload.mergedCount++;
+        payload.state = runningState;
     }
 
     if (!anyMerged) {
-        out.error = lastError.empty() ? "none of selected files merged" : lastError;
-        out.value = {};
+        out.result.error = lastError.empty() ? "none of selected files merged" : lastError;
         return out;
+    }
+
+    if (!pendingMerge.commits.empty()) {
+        // Prime cache for the chain head only; intermediate ids are unlikely to be reconstructed.
+        pendingMerge.commits.back().cacheState = payload.state;
+    }
+
+    out.result.ok          = true;
+    out.result.value       = std::move(payload);
+    out.pendingMergeImport = std::move(pendingMerge);
+    return out;
+}
+
+Result<void> GitService::finalizeImportManyFromGdge(
+    PendingMergeImport const& pending,
+    LevelState const&         /*applied*/
+) {
+    Result<void> out;
+    if (pending.commits.empty()) {
+        out.ok = true;
+        return out;
+    }
+    std::vector<CommitId> minted;
+    minted.reserve(pending.commits.size());
+    for (std::size_t i = 0; i < pending.commits.size(); ++i) {
+        auto const& p = pending.commits[i];
+        std::optional<CommitId> parent;
+        if (p.parentPendingIx) {
+            if (*p.parentPendingIx >= minted.size()) {
+                out.error = "pending parent index out of range at entry " + std::to_string(i);
+                return out;
+            }
+            parent = minted[*p.parentPendingIx];
+        } else {
+            parent = p.parent;
+        }
+        auto id = m_store.insertAndSetHead(p.levelKey, parent, p.reverts, p.message, p.deltaBlob);
+        if (!id) {
+            out.error = "insertAndSetHead failed at entry " + std::to_string(i);
+            return out;
+        }
+        minted.push_back(*id);
+        if (p.cacheState) this->cachePut(*id, *p.cacheState);
     }
     out.ok = true;
     return out;
@@ -682,6 +685,18 @@ Result<LevelState> GitService::importLevelFrom(LevelKey const& dest, LevelKey co
     if (!prep.pendingReplace) return prep.result;
     auto fin = this->finalizeImportLevelFrom(*prep.pendingReplace, prep.result.value);
     if (!fin.ok) return failResult<LevelState>(fin.error);
+    return prep.result;
+}
+
+Result<ImportManyPayload> GitService::importManyFromGdge(
+    LevelKey const& dest,
+    std::vector<std::filesystem::path> const& inPaths
+) {
+    auto prep = this->prepareImportManyFromGdge(dest, inPaths);
+    if (!prep.result.ok) return prep.result;
+    if (!prep.pendingMergeImport) return prep.result;
+    auto fin = this->finalizeImportManyFromGdge(*prep.pendingMergeImport, prep.result.value.state);
+    if (!fin.ok) return failResult<ImportManyPayload>(fin.error);
     return prep.result;
 }
 

@@ -30,11 +30,6 @@ struct ImportManyPayload {
     int        sequentialCount = 0;
 };
 
-struct MergeSinglePayload {
-    LevelState state;
-    int        conflictCount = 0;
-};
-
 struct ImportPlan {
     std::vector<std::filesystem::path> smart;
     std::vector<std::filesystem::path> sequential;
@@ -80,11 +75,16 @@ public:
     Result<void>        exportLevelToGdge(LevelKey const& levelKey, std::filesystem::path const& outPath);
     ImportPlan          planImport(LevelKey const& dest,
                                    std::vector<std::filesystem::path> const& inPaths);
-    // NOTE: importManyFromGdge is still single-phase (DB-write before UI apply). Deferring it
-    // means batching N per-file commits behind one apply gate; tracked as follow-up.
-    Result<ImportManyPayload> importManyFromGdge(
+
+    // Two-phase multi-merge: prepare computes merged state + ordered pending head updates without
+    // touching the DB; finalize replays the updates after the UI confirms apply succeeded.
+    Prepared<ImportManyPayload> prepareImportManyFromGdge(
         LevelKey const& dest,
         std::vector<std::filesystem::path> const& inPaths
+    );
+    Result<void> finalizeImportManyFromGdge(
+        PendingMergeImport const& pending,
+        LevelState const&         applied
     );
 
     void             clearReconstructCache();
@@ -100,17 +100,12 @@ public:
                                   std::vector<CommitId> const& idsOldestFirst,
                                   std::string const& message);
     Result<LevelState>    importLevelFrom(LevelKey const& dest, LevelKey const& src);
+    Result<ImportManyPayload> importManyFromGdge(
+        LevelKey const& dest,
+        std::vector<std::filesystem::path> const& inPaths);
 
 private:
-    Result<MergeSinglePayload> mergeSingleGdge(
-        LevelKey const& canonicalDest,
-        std::filesystem::path const& inPath
-    );
-    Result<MergeSinglePayload> smartMergeMany(
-        LevelKey const& canonicalDest,
-        std::vector<std::filesystem::path> const& paths
-    );
-    ImportPlan classifyImports(LevelKey const& canonicalDest,
+    ImportPlan classifyImports(LevelKey const& dest,
                                std::vector<std::filesystem::path> const& inPaths);
 
     void       cachePut(CommitId id, LevelState state);

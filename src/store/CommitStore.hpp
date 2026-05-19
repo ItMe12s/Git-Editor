@@ -106,9 +106,6 @@ public:
     std::optional<CommitId> getHead(LevelKey const& levelKey);
     bool                    setHead(LevelKey const& levelKey, CommitId head);
 
-    LevelKey resolveCanonicalKey(LevelKey const& observedKey);
-    LevelKey resolveOrCreateCanonicalKey(LevelKey const& observedKey);
-
 private:
     bool ensureSchema();
 

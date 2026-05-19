@@ -72,8 +72,8 @@ struct HistoryLoadResult {
     std::vector<CommitSummary> commits;
 };
 
-// Canonical key is `id:{EditorIDs}` (no alias table today), so resolveOrCreateCanonicalKey is a
-// no-op and a repair branch would never fire. On miss, fall back only to the active editor's key.
+// Stored key IS the observed key (`id:{EditorIDs}`). On miss, fall back to the active editor's
+// key in case the layer was opened with a stale/empty levelKey.
 HistoryLoadResult loadHistory(LevelKey levelKey, LevelKey const& activeEditorLevelKey) {
     auto commits = sharedCommitStore().listSummaries(levelKey);
     if (commits.empty() && !activeEditorLevelKey.empty() && activeEditorLevelKey != levelKey) {
