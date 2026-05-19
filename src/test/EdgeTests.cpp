@@ -70,6 +70,75 @@ void runEdgeTests(GitService& git, CommitStore& st, std::filesystem::path const&
     st.deleteLevel(kHistDst);
     R.addPass(kSuiteEdge, "delete_level", "fresh key after deleteLevel", deleteFresh.ms());
 
+    R.addAction(kSuiteEdge, "listLevels absent after deleteLevel");
+    ScopedTimer listLevelsT;
+    bool foundHistDst = false;
+    for (auto const& lv : st.listLevels()) {
+        if (lv.levelKey == kHistDst) {
+            foundHistDst = true;
+            break;
+        }
+    }
+    if (foundHistDst) {
+        R.addFail(kSuiteEdge, "list_levels_after_delete", "deleted key still in listLevels", listLevelsT.ms());
+        return;
+    }
+    R.addPass(kSuiteEdge, "list_levels_after_delete", "kHistDst absent from listLevels", listLevelsT.ms());
+
+    R.addAction(kSuiteEdge, "updateMessage roundtrip");
+    ScopedTimer updateMsgT;
+    st.deleteLevel(kHistSrc);
+    auto msgCommit = git.commit(kHistSrc, "original_msg", levelAt(1));
+    if (!msgCommit.ok) {
+        R.addFail(kSuiteEdge, "update_message_setup", msgCommit.error, updateMsgT.ms());
+        return;
+    }
+    if (!st.updateMessage(msgCommit.value, "renamed_msg")) {
+        R.addFail(kSuiteEdge, "update_message", "updateMessage returned false", updateMsgT.ms());
+        return;
+    }
+    auto sums = st.listSummaries(kHistSrc);
+    bool foundRenamed = false;
+    for (auto const& s : sums) {
+        if (s.id == msgCommit.value && s.message == "renamed_msg") {
+            foundRenamed = true;
+            break;
+        }
+    }
+    if (!foundRenamed) {
+        R.addFail(kSuiteEdge, "update_message_verify", "listSummaries missing renamed message", updateMsgT.ms());
+        return;
+    }
+    R.addPass(kSuiteEdge, "update_message", "message updated in listSummaries", updateMsgT.ms());
+
+    R.addAction(kSuiteEdge, "planImport noLocalCommits on empty dest");
+    ScopedTimer planT;
+    st.deleteLevel(kMix);
+    auto const planPath = testDir / "at_plan_empty.gdge";
+    st.deleteLevel(kRawEx);
+    if (!git.commit(kRawEx, "plan_probe", levelAt(3)).ok) {
+        R.addFail(kSuiteEdge, "plan_setup_commit", "commit failed", planT.ms());
+        return;
+    }
+    if (auto exPlan = git.exportLevelToGdge(kRawEx, planPath); !exPlan.ok) {
+        R.addFail(kSuiteEdge, "plan_setup_export", exPlan.error, planT.ms());
+        return;
+    }
+    if (st.getHead(kMix).has_value()) {
+        R.addFail(kSuiteEdge, "plan_empty_head", "kMix should have no HEAD", planT.ms());
+        return;
+    }
+    auto plan = git.planImport(kMix, { planPath });
+    if (!plan.noLocalCommits) {
+        R.addFail(kSuiteEdge, "plan_no_local", "expected noLocalCommits true", planT.ms());
+        return;
+    }
+    if (plan.smart.empty() && plan.sequential.empty()) {
+        R.addFail(kSuiteEdge, "plan_buckets", "expected file in smart or sequential bucket", planT.ms());
+        return;
+    }
+    R.addPass(kSuiteEdge, "plan_no_local_commits", "noLocalCommits set for empty dest", planT.ms());
+
     // Regression: per-object kA*/kS* keys must round-trip. Loss of these on a startpos object
     // (id 31) leaves StartPosObject::m_startSettings null and crashes LevelSettingsLayer::init
     // when the user opens "Edit Object" after a revert/checkout.

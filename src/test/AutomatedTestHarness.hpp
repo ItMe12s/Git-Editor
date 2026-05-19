@@ -20,6 +20,7 @@ inline constexpr char kSuiteHistory[]  = "LoadLevelHistory";
 inline constexpr char kSuiteCollab[]    = "Collab";
 inline constexpr char kSuiteAdvancedCollab[] = "AdvancedCollab";
 inline constexpr char kSuiteEdge[]       = "Edge";
+inline constexpr char kSuiteTwoPhase[]   = "TwoPhase";
 inline constexpr char kSuiteManual[]    = "ManualChecklist";
 
 inline LevelKey const kCheckout{"__git_editor_at_checkout"};
@@ -42,6 +43,7 @@ inline LevelKey const kAdvCollabBob{"__git_editor_at_adv_collab_bob"};
 inline LevelKey const kAdvCollabScratch{"__git_editor_at_adv_collab_scratch"};
 inline LevelKey const kAdvCollabCara{"__git_editor_at_adv_collab_cara"};
 inline LevelKey const kAdvCollabLegacy{"__git_editor_at_adv_collab_legacy"};
+inline LevelKey const kTwoPhase{"__git_editor_at_two_phase"};
 
 struct ReportBuilder {
     AutomatedTestSummary& out;
@@ -86,6 +88,7 @@ void runHistoryCopyTest(GitService& git, CommitStore& st, ReportBuilder& R);
 void runCollabPlanTest(GitService& git, CommitStore& st, std::filesystem::path const& testDir, ReportBuilder& R);
 void runAdvancedCollabSimulatorTests(GitService& git, CommitStore& st, std::filesystem::path const& testDir, ReportBuilder& R);
 void runEdgeTests(GitService& git, CommitStore& st, std::filesystem::path const& testDir, ReportBuilder& R);
+void runTwoPhaseTests(GitService& git, CommitStore& st, std::filesystem::path const& testDir, ReportBuilder& R);
 void appendManualSkips(ReportBuilder& R);
 
 } // namespace git_editor

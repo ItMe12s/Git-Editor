@@ -1,6 +1,7 @@
 #include "AutomatedTestHarness.hpp"
 
 #include "../util/PathUtf8.hpp"
+#include "../util/StateHash.hpp"
 
 #include <fmt/format.h>
 
@@ -98,14 +99,50 @@ void runGdgeExportImportTests(GitService& git, CommitStore& st, std::filesystem:
         );
         return;
     }
+
+    auto headMix = st.getHead(kMix);
+    if (!headMix) {
+        R.addFail(kSuiteGdge, "import_head", "no HEAD on kMix after import", importPhase.ms());
+        return;
+    }
+    auto chainMix = chainOldestToNewest(st, kMix);
+    if (chainMix.size() < 2) {
+        R.addFail(
+            kSuiteGdge,
+            "import_chain_len",
+            fmt::format("expected >= 2 commits got {}", chainMix.size()),
+            importPhase.ms()
+        );
+        return;
+    }
+    auto reconMix = git.reconstruct(*headMix);
+    if (!reconMix) {
+        R.addFail(kSuiteGdge, "import_reconstruct", "reconstruct HEAD failed", importPhase.ms());
+        return;
+    }
+    auto const payloadHash = hashLevelState(many.value.state);
+    auto const dbHash      = hashLevelState(*reconMix);
+    R.addAction(kSuiteGdge, fmt::format("import state hash payload={} db={}", payloadHash, dbHash));
+    if (payloadHash != dbHash) {
+        R.addFail(kSuiteGdge, "import_state_hash", "payload state != reconstructed HEAD", importPhase.ms());
+        return;
+    }
+    auto const hashAgain = hashLevelState(*git.reconstruct(*headMix));
+    if (hashAgain != dbHash) {
+        R.addFail(kSuiteGdge, "import_state_stable", "hash changed on second reconstruct", importPhase.ms());
+        return;
+    }
+
     R.addPass(
         kSuiteGdge,
         "export_import_mixed",
         fmt::format(
-            "smart={} sequential={} skipped={}",
+            "smart={} sequential={} skipped={} commits={} hash={}",
             many.value.smartCount,
             many.value.sequentialCount,
-            many.value.skippedCount
+            many.value.skippedCount,
+            chainMix.size(),
+            dbHash
         ),
         fullSuite.ms()
     );

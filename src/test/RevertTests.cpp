@@ -1,5 +1,7 @@
 #include "AutomatedTestHarness.hpp"
 
+#include "../model/LevelParser.hpp"
+
 #include <fmt/format.h>
 
 namespace git_editor {
@@ -72,6 +74,55 @@ void runRevertTests(GitService& git, CommitStore& st, ReportBuilder& R) {
     }
     R.addAction(kSuiteRevert, "double revert OK");
     R.addPass(kSuiteRevert, "revert_chain", "middle revert and double-revert OK", T.ms());
+
+    R.addAction(kSuiteRevert, "revert with conflicts branch");
+    ScopedTimer conflictT;
+    st.deleteLevel(kRevert);
+    if (!git.commit(kRevert, "cf1", levelAt(0)).ok
+        || !git.commit(kRevert, "cf2", levelAt(10)).ok) {
+        R.addFail(kSuiteRevert, "conflict_setup_12", "commit failed", conflictT.ms());
+        return;
+    }
+    std::string cf3Level = levelAt(10);
+    {
+        auto parsed = parseLevelString(levelAt(10));
+        for (auto& [_, obj] : parsed.objects) {
+            obj.fields[key::kX] = "50";
+        }
+        cf3Level = serializeLevelString(parsed);
+    }
+    if (!git.commit(kRevert, "cf3", cf3Level).ok
+        || !git.commit(kRevert, "cf4", levelAtFixedX(30)).ok) {
+        R.addFail(kSuiteRevert, "conflict_setup_34", "commit failed", conflictT.ms());
+        return;
+    }
+    auto cfChain = chainOldestToNewest(st, kRevert);
+    if (cfChain.size() != 4) {
+        R.addFail(kSuiteRevert, "conflict_chain_len", fmt::format("got {}", cfChain.size()), conflictT.ms());
+        return;
+    }
+    CommitId const cf2 = cfChain[1];
+    R.addAction(kSuiteRevert, fmt::format("revert cf2 {} expecting conflicts", cf2));
+    auto revCf = git.revert(kRevert, cf2);
+    if (!revCf.ok) {
+        R.addFail(kSuiteRevert, "revert_with_conflicts", revCf.error, conflictT.ms());
+        return;
+    }
+    if (revCf.value.conflicts.empty()) {
+        R.addFail(
+            kSuiteRevert,
+            "revert_with_conflicts",
+            "expected non-empty conflicts for overlapping field edits",
+            conflictT.ms()
+        );
+        return;
+    }
+    R.addPass(
+        kSuiteRevert,
+        "revert_conflicts",
+        fmt::format("{} conflicts", revCf.value.conflicts.size()),
+        conflictT.ms()
+    );
 }
 
 } // namespace git_editor

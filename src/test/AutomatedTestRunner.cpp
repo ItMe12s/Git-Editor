@@ -73,6 +73,8 @@ AutomatedTestSummary runAutomatedTests(std::filesystem::path const& saveDir, std
 
     {
         FinallyWipeTestLevels cleanup(st, R);
+        R.addAction("Runner", "suite TwoPhase");
+        runTwoPhaseTests(git, st, testDir, R);
         R.addAction("Runner", "suite Checkout");
         runCheckoutTests(git, st, R);
         R.addAction("Runner", "suite Revert");
