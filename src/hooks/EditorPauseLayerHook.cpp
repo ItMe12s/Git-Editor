@@ -5,9 +5,9 @@
 #include "../ui/LevelBrowserLayer.hpp"
 #include "../ui/common/GitUiActionRunner.hpp"
 #include "../util/GitWorker.hpp"
-#include "../util/LevelKey.hpp"
-#include "../util/PathUtf8.hpp"
-#include "../util/UiText.hpp"
+#include "../editor/LevelKey.hpp"
+#include "../util/io/PathUtf8.hpp"
+#include "../ui/presentation/UiText.hpp"
 
 #include <Geode/Geode.hpp>
 #include <Geode/binding/ButtonSprite.hpp>

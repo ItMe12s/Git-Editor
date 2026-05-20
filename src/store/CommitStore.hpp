@@ -33,7 +33,6 @@ struct CommitRow {
     std::string              deltaBlob;
 };
 
-// Blob-free row for list UI.
 struct CommitSummary {
     CommitId     id          = 0;
     std::string  message;
@@ -42,6 +41,14 @@ struct CommitSummary {
     int          addCount    = 0;
     int          modifyCount = 0;
     int          removeCount = 0;
+};
+
+// Raw row from DB including compressed delta blob (stats filled by service layer).
+struct CommitSummaryRow {
+    CommitId     id        = 0;
+    std::string  message;
+    std::int64_t createdAt = 0;
+    std::string  deltaBlob;
 };
 
 // One sqlite3* per process (sharedCommitStore). Opened with SQLITE_OPEN_FULLMUTEX and every
@@ -81,7 +88,7 @@ public:
     std::optional<CommitRow> get(CommitId id);
 
     std::vector<CommitRow>     list(LevelKey const& levelKey);
-    std::vector<CommitSummary> listSummaries(LevelKey const& levelKey);
+    std::vector<CommitSummaryRow> listSummaryRows(LevelKey const& levelKey);
     bool                       updateMessage(CommitId id, std::string const& message);
 
     // Atomically replaces a contiguous range [oldest..newest] (oldest-first ids) with one new

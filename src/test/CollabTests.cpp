@@ -1,7 +1,7 @@
 #include "AutomatedTestHarness.hpp"
 
 #include "../model/LevelParser.hpp"
-#include "../util/PathUtf8.hpp"
+#include "../util/io/PathUtf8.hpp"
 
 #include <fmt/format.h>
 

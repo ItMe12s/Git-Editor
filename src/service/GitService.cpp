@@ -1,6 +1,8 @@
 #include "GitService.hpp"
+#include "CommitSummaryBuilder.hpp"
 #include "GdgeImportPlanner.hpp"
 #include "MergeService.hpp"
+#include "PackageReconstruction.hpp"
 #include "ReconstructionService.hpp"
 
 #include "../diff/Delta.hpp"
@@ -8,8 +10,8 @@
 #include "../identity/Matcher.hpp"
 #include "../model/LevelParser.hpp"
 #include "../store/GdgePackage.hpp"
-#include "../util/PathUtf8.hpp"
-#include "../util/StateHash.hpp"
+#include "../util/format/StateHash.hpp"
+#include "../util/io/PathUtf8.hpp"
 
 #include <Geode/loader/Log.hpp>
 
@@ -654,6 +656,10 @@ Result<void> GitService::finalizeImportManyFromGdge(
     }
     out.ok = true;
     return out;
+}
+
+std::vector<CommitSummary> GitService::listSummaries(LevelKey const& levelKey) {
+    return buildCommitSummaries(m_store.listSummaryRows(levelKey));
 }
 
 void GitService::clearReconstructCache() {

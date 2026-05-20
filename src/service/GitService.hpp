@@ -1,11 +1,12 @@
 #pragma once
 
+#include "../core/ImportPlan.hpp"
+#include "../core/Result.hpp"
 #include "../diff/Delta.hpp"
 #include "../diff/Differ.hpp"
 #include "../model/LevelState.hpp"
 #include "../store/CommitStore.hpp"
 #include "PendingCommit.hpp"
-#include "Result.hpp"
 #include "StateCache.hpp"
 
 #include <cstddef>
@@ -15,33 +16,6 @@
 #include <vector>
 
 namespace git_editor {
-
-struct RevertPayload {
-    LevelState            state;
-    std::vector<Conflict> conflicts;
-};
-
-struct ImportManyPayload {
-    LevelState state;
-    int        mergedCount     = 0;
-    int        skippedCount    = 0;
-    int        conflictCount   = 0;
-    int        smartCount      = 0;
-    int        sequentialCount = 0;
-};
-
-struct InvalidImport {
-    std::filesystem::path path;
-    std::string           reason;
-};
-
-struct ImportPlan {
-    std::vector<std::filesystem::path> smart;
-    std::vector<std::filesystem::path> sequential;
-    std::vector<InvalidImport>         invalid;
-    std::string localRootHash;
-    bool noLocalCommits = false;
-};
 
 // Linear history, checkout adds forward commit to target state (no rewind HEAD).
 //
@@ -94,9 +68,11 @@ public:
 
     void             clearReconstructCache();
 
+    std::vector<CommitSummary> listSummaries(LevelKey const& levelKey);
+
     std::optional<LevelState> reconstruct(CommitId commitId);
 
-    // Test/headless conveniences: prepare + finalize in one call. NOT for UI callers — these
+    // Test/headless conveniences: prepare + finalize in one call. NOT for UI callers, these
     // skip the editor-apply gate and so reintroduce split-brain risk if used from interactive
     // flows. Used by AutomatedTestHarness where no LevelEditorLayer exists.
     Result<LevelState>    checkout(LevelKey const& levelKey, CommitId target);

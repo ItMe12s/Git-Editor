@@ -1,7 +1,8 @@
 #include "GdgeImportPlanner.hpp"
 
 #include "../store/GdgePackage.hpp"
-#include "../util/StateHash.hpp"
+#include "PackageReconstruction.hpp"
+#include "../util/format/StateHash.hpp"
 
 namespace git_editor::gdge_import_planner {
 

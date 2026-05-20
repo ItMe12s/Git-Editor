@@ -2,7 +2,7 @@
 
 #include "../model/LevelState.hpp"
 #include "../store/CommitStore.hpp"
-#include "Result.hpp"
+#include "../core/Result.hpp"
 
 #include <cstddef>
 #include <optional>

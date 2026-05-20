@@ -1,7 +1,8 @@
 #include "AutomatedTestHarness.hpp"
 
 #include "../model/LevelParser.hpp"
-#include "../util/PathUtf8.hpp"
+#include "../service/CommitSummaryBuilder.hpp"
+#include "../util/io/PathUtf8.hpp"
 
 #include <fmt/format.h>
 
@@ -99,7 +100,7 @@ void runEdgeTests(GitService& git, CommitStore& st, std::filesystem::path const&
         R.addFail(kSuiteEdge, "update_message", "updateMessage returned false", updateMsgT.ms());
         return;
     }
-    auto sums = st.listSummaries(kHistSrc);
+    auto sums = buildCommitSummaries(st.listSummaryRows(kHistSrc));
     bool foundRenamed = false;
     for (auto const& s : sums) {
         if (s.id == msgCommit.value && s.message == "renamed_msg") {

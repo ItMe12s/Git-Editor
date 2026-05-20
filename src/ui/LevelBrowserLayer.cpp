@@ -4,9 +4,9 @@
 #include "../service/GitService.hpp"
 #include "../store/CommitStore.hpp"
 #include "../util/GitWorker.hpp"
-#include "../util/UiAction.hpp"
-#include "../util/LevelKey.hpp"
-#include "../util/UiText.hpp"
+#include "../editor/LevelKey.hpp"
+#include "presentation/UiAction.hpp"
+#include "presentation/UiText.hpp"
 #include "common/GitUiActionRunner.hpp"
 
 #include <Geode/Geode.hpp>

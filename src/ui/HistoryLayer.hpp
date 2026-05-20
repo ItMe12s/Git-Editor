@@ -40,9 +40,8 @@ protected:
     void startCheckoutFlow(CommitId commitId, std::string const& commitMsg);
     void startRevertFlow(CommitId commitId, std::string const& commitMsg);
 
-    // Apply state to editor, notify only on failure (editor gone / refused). Success notification
-    // is intentionally NOT fired here so callers can defer it until the matching finalize* on the
-    // worker has persisted the head update. Returns true iff the editor accepted the state.
+    // Delegates to history_actions::applyStateToEditorOrNotify. Success notification is deferred
+    // until finalize* completes.
     bool tryApplyToEditor(
         char const*       noun,
         LevelEditorLayer* editor,

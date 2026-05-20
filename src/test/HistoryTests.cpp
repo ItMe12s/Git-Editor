@@ -1,5 +1,7 @@
 #include "AutomatedTestHarness.hpp"
 
+#include "../service/CommitSummaryBuilder.hpp"
+
 #include <fmt/format.h>
 
 namespace git_editor {
@@ -28,8 +30,8 @@ void runHistoryCopyTest(GitService& git, CommitStore& st, ReportBuilder& R) {
         R.addFail(kSuiteHistory, "import_level_from", imp.error, T.ms());
         return;
     }
-    auto srcS = st.listSummaries(kHistSrc);
-    auto dstS = st.listSummaries(kHistDst);
+    auto srcS = buildCommitSummaries(st.listSummaryRows(kHistSrc));
+    auto dstS = buildCommitSummaries(st.listSummaryRows(kHistDst));
     R.addAction(kSuiteHistory, fmt::format("listSummaries src {} dst {}", srcS.size(), dstS.size()));
     if (srcS.size() != dstS.size()) {
         R.addFail(

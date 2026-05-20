@@ -2,7 +2,7 @@
 
 #include "CommitStore.hpp"
 #include "../model/LevelState.hpp"
-#include "../service/Result.hpp"
+#include "../core/Result.hpp"
 
 #include <cstdint>
 #include <filesystem>
@@ -45,8 +45,5 @@ bool writeGdgePackage(std::filesystem::path const& outPath, GdgePackageData cons
 // Returns ok=false with a specific error reason if file is invalid, unreadable,
 // or missing required fields. Reason is suitable for surfacing to UI.
 Result<GdgePackageData> readGdgePackage(std::filesystem::path const& path);
-
-// Replays the package from root along parent chain to head, nullopt on invalid graph or deltas.
-std::optional<LevelState> reconstructPackageHead(GdgePackageData const& pkg);
 
 } // namespace git_editor

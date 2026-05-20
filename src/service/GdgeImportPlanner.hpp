@@ -1,6 +1,12 @@
 #pragma once
 
-#include "GitService.hpp"
+#include "../core/ImportPlan.hpp"
+#include "../store/CommitStore.hpp"
+#include "../model/LevelState.hpp"
+
+#include <filesystem>
+#include <optional>
+#include <vector>
 
 namespace git_editor::gdge_import_planner {
 

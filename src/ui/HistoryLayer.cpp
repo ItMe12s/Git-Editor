@@ -2,14 +2,16 @@
 
 #include "CommitMessageLayer.hpp"
 #include "DeltaInfoLayer.hpp"
+#include "HistoryActions.hpp"
 #include "common/GitUiActionRunner.hpp"
 #include "../diff/Delta.hpp"
+#include "../editor/LevelKey.hpp"
 #include "../editor/LevelStateIO.hpp"
 #include "../service/GitService.hpp"
 #include "../store/CommitStore.hpp"
-#include "../util/LevelKey.hpp"
-#include "../util/UiAction.hpp"
-#include "../util/UiText.hpp"
+#include "presentation/DeltaText.hpp"
+#include "presentation/UiAction.hpp"
+#include "presentation/UiText.hpp"
 
 #include <Geode/Geode.hpp>
 #include <Geode/binding/ButtonSprite.hpp>
@@ -63,10 +65,6 @@ constexpr ccColor3B kModColor  = {50, 200, 255};
 constexpr ccColor3B kDelColor  = {255, 90, 90};
 constexpr ccColor3B kHdrColor  = {255, 210, 70};
 
-bool histCanApplyEditorResult(LevelEditorLayer* editor) {
-    return editor != nullptr && editor->getParent() != nullptr;
-}
-
 struct HistoryLoadResult {
     LevelKey                   levelKey;
     std::vector<CommitSummary> commits;
@@ -75,39 +73,15 @@ struct HistoryLoadResult {
 // Stored key IS the observed key (`id:{EditorIDs}`). On miss, fall back to the active editor's
 // key in case the layer was opened with a stale/empty levelKey.
 HistoryLoadResult loadHistory(LevelKey levelKey, LevelKey const& activeEditorLevelKey) {
-    auto commits = sharedCommitStore().listSummaries(levelKey);
+    auto commits = sharedGitService().listSummaries(levelKey);
     if (commits.empty() && !activeEditorLevelKey.empty() && activeEditorLevelKey != levelKey) {
-        auto activeCommits = sharedCommitStore().listSummaries(activeEditorLevelKey);
+        auto activeCommits = sharedGitService().listSummaries(activeEditorLevelKey);
         if (!activeCommits.empty()) {
             levelKey = activeEditorLevelKey;
             commits  = std::move(activeCommits);
         }
     }
     return { std::move(levelKey), std::move(commits) };
-}
-
-void showConflictSummary(std::vector<Conflict> const& conflicts) {
-    if (conflicts.empty()) return;
-
-    int adds = 0, missing = 0, stale = 0;
-    for (auto const& c : conflicts) {
-        switch (c.kind) {
-            case Conflict::Kind::AddAlreadyExists: ++adds;   break;
-            case Conflict::Kind::Missing:          ++missing; break;
-            case Conflict::Kind::ModifyStale:      ++stale;   break;
-        }
-    }
-
-    std::string body = "Some ops could not be applied cleanly:\n";
-    if (adds)    body += fmt::format("- {} add(s) already present\n", adds);
-    if (missing) body += fmt::format("- {} missing\n", missing);
-    if (stale)   body += fmt::format("- {} stale field(s) skipped", stale);
-
-    FLAlertLayer::create(
-        "Revert - partial",
-        body.c_str(),
-        "OK"
-    )->show();
 }
 
 } // namespace
@@ -460,27 +434,7 @@ bool HistoryLayer::tryApplyToEditor(
     LevelState const& state,
     bool              hasConflicts
 ) {
-    if (!histCanApplyEditorResult(editor)) {
-        Notification::create(
-            (std::string(noun) + " ready but editor is no longer active, aborted before DB write").c_str(),
-            NotificationIcon::Warning
-        )->show();
-        return false;
-    }
-    if (!applyLevelState(editor, state)) {
-        Notification::create(
-            (std::string(noun) + " ready but editor refused, aborted before DB write").c_str(),
-            NotificationIcon::Warning
-        )->show();
-        return false;
-    }
-    if (hasConflicts) {
-        Notification::create(
-            (std::string(noun) + ": conflicts merged into editor state").c_str(),
-            NotificationIcon::Warning
-        )->show();
-    }
-    return true;
+    return history_actions::applyStateToEditorOrNotify(noun, editor, state, hasConflicts);
 }
 
 void HistoryLayer::startCheckoutFlow(CommitId commitId, std::string const& commitMsg) {
@@ -590,7 +544,7 @@ void HistoryLayer::startRevertFlow(CommitId commitId, std::string const& commitM
                     if (!prep.pendingHead) {
                         finishBusyAction(self->m_busy);
                         Notification::create("Reverted", NotificationIcon::Success)->show();
-                        showConflictSummary(prep.result.value.conflicts);
+                        history_actions::showConflictSummary(prep.result.value.conflicts);
                         self->onClose(nullptr);
                         if (pauseRef.data()) pauseRef.data()->onResume(nullptr);
                         return;
@@ -613,7 +567,7 @@ void HistoryLayer::startRevertFlow(CommitId commitId, std::string const& commitM
                                 return;
                             }
                             Notification::create("Reverted", NotificationIcon::Success)->show();
-                            showConflictSummary(conflicts);
+                            history_actions::showConflictSummary(conflicts);
                             if (self) self->onClose(nullptr);
                             if (pauseLocal.data()) pauseLocal.data()->onResume(nullptr);
                         }

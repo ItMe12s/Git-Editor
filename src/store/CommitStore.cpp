@@ -1,9 +1,8 @@
 #include "CommitStore.hpp"
 #include "CommitSchema.hpp"
 
-#include "../diff/Delta.hpp"
-#include "../util/BlobCodec.hpp"
-#include "../util/PathUtf8.hpp"
+#include "../util/io/BlobCodec.hpp"
+#include "../util/io/PathUtf8.hpp"
 
 #include <Geode/loader/Log.hpp>
 #include <Geode/loader/Mod.hpp>
@@ -317,19 +316,18 @@ std::vector<CommitRow> CommitStore::list(LevelKey const& levelKey) {
     return out;
 }
 
-std::vector<CommitSummary> CommitStore::listSummaries(LevelKey const& levelKey) {
+std::vector<CommitSummaryRow> CommitStore::listSummaryRows(LevelKey const& levelKey) {
     std::lock_guard<std::recursive_mutex> lk(m_mutex);
-    std::vector<CommitSummary> out;
+    std::vector<CommitSummaryRow> out;
     if (!m_db) return out;
 
-    // Blobs are zlib-compressed, SQL JSON functions can't read them. Decompress + parseDelta in C++.
     this->resetStatement(m_stmtListSummaries);
     sqlite3_bind_text(
         m_stmtListSummaries, 1, levelKey.c_str(), static_cast<int>(levelKey.size()), SQLITE_TRANSIENT
     );
 
     while (sqlite3_step(m_stmtListSummaries) == SQLITE_ROW) {
-        CommitSummary s;
+        CommitSummaryRow s;
         s.id          = sqlite3_column_int64(m_stmtListSummaries, 0);
         auto const* msg = reinterpret_cast<char const*>(sqlite3_column_text(m_stmtListSummaries, 1));
         s.message     = msg ? msg : "";
@@ -338,15 +336,7 @@ std::vector<CommitSummary> CommitStore::listSummaries(LevelKey const& levelKey) 
         auto const* data = static_cast<char const*>(sqlite3_column_blob(m_stmtListSummaries, 3));
         int const len = sqlite3_column_bytes(m_stmtListSummaries, 3);
         if (data && len > 0) {
-            std::string stored(data, data + len);
-            auto json = decompressBlob(stored);
-            if (auto delta = parseDelta(json)) {
-                s.headerCount = static_cast<int>(delta->headerChanges.size())
-                    + (delta->rawHeaderChange.has_value() ? 1 : 0);
-                s.addCount    = static_cast<int>(delta->adds.size());
-                s.modifyCount = static_cast<int>(delta->modifies.size());
-                s.removeCount = static_cast<int>(delta->removes.size());
-            }
+            s.deltaBlob.assign(data, data + len);
         }
         out.push_back(std::move(s));
     }

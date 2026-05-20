@@ -4,7 +4,7 @@
 
 #include "../test/AutomatedTestRunner.hpp"
 #include "../util/GitWorker.hpp"
-#include "../util/PathUtf8.hpp"
+#include "../util/io/PathUtf8.hpp"
 
 #include <fmt/format.h>
 
