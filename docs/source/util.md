@@ -5,7 +5,7 @@ Helpers for background work, files, compression, and small text or hash tools.
 ## Main files
 
 - `GitWorker.cpp`: background thread for heavy work
-- `io/BlobCodec.cpp`: compressed data blocks for saved changes (size cap before unpack)
+- `io/BlobCodec.cpp`: compress/decompress delta blobs (`optional` on failure, size cap before unpack)
 - `io/DbZip.cpp`: zip wrap for `.gdge`, detect database vs zip, safe file replace on Windows
 - `io/FileAtomic.cpp`: safe file replace helper
 - `io/PathUtf8.hpp`: safe path strings for logs and UI

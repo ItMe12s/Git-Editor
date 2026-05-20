@@ -223,7 +223,8 @@ bool writeGdgePackageSqlite(std::filesystem::path const& outPath,
 
 } // namespace
 
-bool writeGdgePackage(std::filesystem::path const& outPath, GdgePackageData const& data) {
+Result<void> writeGdgePackage(std::filesystem::path const& outPath, GdgePackageData const& data) {
+    Result<void> result;
     bool const compressExports =
         geode::Mod::get()->getSettingValue<bool>("compress-export-files");
 
@@ -233,14 +234,17 @@ bool writeGdgePackage(std::filesystem::path const& outPath, GdgePackageData cons
         if (!writeGdgePackageSqlite(tmpPath, data)) {
             std::error_code ec;
             std::filesystem::remove(tmpPath, ec);
-            return false;
+            result.error = "failed to write sqlite package";
+            return result;
         }
         if (!replaceFileAtomic(tmpPath, outPath)) {
             std::error_code ec;
             std::filesystem::remove(tmpPath, ec);
-            return false;
+            result.error = "failed to replace package file atomically";
+            return result;
         }
-        return true;
+        result.ok = true;
+        return result;
     }
 
     // Use a path distinct from writeZipAtomic tmp suffix.
@@ -249,7 +253,8 @@ bool writeGdgePackage(std::filesystem::path const& outPath, GdgePackageData cons
     sqlitePath += ".sqlite-tmp";
 
     if (!writeGdgePackageSqlite(sqlitePath, data)) {
-        return false;
+        result.error = "failed to write sqlite package for zip export";
+        return result;
     }
 
     auto readRes = geode::utils::file::readBinary(sqlitePath);
@@ -261,7 +266,8 @@ bool writeGdgePackage(std::filesystem::path const& outPath, GdgePackageData cons
         );
         std::error_code ec2;
         std::filesystem::remove(sqlitePath, ec2);
-        return false;
+        result.error = "failed to read intermediate sqlite for zip export";
+        return result;
     }
 
     bool const wroteZip = writeZipAtomic(outPath, "package.gdge", readRes.unwrap());
@@ -278,9 +284,11 @@ bool writeGdgePackage(std::filesystem::path const& outPath, GdgePackageData cons
     }
     if (!wroteZip) {
         geode::log::error("writeGdgePackage: writeZipAtomic failed for {}", pathUtf8(outPath));
-        return false;
+        result.error = "failed to write zip package";
+        return result;
     }
-    return true;
+    result.ok = true;
+    return result;
 }
 
 namespace {
@@ -367,7 +375,14 @@ Result<GdgePackageData> readGdgePackageFromSqlitePath(
         int const len = sqlite3_column_bytes(st, 5);
         if (data && len > 0) {
             std::string stored(data, data + len);
-            commit.deltaBlob = decompressBlob(stored);
+            auto json = decompressBlob(stored);
+            if (!json) {
+                return fail(
+                    "decompress delta_blob failed for commit_index="
+                    + std::to_string(commit.commitIndex)
+                );
+            }
+            commit.deltaBlob = std::move(*json);
         }
         out.commits.push_back(std::move(commit));
     }

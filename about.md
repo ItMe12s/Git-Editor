@@ -16,6 +16,9 @@ so you can undo a change without reverting the whole level.**
 Name and save your changes into a delta snapshot in the history.
 I recommend committing small changes like adding deco, triggers, buffing a section instead of doing one big commit.
 
+And make sure to assign the intended *z-order* for your overlapping objects,
+this mod does NOT care what objects are placed before or after each other.
+
 ### History
 
 A list of all commits for the level you're in.

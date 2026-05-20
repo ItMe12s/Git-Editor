@@ -398,8 +398,9 @@ Result<void> GitService::exportLevelToGdge(LevelKey const& levelKey, std::filesy
     }
     pkg.metadata.rootHash = hashLevelState(*root);
 
-    if (!writeGdgePackage(outPath, pkg)) {
-        out.error = "failed to write .gdge package";
+    auto writeRes = writeGdgePackage(outPath, pkg);
+    if (!writeRes.ok) {
+        out.error = writeRes.error.empty() ? "failed to write .gdge package" : writeRes.error;
         return out;
     }
     out.ok = true;

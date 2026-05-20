@@ -265,7 +265,9 @@ CommitRow rowFromStatement(sqlite3_stmt* st, bool includeBlob) {
         int len = sqlite3_column_bytes(st, 6);
         if (data && len > 0) {
             std::string stored(data, data + len);
-            r.deltaBlob = decompressBlob(stored);
+            if (auto json = decompressBlob(stored)) {
+                r.deltaBlob = std::move(*json);
+            }
         }
     }
     return r;

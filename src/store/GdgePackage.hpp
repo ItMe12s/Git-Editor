@@ -34,7 +34,7 @@ struct GdgePackageData {
     std::vector<GdgePackageCommit> commits;
 };
 
-bool writeGdgePackage(std::filesystem::path const& outPath, GdgePackageData const& data);
+Result<void> writeGdgePackage(std::filesystem::path const& outPath, GdgePackageData const& data);
 
 Result<GdgePackageData> readGdgePackage(std::filesystem::path const& path);
 

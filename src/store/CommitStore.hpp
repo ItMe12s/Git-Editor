@@ -47,7 +47,7 @@ struct CommitSummaryRow {
     CommitId     id        = 0;
     std::string  message;
     std::int64_t createdAt = 0;
-    // Compressed blob as stored in SQLite. Call decompressBlob before parseDelta.
+    // Compressed blob as stored in SQLite. decompressBlob before parseDelta (nullopt if corrupt).
     std::string  deltaBlob;
 };
 

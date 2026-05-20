@@ -30,13 +30,16 @@ std::optional<std::string> compressBlob(std::string const& raw) {
     return out;
 }
 
-std::string decompressBlob(std::string const& bytes) {
-    if (bytes.size() < 4) return {};
+std::optional<std::string> decompressBlob(std::string const& bytes) {
+    if (bytes.size() < 4) {
+        geode::log::error("decompressBlob: payload too short (size={})", bytes.size());
+        return std::nullopt;
+    }
     std::uint32_t n = 0;
     std::memcpy(&n, bytes.data(), 4);
     if (n > kMaxBlobFootprintBytes) {
         geode::log::error("decompressBlob: uncompressed size {} exceeds cap {}", n, kMaxBlobFootprintBytes);
-        return {};
+        return std::nullopt;
     }
     std::string out(n, '\0');
     uLongf dstLen = n;
@@ -47,11 +50,11 @@ std::string decompressBlob(std::string const& bytes) {
     );
     if (rc != Z_OK) {
         geode::log::error("decompressBlob: uncompress rc={}", rc);
-        return {};
+        return std::nullopt;
     }
     if (dstLen != n) {
         geode::log::error("decompressBlob: size mismatch {} != {}", dstLen, n);
-        return {};
+        return std::nullopt;
     }
     out.resize(dstLen);
     return out;
