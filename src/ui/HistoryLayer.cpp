@@ -38,7 +38,6 @@ namespace git_editor {
 
 namespace {
 
-// commitsDesc: newest first, return ids oldest first among selected.
 template <typename Row>
 std::vector<CommitId> selectedOldestFirst(
     std::vector<Row> const& commitsDesc,
@@ -70,8 +69,6 @@ struct HistoryLoadResult {
     std::vector<CommitSummary> commits;
 };
 
-// Stored key IS the observed key (`id:{EditorIDs}`). On miss, fall back to the active editor's
-// key in case the layer was opened with a stale/empty levelKey.
 HistoryLoadResult loadHistory(LevelKey levelKey, LevelKey const& activeEditorLevelKey) {
     auto commits = sharedGitService().listSummaries(levelKey);
     if (commits.empty() && !activeEditorLevelKey.empty() && activeEditorLevelKey != levelKey) {
@@ -329,7 +326,7 @@ void HistoryLayer::renderList(std::vector<CommitSummary> loadedCommits) {
                 .6f,
                 [self, commitId](CCMenuItemToggler*) {
                     if (!self) return;
-                    // Track state via m_selected, not isToggled() (GD / binding mismatch).
+                    // Track m_selected, not isToggled(). GD binding mismatch.
                     if (self->m_selected.count(commitId)) self->m_selected.erase(commitId);
                     else                                  self->m_selected.insert(commitId);
                     self->rebuildHeader();
@@ -472,7 +469,6 @@ void HistoryLayer::startCheckoutFlow(CommitId commitId, std::string const& commi
                         return;
                     }
                     if (!prep.pendingHead) {
-                        // head == target short-circuit: nothing to persist.
                         finishBusyAction(self->m_busy);
                         Notification::create("Checked out", NotificationIcon::Success)->show();
                         self->onClose(nullptr);
@@ -588,7 +584,6 @@ void HistoryLayer::onSquashPressed() {
 
     auto const& commits = m_commits;
 
-    // commits is DESC by createdAt, build oldest-first selected list.
     auto idsOldestFirst = selectedOldestFirst(commits, m_selected);
     if (idsOldestFirst.size() != m_selected.size()) {
         finishBusyAction(m_busy);
@@ -663,7 +658,6 @@ void HistoryLayer::runSquash(std::vector<CommitId> idsOldestFirst, std::string m
                 return;
             }
             if (!prep.pendingSquash) {
-                // prepareSquash always emits pending when result.ok, defensive bail.
                 finishBusyAction(self->m_busy);
                 return;
             }

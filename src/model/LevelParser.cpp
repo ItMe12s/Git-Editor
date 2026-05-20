@@ -51,9 +51,6 @@ LevelState parseLevelString(std::string_view raw) {
     if (chunks.empty()) return state;
 
     state.header = readKvChunk(chunks.front());
-    // rawHeader is residue: only populated when parse->serialize doesn't round-trip
-    // (e.g. GD kS/kA string-keyed headers). Normal numeric-keyed headers leave it empty
-    // so header edits merge granularly via header FieldMap.
     if (serializeFields(state.header) == chunks.front()) {
         state.rawHeader.clear();
     } else {
@@ -65,7 +62,6 @@ LevelState parseLevelString(std::string_view raw) {
         Object obj;
         obj.fields = readKvChunk(chunks[i]);
         if (obj.fields.empty()) continue;
-        // Placeholder uuid = chunk index, Matcher rewrites before persist (stable order for matching).
         obj.uuid = static_cast<ObjectUuid>(i);
         state.objects.emplace(obj.uuid, std::move(obj));
     }
@@ -77,8 +73,6 @@ std::string serializeLevelString(LevelState const& state) {
     std::string out;
     out.reserve(256 + state.objects.size() * 96);
 
-    // rawHeader is authoritative only when non-empty (residue path for non-round-trippable
-    // GD headers). Normal numeric-keyed headers serialize from state.header.
     if (!state.rawHeader.empty()) {
         out.append(state.rawHeader);
     } else {

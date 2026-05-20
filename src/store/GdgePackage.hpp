@@ -12,8 +12,6 @@
 
 namespace git_editor {
 
-// Portable commit representation for .gdge package files.
-// commitIndex is stable within package and used for parent/reverts links.
 struct GdgePackageCommit {
     std::int64_t                     commitIndex  = 0;
     std::optional<std::int64_t>      parentIndex;
@@ -23,7 +21,6 @@ struct GdgePackageCommit {
     std::string                      deltaBlob;
 };
 
-// Portable metadata for a single-level history package.
 struct GdgePackageMetadata {
     std::string                 formatVersion  = "1";
     std::string                 rootHash;
@@ -37,13 +34,8 @@ struct GdgePackageData {
     std::vector<GdgePackageCommit> commits;
 };
 
-// Writes .gdge SQLite package file at outPath.
-// Returns false if data is invalid or any SQLite operation fails.
 bool writeGdgePackage(std::filesystem::path const& outPath, GdgePackageData const& data);
 
-// Reads .gdge SQLite package file from path.
-// Returns ok=false with a specific error reason if file is invalid, unreadable,
-// or missing required fields. Reason is suitable for surfacing to UI.
 Result<GdgePackageData> readGdgePackage(std::filesystem::path const& path);
 
 } // namespace git_editor

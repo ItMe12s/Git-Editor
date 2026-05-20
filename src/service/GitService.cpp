@@ -103,7 +103,6 @@ Prepared<LevelState> GitService::prepareCheckout(LevelKey const& levelKey, Commi
         return out;
     }
     if (*head == target) {
-        // No-op checkout: HEAD already there. Skip pending; UI re-applies recon state for parity.
         auto recon = this->reconstruct(target);
         if (!recon) {
             out.result = failResult<LevelState>("reconstruct HEAD failed");
@@ -190,7 +189,7 @@ Prepared<RevertPayload> GitService::prepareRevert(LevelKey const& levelKey, Comm
         return out;
     }
 
-    // diff(target, parent) not inverse(stored delta): ops use current UUIDs if chain drifted.
+    // Use diff(target, parent), not inverse stored delta, when UUIDs drifted.
     auto undoDelta = diff(*targetState, *parentState);
 
     RevertPayload value;
@@ -216,7 +215,6 @@ Result<CommitId> GitService::finalizeRevert(
     PendingHeadUpdate const& pending,
     LevelState const&        applied
 ) {
-    // Same shape as finalizeCheckout; kept distinct for call-site readability and future hooks.
     return this->finalizeCheckout(pending, applied);
 }
 
@@ -342,7 +340,6 @@ Result<void> GitService::finalizeImportLevelFrom(
     }
     this->clearReconstructCache();
     if (auto const head = m_store.getHead(pending.dest)) {
-        // Prime cache so the very next reconstruct doesn't replay the entire copied chain.
         this->cachePut(*head, applied);
     }
     out.ok = true;
@@ -467,7 +464,6 @@ Prepared<ImportManyPayload> GitService::prepareImportManyFromGdge(
         }
         ours = std::move(*recon);
     }
-    // No head: rootBefore stays empty; ours stays empty.
 
     PendingMergeImport pendingMerge;
     LevelState runningState = ours;
@@ -537,8 +533,6 @@ Prepared<ImportManyPayload> GitService::prepareImportManyFromGdge(
             runningState = std::move(merged);
             payload.state = runningState;
             if (!headBefore) {
-                // No prior head: smart commit is parent=none and becomes the root for subsequent
-                // sequential merges to 3-way-merge against.
                 rootBefore = runningState;
             }
         }
@@ -574,8 +568,6 @@ Prepared<ImportManyPayload> GitService::prepareImportManyFromGdge(
         PendingHeadUpdate p;
         p.levelKey = dest;
         if (freshRoot) {
-            // First commit on an empty chain: empty parent, blob = diff(empty, theirs). This
-            // commit becomes the root, so rootBefore must advance for subsequent 3-way merges.
             p.message    = "Import .gdge: " + git_editor::pathUtf8(path.filename());
             p.deltaBlob  = dumpDelta(diff(LevelState {}, *theirs));
             runningState = *theirs;
@@ -613,7 +605,6 @@ Prepared<ImportManyPayload> GitService::prepareImportManyFromGdge(
     }
 
     if (!pendingMerge.commits.empty()) {
-        // Prime cache for the chain head only; intermediate ids are unlikely to be reconstructed.
         pendingMerge.commits.back().cacheState = payload.state;
     }
 

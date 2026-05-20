@@ -19,7 +19,6 @@
 
 namespace git_editor {
 
-// Commit list: checkout (forward commit to that state) and revert (undo that commit's delta).
 class HistoryLayer : public geode::Popup {
 public:
     static HistoryLayer* create(
@@ -40,8 +39,6 @@ protected:
     void startCheckoutFlow(CommitId commitId, std::string const& commitMsg);
     void startRevertFlow(CommitId commitId, std::string const& commitMsg);
 
-    // Delegates to history_actions::applyStateToEditorOrNotify. Success notification is deferred
-    // until finalize* completes.
     bool tryApplyToEditor(
         char const*       noun,
         LevelEditorLayer* editor,

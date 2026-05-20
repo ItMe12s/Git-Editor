@@ -7,12 +7,10 @@
 
 namespace git_editor {
 
-// Matcher-assigned identity, not derived from fields so edits keep stable UUIDs.
 using ObjectUuid = std::uint64_t;
 
-// GD key,value pairs. Keys kept as raw strings: per-object data uses kA*/kS* string-prefixed
-// keys (start-pos LSO settings, trigger sub-config) alongside numeric keys. Storing all
-// keys as strings preserves them losslessly through parse/serialize/diff round-trips.
+// GD key/value pairs. Keys stay as raw strings.
+// Object data uses kA* and kS* string keys alongside numeric keys.
 using FieldMap = std::map<std::string, std::string>;
 
 namespace key {
@@ -29,7 +27,6 @@ struct Object {
 };
 
 struct LevelState {
-    // Raw GD header chunk (before first ';'), preserved verbatim for lossless settings roundtrip.
     std::string rawHeader;
     FieldMap header;
     std::unordered_map<ObjectUuid, Object> objects;

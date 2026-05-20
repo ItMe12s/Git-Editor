@@ -4,8 +4,8 @@
 
 namespace git_editor {
 
-// Atomically replace `to` with `from`. Windows: MoveFileExW + REPLACE_EXISTING + WRITE_THROUGH.
-// POSIX: std::filesystem::rename. Returns false and logs on failure; caller decides cleanup.
+// Atomically replace to with from.
+// Windows uses MoveFileExW. POSIX uses std::filesystem::rename.
 bool replaceFileAtomic(std::filesystem::path const& from, std::filesystem::path const& to);
 
 } // namespace git_editor

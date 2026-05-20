@@ -15,7 +15,6 @@ namespace git_editor {
 using CommitId = std::int64_t;
 using LevelKey = std::string;
 
-// deltaBlob: JSON Delta. Root commit: parent null, delta is all adds for that snapshot.
 struct LevelSummary {
     LevelKey     levelKey;
     int          commitCount   = 0;
@@ -43,7 +42,6 @@ struct CommitSummary {
     int          removeCount = 0;
 };
 
-// Raw row from DB including compressed delta blob (stats filled by service layer).
 struct CommitSummaryRow {
     CommitId     id        = 0;
     std::string  message;
@@ -51,11 +49,6 @@ struct CommitSummaryRow {
     std::string  deltaBlob;
 };
 
-// One sqlite3* per process (sharedCommitStore). Opened with SQLITE_OPEN_FULLMUTEX and every
-// public method takes m_mutex, so UI-thread reads and worker writes can interleave safely.
-// Mutex is recursive because squash/replaceLevelHistoryFrom call other public methods. If
-// schema_meta.version < kSchemaVersion:
-// drop commits/refs, no migration.
 class CommitStore {
 public:
     static constexpr int kSchemaVersion = 5;
@@ -91,9 +84,6 @@ public:
     std::vector<CommitSummaryRow> listSummaryRows(LevelKey const& levelKey);
     bool                       updateMessage(CommitId id, std::string const& message);
 
-    // Atomically replaces a contiguous range [oldest..newest] (oldest-first ids) with one new
-    // commit. Re-parents children of newest, moves HEAD if it pointed at any squashed commit,
-    // clears reverts pointers into the squashed set. Returns new commit id or nullopt.
     std::optional<CommitId> squash(
         LevelKey const&              levelKey,
         std::vector<CommitId> const& idsOldestFirst,
@@ -105,9 +95,6 @@ public:
     std::vector<LevelSummary> listLevels();
     bool                      deleteLevel(LevelKey const& levelKey);
 
-    // Wipes dest's commits/refs, deep-copies all commits for src to dest (new ids, remapped
-    // parent_id/reverts_id). Preserves created_at, message, delta. Sets HEAD to copy of src HEAD.
-    // Single transaction. Returns false on failure or if dest == src.
     bool replaceLevelHistoryFrom(LevelKey const& dest, LevelKey const& src);
 
     std::optional<CommitId> getHead(LevelKey const& levelKey);

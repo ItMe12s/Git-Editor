@@ -209,7 +209,7 @@ bool writeGdgePackageSqlite(std::filesystem::path const& outPath,
         }
     }
     if (!ok) {
-        // If BEGIN never ran (or already ended), ROLLBACK errors and clobbers sqlite3_errmsg.
+        // If BEGIN never ran, ROLLBACK errors and clobbers sqlite3_errmsg.
         std::string const err = sqlite3_errmsg(db);
         if (sqlite3_get_autocommit(db) == 0) {
             (void)execSql(db, "ROLLBACK;");
@@ -243,8 +243,8 @@ bool writeGdgePackage(std::filesystem::path const& outPath, GdgePackageData cons
         return true;
     }
 
-    // Use a distinct name from writeZipAtomic's outPath+".tmp" so we never hand the same path to
-    // sqlite and the zip writer (e.g. if an intermediate file could not be deleted).
+    // Use a path distinct from writeZipAtomic tmp suffix.
+    // Same path must not go to sqlite and the zip writer.
     auto sqlitePath = outPath;
     sqlitePath += ".sqlite-tmp";
 

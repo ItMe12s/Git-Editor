@@ -16,7 +16,6 @@ namespace git_editor {
 
 namespace {
 
-// Max center drift for spatial match (GD units): above one cell, below typical object size.
 constexpr double kSpatialThreshold = 32.0;
 
 std::mt19937_64& rng() {

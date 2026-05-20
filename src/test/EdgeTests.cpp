@@ -142,8 +142,8 @@ void runEdgeTests(GitService& git, CommitStore& st, std::filesystem::path const&
     }
     R.addPass(kSuiteEdge, "plan_no_local_commits", "noLocalCommits set for empty dest", planT.ms());
 
-    // Per-file invalid reason must be populated. Regression guard: planner used to lump every
-    // failure (missing file, wrong magic, bad sqlite) into a single bucket with no diagnostic.
+    // Regression: each invalid import file must get its own reason.
+    // The planner used to lump all failures into one bucket.
     R.addAction(kSuiteEdge, "plan invalid carries reason");
     ScopedTimer invalidReasonT;
     auto const missingPath = testDir / "at_does_not_exist.gdge";
@@ -191,13 +191,10 @@ void runEdgeTests(GitService& git, CommitStore& st, std::filesystem::path const&
         );
     }
 
-    // Mixed-bag classification: a real user picks several files at once and at least one is bad.
-    // The planner must classify the valid file into smart/sequential AND surface a reason for the
-    // garbage file, instead of collapsing the whole batch to "no valid .gdge files selected".
+    // Regression: mixed valid and garbage files must still classify the valid one.
+    // The garbage file must get its own reason.
     R.addAction(kSuiteEdge, "planImport mixed valid + garbage");
     ScopedTimer mixedBagT;
-    // planPath was exported from kRawEx above, so its rootHash matches kRawEx's root and lands
-    // in the smart bucket. garbagePath was written above and is non-sqlite, non-zip.
     auto mixedPlan = git.planImport(kRawEx, { planPath, garbagePath });
     auto const validCount = mixedPlan.smart.size() + mixedPlan.sequential.size();
     if (validCount != 1) {
@@ -246,9 +243,8 @@ void runEdgeTests(GitService& git, CommitStore& st, std::filesystem::path const&
         );
     }
 
-    // Regression: per-object kA*/kS* keys must round-trip. Loss of these on a startpos object
-    // (id 31) leaves StartPosObject::m_startSettings null and crashes LevelSettingsLayer::init
-    // when the user opens "Edit Object" after a revert/checkout.
+    // Regression: kA and kS keys must round-trip on startpos objects.
+    // Loss crashes LevelSettingsLayer when opening Edit Object after revert or checkout.
     R.addAction(kSuiteEdge, "startpos kA roundtrip");
     ScopedTimer startposRound;
     std::string startposLevel =

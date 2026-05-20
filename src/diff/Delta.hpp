@@ -10,13 +10,11 @@
 
 namespace git_editor {
 
-// before and after, apply uses before for conflict check and after as new value.
 struct FieldChange {
     std::string before;
     std::string after;
 };
 
-// adds/removes: full objects (for inverse). modifies: uuid + changed fields only.
 struct Delta {
     std::map<std::string, FieldChange> headerChanges;
     std::optional<FieldChange>         rawHeaderChange;
@@ -40,7 +38,6 @@ struct DeltaStats {
 
 std::string dumpDelta(Delta const& d);
 
-// std::nullopt on parse failure, callers must not substitute empty delta (corrupts state).
 std::optional<Delta> parseDelta(std::string const& blob);
 DeltaStats           computeStats(Delta const& d);
 

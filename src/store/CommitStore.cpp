@@ -372,10 +372,8 @@ std::optional<CommitId> CommitStore::squash(
 
     auto const newest = idsOldestFirst.back();
 
-    // Inherit newest squashed commit's createdAt so the squash row keeps its
-    // position in DESC-by-time list. Otherwise the squash jumps to the top
-    // and rows above it become misclickable (revert hits squash instead of
-    // intended newer commit).
+    // Keep the newest squashed commit createdAt.
+    // Otherwise the squash row jumps to the top and revert clicks hit the wrong row.
     std::int64_t squashCreatedAt = commitStoreNowSeconds();
     if (auto newestRow = this->get(newest)) {
         squashCreatedAt = newestRow->createdAt;

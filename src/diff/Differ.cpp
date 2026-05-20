@@ -6,7 +6,8 @@ namespace git_editor {
 
 namespace {
 
-// Missing key modeled as empty string, absent and empty-string merge. True presence distinction would need extra state.
+// Missing key is modeled as empty string.
+// Absent and empty string merge together.
 std::map<std::string, FieldChange> diffFields(FieldMap const& a, FieldMap const& b) {
     std::map<std::string, FieldChange> out;
 
@@ -89,7 +90,7 @@ LevelState apply(LevelState base, Delta const& d, std::vector<Conflict>* out) {
         if (out) out->push_back(std::move(c));
     };
 
-    // Header: apply even if before mismatches (avoid blocking checkout), still report stale.
+    // Apply header even when before mismatches. Still report stale.
     for (auto const& [k, c] : d.headerChanges) {
         auto it = base.header.find(k);
         std::string current = (it != base.header.end()) ? it->second : "";

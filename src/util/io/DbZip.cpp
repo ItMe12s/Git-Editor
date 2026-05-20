@@ -22,8 +22,8 @@ constexpr std::array<std::uint8_t, 4> kZipMagic = { 0x50, 0x4B, 0x03, 0x04 };
 } // namespace
 
 DbFileForm peekDbFileForm(std::filesystem::path const& path) {
-    // std::ifstream from std::filesystem::path uses the native representation; avoid
-    // ifstream(UTF-8 char*) on Windows. Read at most 16 B; do not readBinary (whole file) for a sniff.
+    // Use ifstream(path) on Windows for native paths.
+    // Read at most 16 bytes for a sniff. Do not read the whole file.
     std::ifstream f(path, std::ios::binary);
     if (!f) return DbFileForm::Unknown;
 
@@ -57,7 +57,6 @@ bool writeZipAtomic(std::filesystem::path const& outZip,
     }
 
     {
-        // `Zip` must be destroyed (file closed) before rename on Windows, keep it in this block.
         auto z = std::move(zipRes).unwrap();
         geode::ByteSpan span(data.data(), data.size());
         auto addRes = z.add(entryName, span);

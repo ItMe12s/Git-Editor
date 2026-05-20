@@ -34,7 +34,6 @@ using namespace geode::prelude;
 
 namespace {
 
-// "_spr" prefixes mod id (avoids ID collisions).
 constexpr auto kTopMenuID = "top-menu"_spr;
 
 std::string currentLevelKey(LevelEditorLayer* editor) {
@@ -207,7 +206,6 @@ void runImportMergePrepare(
             }
             if (!tryApplyImportMerge(editorPtr, prep.result.value.state)) return;
             if (!prep.pendingMergeImport || prep.pendingMergeImport->commits.empty()) {
-                // No writes to replay (rare), editor already updated.
                 return;
             }
             auto payload = prep.result.value;
@@ -278,7 +276,7 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
         EditorPauseLayer::customSetup();
 
         Ref<EditorPauseLayer> safeSelf(this);
-        // Defer one tick so other mods finish customSetup before we attach the menu.
+        // Defer one frame so other mods finish customSetup.
         geode::queueInMainThread([safeSelf]() {
             auto* self = safeSelf.data();
             if (!self || !self->getParent()) return;
