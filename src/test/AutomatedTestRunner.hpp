@@ -25,6 +25,4 @@ struct AutomatedTestSummary {
 
 AutomatedTestSummary runAutomatedTests(std::filesystem::path const& saveDir, std::string const& modId);
 
-bool writeTextFileUtf8(std::filesystem::path const& path, std::string const& utf8);
-
 } // namespace git_editor

@@ -23,8 +23,6 @@ struct Conflict {
 
 Delta diff(LevelState const& prev, LevelState const& next);
 
-Delta inverse(Delta const& d);
-
 LevelState apply(LevelState base, Delta const& d, std::vector<Conflict>* out = nullptr);
 
 } // namespace git_editor

@@ -29,6 +29,7 @@ struct CommitRow {
     std::optional<CommitId>  reverts;
     std::string              message;
     std::int64_t             createdAt = 0;
+    // Decompressed delta JSON from get()/list(). Use parseDelta directly.
     std::string              deltaBlob;
 };
 
@@ -46,6 +47,7 @@ struct CommitSummaryRow {
     CommitId     id        = 0;
     std::string  message;
     std::int64_t createdAt = 0;
+    // Compressed blob as stored in SQLite. Call decompressBlob before parseDelta.
     std::string  deltaBlob;
 };
 
@@ -63,13 +65,7 @@ public:
 
     std::filesystem::path const& dbPath() const { return m_dbPath; }
 
-    std::optional<CommitId> insert(
-        LevelKey const&         levelKey,
-        std::optional<CommitId> parent,
-        std::optional<CommitId> reverts,
-        std::string const&      message,
-        std::string const&      deltaBlob
-    );
+    // deltaBlob: uncompressed delta JSON, stored compressed in SQLite.
     std::optional<CommitId> insertAndSetHead(
         LevelKey const&         levelKey,
         std::optional<CommitId> parent,

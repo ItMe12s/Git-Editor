@@ -60,31 +60,6 @@ Delta diff(LevelState const& prev, LevelState const& next) {
     return d;
 }
 
-Delta inverse(Delta const& d) {
-    Delta out;
-
-    for (auto const& [k, c] : d.headerChanges) {
-        out.headerChanges.emplace(k, FieldChange{ c.after, c.before });
-    }
-    if (d.rawHeaderChange.has_value()) {
-        out.rawHeaderChange = FieldChange{ d.rawHeaderChange->after, d.rawHeaderChange->before };
-    }
-
-    out.removes = d.adds;
-    out.adds    = d.removes;
-
-    for (auto const& m : d.modifies) {
-        Delta::Modify inv;
-        inv.uuid = m.uuid;
-        for (auto const& [k, c] : m.fields) {
-            inv.fields.emplace(k, FieldChange{ c.after, c.before });
-        }
-        out.modifies.push_back(std::move(inv));
-    }
-
-    return out;
-}
-
 LevelState apply(LevelState base, Delta const& d, std::vector<Conflict>* out) {
     auto report = [&](Conflict c) {
         if (out) out->push_back(std::move(c));

@@ -217,17 +217,6 @@ std::optional<CommitId> CommitStore::insertAt(
     return out;
 }
 
-std::optional<CommitId> CommitStore::insert(
-    LevelKey const&         levelKey,
-    std::optional<CommitId> parent,
-    std::optional<CommitId> reverts,
-    std::string const&      message,
-    std::string const&      deltaBlob
-) {
-    std::lock_guard<std::recursive_mutex> lk(m_mutex);
-    return this->insertAt(levelKey, parent, reverts, message, commitStoreNowSeconds(), deltaBlob);
-}
-
 std::optional<CommitId> CommitStore::insertAndSetHead(
     LevelKey const&         levelKey,
     std::optional<CommitId> parent,

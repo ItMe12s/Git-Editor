@@ -11,7 +11,7 @@ Main brain for history: commit, checkout, revert, squash, import, export, and me
 - `StateCache.cpp`: keeps up to 64 recently rebuilt levels in memory for speed
 - `CommitSummaryBuilder.cpp`: stats shown in the History list
 - `PackageReconstruction.cpp`: rebuild state from a `.gdge` package
-- `PendingCommit.hpp`: data for prepare-then-save flows
+- `PendingOps.hpp`: data for prepare-then-save flows (`Prepared`, pending head/squash/import)
 
 ## Notes
 

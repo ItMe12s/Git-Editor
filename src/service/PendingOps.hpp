@@ -17,6 +17,7 @@ struct PendingHeadUpdate {
     std::optional<std::size_t> parentPendingIx;
     std::optional<CommitId>  reverts;
     std::string              message;
+    // Uncompressed delta JSON (dumpDelta). CommitStore::insertAt compresses on write.
     std::string              deltaBlob;
     std::optional<LevelState> cacheState;
 };
@@ -26,6 +27,7 @@ struct PendingSquash {
     std::vector<CommitId>    idsOldestFirst;
     std::optional<CommitId>  parentOfOldest;
     std::string              message;
+    // Uncompressed delta JSON (dumpDelta). CommitStore::insertAt compresses on write.
     std::string              deltaBlob;
 };
 

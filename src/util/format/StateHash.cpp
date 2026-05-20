@@ -6,6 +6,8 @@
 
 namespace git_editor {
 
+namespace {
+
 std::uint64_t fnv1a64(std::string_view text) {
     std::uint64_t h = 14695981039346656037ull;
     for (unsigned char c : text) {
@@ -24,6 +26,8 @@ std::string hex64(std::uint64_t value) {
     }
     return std::string(out.data(), out.size());
 }
+
+} // namespace
 
 std::string hashLevelState(LevelState const& state) {
     auto normalized = serializeLevelString(state);

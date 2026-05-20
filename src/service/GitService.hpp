@@ -6,7 +6,7 @@
 #include "../diff/Differ.hpp"
 #include "../model/LevelState.hpp"
 #include "../store/CommitStore.hpp"
-#include "PendingCommit.hpp"
+#include "PendingOps.hpp"
 #include "StateCache.hpp"
 
 #include <cstddef>

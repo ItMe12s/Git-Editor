@@ -8,8 +8,6 @@
 #include <fmt/format.h>
 #include <Geode/utils/file.hpp>
 
-#include <fstream>
-
 namespace git_editor {
 
 namespace {
@@ -27,15 +25,6 @@ struct FinallyWipeTestLevels {
 };
 
 } // namespace
-
-bool writeTextFileUtf8(std::filesystem::path const& path, std::string const& utf8) {
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
-    if (!out) {
-        return false;
-    }
-    out.write(utf8.data(), static_cast<std::streamsize>(utf8.size()));
-    return static_cast<bool>(out);
-}
 
 AutomatedTestSummary runAutomatedTests(std::filesystem::path const& saveDir, std::string const& modId) {
     AutomatedTestSummary summary;

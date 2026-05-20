@@ -9,6 +9,7 @@ Helpers for background work, files, compression, and small text or hash tools.
 - `io/DbZip.cpp`: zip wrap for `.gdge`, detect database vs zip, safe file replace on Windows
 - `io/FileAtomic.cpp`: safe file replace helper
 - `io/PathUtf8.hpp`: safe path strings for logs and UI
+- `io/TextFileUtf8.cpp`: write UTF-8 text files (settings report export)
 - `format/Parsing.cpp`: split and parse level text chunks
 - `format/StateHash.cpp`: short hash of a level for tests and import checks
 - `format/Shorten.hpp`: shorten long strings for UI
