@@ -5,13 +5,14 @@
 #include "PackageReconstruction.hpp"
 #include "ReconstructionService.hpp"
 
-#include "../diff/Delta.hpp"
-#include "../diff/Differ.hpp"
-#include "../identity/Matcher.hpp"
-#include "../model/LevelParser.hpp"
-#include "../store/GdgePackage.hpp"
-#include "../util/format/StateHash.hpp"
-#include "../util/io/PathUtf8.hpp"
+#include "diff/Delta.hpp"
+#include "diff/Differ.hpp"
+#include "identity/Matcher.hpp"
+#include "model/LevelParser.hpp"
+#include "store/GdgePackage.hpp"
+#include "util/format/Shorten.hpp"
+#include "util/format/StateHash.hpp"
+#include "util/io/PathUtf8.hpp"
 
 #include <Geode/loader/Log.hpp>
 
@@ -24,11 +25,6 @@
 namespace git_editor {
 
 namespace {
-
-std::string shortPreview(std::string s, std::size_t n = 40) {
-    if (s.size() <= n) return s;
-    return s.substr(0, n - 1) + "...";
-}
 
 std::optional<LevelState> reconstructRoot(CommitStore& store, GitService& svc, LevelKey const& levelKey) {
     auto rows = store.list(levelKey);
@@ -79,7 +75,7 @@ Result<CommitId> GitService::commit(
 
     if (delta.adds.empty() && delta.removes.empty()
         && delta.modifies.empty() && delta.headerChanges.empty()) {
-        geode::log::info("empty commit '{}'", shortPreview(message));
+        geode::log::info("empty commit '{}'", shorten(message, 40));
     }
 
     auto blob = dumpDelta(delta);
@@ -128,7 +124,7 @@ Prepared<LevelState> GitService::prepareCheckout(LevelKey const& levelKey, Commi
         out.result = failResult<LevelState>("target commit belongs to a different level");
         return out;
     }
-    std::string msg = "Checkout: " + (targetRow ? shortPreview(targetRow->message) : std::to_string(target));
+    std::string msg = "Checkout: " + (targetRow ? shorten(targetRow->message, 40) : std::to_string(target));
 
     PendingHeadUpdate pending;
     pending.levelKey  = levelKey;
@@ -202,7 +198,7 @@ Prepared<RevertPayload> GitService::prepareRevert(LevelKey const& levelKey, Comm
     pending.levelKey  = levelKey;
     pending.parent    = *head;
     pending.reverts   = target;
-    pending.message   = "Revert: " + shortPreview(targetRow->message);
+    pending.message   = "Revert: " + shorten(targetRow->message, 40);
     pending.deltaBlob = std::move(blob);
     out.pendingHead   = std::move(pending);
 
@@ -516,7 +512,7 @@ Prepared<ImportManyPayload> GitService::prepareImportManyFromGdge(
                 preview += names[i];
                 if (preview.size() >= 80) break;
             }
-            auto message = shortPreview(
+            auto message = shorten(
                 fmt::format("Smart merge: {} imports ({})", plan.smart.size(), preview), 120
             );
             PendingHeadUpdate p;

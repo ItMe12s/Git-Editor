@@ -1,13 +1,13 @@
-#include "../editor/LevelStateIO.hpp"
-#include "../service/GitService.hpp"
-#include "../ui/CommitMessageLayer.hpp"
-#include "../ui/HistoryLayer.hpp"
-#include "../ui/LevelBrowserLayer.hpp"
-#include "../ui/common/GitUiActionRunner.hpp"
-#include "../util/GitWorker.hpp"
-#include "../editor/LevelKey.hpp"
-#include "../util/io/PathUtf8.hpp"
-#include "../ui/presentation/UiText.hpp"
+#include "editor/LevelKey.hpp"
+#include "editor/LevelStateIO.hpp"
+#include "service/GitService.hpp"
+#include "ui/CommitMessageLayer.hpp"
+#include "ui/HistoryLayer.hpp"
+#include "ui/LevelBrowserLayer.hpp"
+#include "ui/common/GitUiActionRunner.hpp"
+#include "ui/presentation/UiText.hpp"
+#include "util/GitWorker.hpp"
+#include "util/io/PathUtf8.hpp"
 
 #include <Geode/Geode.hpp>
 #include <Geode/binding/ButtonSprite.hpp>

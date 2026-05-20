@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../../diff/Delta.hpp"
+#include "diff/Delta.hpp"
 
 #include <string>
 

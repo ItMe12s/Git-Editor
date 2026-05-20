@@ -1,10 +1,11 @@
 #include "LevelBrowserLayer.hpp"
 
-#include "../editor/LevelStateIO.hpp"
-#include "../service/GitService.hpp"
-#include "../store/CommitStore.hpp"
-#include "../util/GitWorker.hpp"
-#include "../editor/LevelKey.hpp"
+#include "HistoryActions.hpp"
+#include "editor/LevelKey.hpp"
+#include "editor/LevelStateIO.hpp"
+#include "service/GitService.hpp"
+#include "store/CommitStore.hpp"
+#include "util/GitWorker.hpp"
 #include "presentation/UiAction.hpp"
 #include "presentation/UiText.hpp"
 #include "common/GitUiActionRunner.hpp"
@@ -38,10 +39,6 @@ constexpr float browserListPadTop     = 36.f;
 constexpr float browserListPadBottom  = 16.f;
 constexpr float browserRowHeight      = 50.f;
 constexpr float kRowMenuWidth   = 144.f;
-
-bool browserCanApplyEditorResult(LevelEditorLayer* editor) {
-    return editor != nullptr && editor->getParent() != nullptr;
-}
 
 } // namespace
 
@@ -270,7 +267,7 @@ void LevelBrowserLayer::renderList(std::vector<LevelSummary> levels) {
                                     )->show();
                                     return;
                                 }
-                                if (!browserCanApplyEditorResult(editor)) {
+                                if (!history_actions::canApplyEditorResult(editor)) {
                                     finishBusyAction(alive->m_busy);
                                     Notification::create(
                                         "Load ready but editor is no longer active; aborted before DB write",

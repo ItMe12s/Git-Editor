@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../store/CommitStore.hpp"
+#include "store/CommitStore.hpp"
 
 #include <Geode/Geode.hpp>
 #include <Geode/binding/EditorPauseLayer.hpp>

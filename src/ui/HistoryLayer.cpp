@@ -4,11 +4,11 @@
 #include "DeltaInfoLayer.hpp"
 #include "HistoryActions.hpp"
 #include "common/GitUiActionRunner.hpp"
-#include "../diff/Delta.hpp"
-#include "../editor/LevelKey.hpp"
-#include "../editor/LevelStateIO.hpp"
-#include "../service/GitService.hpp"
-#include "../store/CommitStore.hpp"
+#include "diff/Delta.hpp"
+#include "editor/LevelKey.hpp"
+#include "editor/LevelStateIO.hpp"
+#include "service/GitService.hpp"
+#include "store/CommitStore.hpp"
 #include "presentation/DeltaText.hpp"
 #include "presentation/UiAction.hpp"
 #include "presentation/UiText.hpp"
@@ -24,11 +24,7 @@
 #include <Geode/ui/ScrollLayer.hpp>
 #include <Geode/utils/cocos.hpp>
 
-#include <fmt/format.h>
-
-#include <cerrno>
 #include <algorithm>
-#include <cstdio>
 #include <set>
 #include <vector>
 
@@ -151,7 +147,6 @@ bool HistoryLayer::init(
 void HistoryLayer::rebuildHeader() {
     if (!m_headerMenu) return;
     m_headerMenu->removeAllChildren();
-    m_squashBtn = nullptr;
 
     Ref<HistoryLayer> self(this);
 
@@ -175,13 +170,13 @@ void HistoryLayer::rebuildHeader() {
         auto label = std::string("Squash ") + std::to_string(m_selected.size());
         auto spr   = ButtonSprite::create(label.c_str(), "bigFont.fnt", "GJ_button_01.png", .8f);
         spr->setScale(.45f);
-        m_squashBtn = CCMenuItemExt::createSpriteExtra(spr,
+        auto squashBtn = CCMenuItemExt::createSpriteExtra(spr,
             [self](CCMenuItemSpriteExtra*) {
                 if (self) self->onSquashPressed();
             }
         );
-        m_squashBtn->setID("git-editor-history-squash-btn"_spr);
-        m_headerMenu->addChild(m_squashBtn);
+        squashBtn->setID("git-editor-history-squash-btn"_spr);
+        m_headerMenu->addChild(squashBtn);
     }
 
     m_headerMenu->updateLayout();

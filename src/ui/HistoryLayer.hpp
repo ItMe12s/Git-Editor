@@ -1,8 +1,7 @@
 #pragma once
 
-#include "../diff/Delta.hpp"
-#include "../model/LevelState.hpp"
-#include "../store/CommitStore.hpp"
+#include "model/LevelState.hpp"
+#include "store/CommitStore.hpp"
 
 #include <Geode/Geode.hpp>
 #include <Geode/binding/CCMenuItemSpriteExtra.hpp>
@@ -56,9 +55,7 @@ protected:
     std::uint64_t                m_loadSerial = 0;
     std::vector<CommitSummary>   m_commits;
     std::set<CommitId>           m_selected;
-
     cocos2d::CCMenu*             m_headerMenu = nullptr;
-    CCMenuItemSpriteExtra*       m_squashBtn  = nullptr;
 };
 
 } // namespace git_editor
