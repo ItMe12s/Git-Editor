@@ -258,8 +258,9 @@ void startImportGdgeFlow(
     std::string levelKey,
     std::vector<std::filesystem::path> paths
 ) {
+    auto pathsForWorker = paths;
     git_editor::ui_action_runner::runWorkerResult<git_editor::ImportPlan>(
-        [levelKey, paths]() {
+        [levelKey, paths = std::move(pathsForWorker)]() {
             return git_editor::sharedGitService().planImport(levelKey, paths);
         },
         [alive, editorRef, levelKey, paths = std::move(paths)](git_editor::ImportPlan plan) mutable {
