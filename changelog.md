@@ -1,10 +1,8 @@
 # Changelog
 
-Check if your version update crosses a version with a wipe (e.g. Beta 1 -> Beta 4 crosses Beta 3 so it's wiped).
-Crossing these versions will result in a database wipe:
+[**Check the project out on GitHub!**](https://github.com/ItMe12s/Git-Editor)
 
-- 1.0.0-beta.6
-- 1.0.0-beta.3
+Consider giving it a star and check the commit history for a more technical changelog.
 
 ## Known issues
 
@@ -30,14 +28,14 @@ TL;DR You can daily drive this mod.
 
 - Added automated test, check settings menu.
 - Increased state cache size.
-- Internal improvements like reusing prepared statement and level parser optimization. You can read more technical changes on GitHub.
+- Internal improvements like reusing prepared statement and level parser optimization.
 
 ## 1.0.0-beta.7
 
 - SQLite prepared statements finalized on all paths where it mattered, new commits that advance HEAD persist insert + HEAD in one transaction.
 - Added import/export decompress cap for stored blob size.
 - Added atomic replace for zip exports on Windows.
-- Moved History and Levels load lists (and History rename) on to the git worker with a loading label. You can read more technical changes on GitHub.
+- Moved History and Levels load lists (and History rename) on to the git worker with a loading label.
 
 ## 1.0.0-beta.6
 
@@ -45,7 +43,7 @@ THIS UPDATE WIPES YOUR DATABASE!
 
 - Added blob compression (with zlib). This also make the old `.gdge` file invalid.
 - Added file size estimations in the mod's level page.
-- Internal improvements like using more Geode's utils. You can read more technical changes on GitHub.
+- Internal improvements like using more Geode's utils.
 
 ## 1.0.0-beta.5
 
@@ -59,7 +57,7 @@ THIS UPDATE WIPES YOUR DATABASE!
 - Simplified revert action message for missing objects (Refactored revert payload system).
 - Simplified in-memory caching system (LRU to map and flush-on-full).
 - Vendored SQLite 3.53.0 amalgamation (was 3.38.2 via CPM).
-- Removed legacy code and other internal improvements like `postToGitWorker` no longer wraps jobs in C++ `try`/`catch`. You can read more technical changes on GitHub.
+- Removed legacy code and other internal improvements like `postToGitWorker` no longer wraps jobs in C++ `try`/`catch`.
 
 ## 1.0.0-beta.3
 

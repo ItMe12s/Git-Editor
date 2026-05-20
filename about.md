@@ -3,7 +3,7 @@
 **A real diff-based history for the editor,
 so you can undo a change without reverting the whole level.**
 
-**CHECK CHANGELOG BEFORE UPDATING!!!** Read at the bottom for collab guide.
+**DON'T FORGET TO CHECK CHANGELOG!!!**
 
 ---
 
