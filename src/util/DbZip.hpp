@@ -32,8 +32,8 @@ Result<ByteVector> readZipEntry(std::filesystem::path const& inZip,
                                 std::string const&            entryName);
 
 // Extract a single zip entry to outFile on disk (e.g. zip-backed .gdge import).
-bool extractZipToFile(std::filesystem::path const& inZip,
-                      std::filesystem::path const& outFile,
-                      std::string const&            entryName);
+Result<void> extractZipToFile(std::filesystem::path const& inZip,
+                              std::filesystem::path const& outFile,
+                              std::string const&            entryName);
 
 } // namespace git_editor

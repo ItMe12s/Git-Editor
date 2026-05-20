@@ -5,6 +5,8 @@
 
 #include <fmt/format.h>
 
+#include <fstream>
+
 namespace git_editor {
 
 void runEdgeTests(GitService& git, CommitStore& st, std::filesystem::path const& testDir, ReportBuilder& R) {
@@ -138,6 +140,110 @@ void runEdgeTests(GitService& git, CommitStore& st, std::filesystem::path const&
         return;
     }
     R.addPass(kSuiteEdge, "plan_no_local_commits", "noLocalCommits set for empty dest", planT.ms());
+
+    // Per-file invalid reason must be populated. Regression guard: planner used to lump every
+    // failure (missing file, wrong magic, bad sqlite) into a single bucket with no diagnostic.
+    R.addAction(kSuiteEdge, "plan invalid carries reason");
+    ScopedTimer invalidReasonT;
+    auto const missingPath = testDir / "at_does_not_exist.gdge";
+    {
+        std::error_code ec;
+        std::filesystem::remove(missingPath, ec);
+    }
+    auto const garbagePath = testDir / "at_garbage.gdge";
+    {
+        std::ofstream out(garbagePath, std::ios::binary | std::ios::trunc);
+        out << "not a gdge file";
+    }
+    auto invalidPlan = git.planImport(kRawEx, { missingPath, garbagePath });
+    if (invalidPlan.invalid.size() != 2) {
+        R.addFail(
+            kSuiteEdge,
+            "invalid_reason_count",
+            fmt::format("expected 2 invalid got {}", invalidPlan.invalid.size()),
+            invalidReasonT.ms()
+        );
+    } else if (invalidPlan.invalid[0].reason.empty() || invalidPlan.invalid[1].reason.empty()) {
+        R.addFail(
+            kSuiteEdge,
+            "invalid_reason_empty",
+            "expected non-empty reason on both invalid entries",
+            invalidReasonT.ms()
+        );
+    } else if (invalidPlan.invalid[0].reason == invalidPlan.invalid[1].reason) {
+        R.addFail(
+            kSuiteEdge,
+            "invalid_reason_distinct",
+            fmt::format("expected distinct reasons got '{}'", invalidPlan.invalid[0].reason),
+            invalidReasonT.ms()
+        );
+    } else {
+        R.addPass(
+            kSuiteEdge,
+            "invalid_reason_populated",
+            fmt::format(
+                "missing='{}' garbage='{}'",
+                invalidPlan.invalid[0].reason,
+                invalidPlan.invalid[1].reason
+            ),
+            invalidReasonT.ms()
+        );
+    }
+
+    // Mixed-bag classification: a real user picks several files at once and at least one is bad.
+    // The planner must classify the valid file into smart/sequential AND surface a reason for the
+    // garbage file, instead of collapsing the whole batch to "no valid .gdge files selected".
+    R.addAction(kSuiteEdge, "planImport mixed valid + garbage");
+    ScopedTimer mixedBagT;
+    // planPath was exported from kRawEx above, so its rootHash matches kRawEx's root and lands
+    // in the smart bucket. garbagePath was written above and is non-sqlite, non-zip.
+    auto mixedPlan = git.planImport(kRawEx, { planPath, garbagePath });
+    auto const validCount = mixedPlan.smart.size() + mixedPlan.sequential.size();
+    if (validCount != 1) {
+        R.addFail(
+            kSuiteEdge,
+            "mixed_bag_valid",
+            fmt::format(
+                "expected 1 valid got smart={} sequential={}",
+                mixedPlan.smart.size(),
+                mixedPlan.sequential.size()
+            ),
+            mixedBagT.ms()
+        );
+    } else if (mixedPlan.invalid.size() != 1) {
+        R.addFail(
+            kSuiteEdge,
+            "mixed_bag_invalid",
+            fmt::format("expected 1 invalid got {}", mixedPlan.invalid.size()),
+            mixedBagT.ms()
+        );
+    } else if (mixedPlan.invalid[0].path != garbagePath) {
+        R.addFail(
+            kSuiteEdge,
+            "mixed_bag_path",
+            fmt::format("invalid bucket holds wrong path: {}", pathUtf8(mixedPlan.invalid[0].path)),
+            mixedBagT.ms()
+        );
+    } else if (mixedPlan.invalid[0].reason.empty()) {
+        R.addFail(
+            kSuiteEdge,
+            "mixed_bag_reason",
+            "garbage entry reason empty",
+            mixedBagT.ms()
+        );
+    } else {
+        R.addPass(
+            kSuiteEdge,
+            "mixed_bag_classify",
+            fmt::format(
+                "smart={} sequential={} invalid_reason='{}'",
+                mixedPlan.smart.size(),
+                mixedPlan.sequential.size(),
+                mixedPlan.invalid[0].reason
+            ),
+            mixedBagT.ms()
+        );
+    }
 
     // Regression: per-object kA*/kS* keys must round-trip. Loss of these on a startpos object
     // (id 31) leaves StartPosObject::m_startSettings null and crashes LevelSettingsLayer::init

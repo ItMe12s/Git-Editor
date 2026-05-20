@@ -76,10 +76,10 @@ bool parseInt64(std::string const& text, std::int64_t& out) {
     return ec == std::errc() && ptr == end;
 }
 
-bool validateData(GdgePackageData const& data) {
-    if (data.metadata.rootHash.empty()) return false;
-    if (data.metadata.sourceLevelKey.empty()) return false;
-    if (data.metadata.formatVersion.empty()) return false;
+std::string validateDataReason(GdgePackageData const& data) {
+    if (data.metadata.rootHash.empty()) return "metadata.rootHash empty";
+    if (data.metadata.sourceLevelKey.empty()) return "metadata.sourceLevelKey empty";
+    if (data.metadata.formatVersion.empty()) return "metadata.formatVersion empty";
 
     std::vector<std::int64_t> indexes;
     indexes.reserve(data.commits.size());
@@ -88,7 +88,9 @@ bool validateData(GdgePackageData const& data) {
     }
     std::sort(indexes.begin(), indexes.end());
     for (std::size_t i = 0; i < indexes.size(); ++i) {
-        if (indexes[i] != static_cast<std::int64_t>(i)) return false;
+        if (indexes[i] != static_cast<std::int64_t>(i)) {
+            return "commit_index sequence not contiguous from 0";
+        }
     }
 
     auto isValidIndex = [&](std::optional<std::int64_t> idx) -> bool {
@@ -97,10 +99,17 @@ bool validateData(GdgePackageData const& data) {
     };
 
     for (auto const& c : data.commits) {
-        if (!isValidIndex(c.parentIndex) || !isValidIndex(c.revertsIndex)) return false;
+        if (!isValidIndex(c.parentIndex)) return "parent_index out of range";
+        if (!isValidIndex(c.revertsIndex)) return "reverts_index out of range";
     }
-    if (data.metadata.headIndex && !isValidIndex(data.metadata.headIndex)) return false;
-    return true;
+    if (data.metadata.headIndex && !isValidIndex(data.metadata.headIndex)) {
+        return "head_index out of range";
+    }
+    return {};
+}
+
+bool validateData(GdgePackageData const& data) {
+    return validateDataReason(data).empty();
 }
 
 } // namespace
@@ -108,7 +117,7 @@ bool validateData(GdgePackageData const& data) {
 namespace {
 
 bool writeGdgePackageSqlite(std::filesystem::path const& outPath,
-                             GdgePackageData const&        data) {
+                            GdgePackageData const&       data) {
     if (!validateData(data)) {
         geode::log::error("writeGdgePackageSqlite: validateData failed at {}", pathUtf8(outPath));
         return false;
@@ -277,10 +286,11 @@ bool writeGdgePackage(std::filesystem::path const& outPath, GdgePackageData cons
 
 namespace {
 
-std::optional<GdgePackageData> readGdgePackageFromSqlitePath(
+Result<GdgePackageData> readGdgePackageFromSqlitePath(
     std::filesystem::path const& sqlitePath,
     std::filesystem::path const& cleanupPath
 ) {
+    Result<GdgePackageData> result;
     auto const doCleanup = [&]() {
         if (!cleanupPath.empty()) {
             std::error_code ec;
@@ -296,19 +306,23 @@ std::optional<GdgePackageData> readGdgePackageFromSqlitePath(
             SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX,
             nullptr
         ) != SQLITE_OK) {
+        result.error = std::string("sqlite3_open_v2 failed: ")
+            + (db ? sqlite3_errmsg(db) : "db handle null");
         if (db) sqlite3_close(db);
         doCleanup();
-        return std::nullopt;
+        return result;
     }
 
     auto closeDb = [&]() {
         if (db) sqlite3_close(db);
         db = nullptr;
     };
-    auto fail = [&]() -> std::optional<GdgePackageData> {
+    auto fail = [&](std::string reason) -> Result<GdgePackageData> {
+        Result<GdgePackageData> r;
+        r.error = std::move(reason);
         closeDb();
         doCleanup();
-        return std::nullopt;
+        return r;
     };
 
     GdgePackageData out;
@@ -320,7 +334,7 @@ std::optional<GdgePackageData> readGdgePackageFromSqlitePath(
         auto const exportedAtText = getMeta(db, "exported_at").value_or("0");
         std::int64_t exportedAt = 0;
         if (!parseInt64(exportedAtText, exportedAt)) {
-            return fail();
+            return fail("exported_at parse failed: '" + exportedAtText + "'");
         }
         out.metadata.exportedAt = exportedAt;
     }
@@ -328,7 +342,7 @@ std::optional<GdgePackageData> readGdgePackageFromSqlitePath(
     if (auto head = getMeta(db, "head_index")) {
         std::int64_t parsedHead = 0;
         if (!parseInt64(*head, parsedHead)) {
-            return fail();
+            return fail("head_index parse failed: '" + *head + "'");
         }
         out.metadata.headIndex = parsedHead;
     }
@@ -338,7 +352,7 @@ std::optional<GdgePackageData> readGdgePackageFromSqlitePath(
         "FROM commits ORDER BY commit_index ASC;";
     SqliteStmtPtr st = nullptr;
     if (sqlite3_prepare_v2(db, sql, -1, &st, nullptr) != SQLITE_OK) {
-        return fail();
+        return fail(std::string("prepare commits select failed: ") + sqlite3_errmsg(db));
     }
 
     int rc = SQLITE_ROW;
@@ -360,18 +374,31 @@ std::optional<GdgePackageData> readGdgePackageFromSqlitePath(
     }
     sqlite3_finalize(st);
     if (rc != SQLITE_DONE) {
-        return fail();
+        return fail(std::string("commits step failed: ") + sqlite3_errmsg(db));
     }
 
     closeDb();
     doCleanup();
-    if (!validateData(out)) return std::nullopt;
-    return out;
+    if (auto reason = validateDataReason(out); !reason.empty()) {
+        result.error = "validateData failed: " + reason;
+        return result;
+    }
+    result.value = std::move(out);
+    result.ok = true;
+    return result;
 }
 
 } // namespace
 
-std::optional<GdgePackageData> readGdgePackage(std::filesystem::path const& path) {
+Result<GdgePackageData> readGdgePackage(std::filesystem::path const& path) {
+    Result<GdgePackageData> result;
+
+    std::error_code existsEc;
+    if (!std::filesystem::exists(path, existsEc)) {
+        result.error = "file does not exist";
+        return result;
+    }
+
     auto const form = peekDbFileForm(path);
 
     if (form == DbFileForm::Sqlite) {
@@ -382,13 +409,16 @@ std::optional<GdgePackageData> readGdgePackage(std::filesystem::path const& path
         auto tmpPath = geode::Mod::get()->getTempDir()
             / (pathUtf8(path.stem()) + ".gdge.tmp");
 
-        if (!extractZipToFile(path, tmpPath, "package.gdge")) {
-            return std::nullopt;
+        auto extractRes = extractZipToFile(path, tmpPath, "package.gdge");
+        if (!extractRes.ok) {
+            result.error = "zip extract failed: " + extractRes.error;
+            return result;
         }
         return readGdgePackageFromSqlitePath(tmpPath, tmpPath);
     }
 
-    return std::nullopt;
+    result.error = "unknown file form (not zip or sqlite)";
+    return result;
 }
 
 std::optional<LevelState> reconstructPackageHead(GdgePackageData const& pkg) {

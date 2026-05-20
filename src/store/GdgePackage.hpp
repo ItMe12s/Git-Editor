@@ -2,6 +2,7 @@
 
 #include "CommitStore.hpp"
 #include "../model/LevelState.hpp"
+#include "../service/Result.hpp"
 
 #include <cstdint>
 #include <filesystem>
@@ -41,8 +42,9 @@ struct GdgePackageData {
 bool writeGdgePackage(std::filesystem::path const& outPath, GdgePackageData const& data);
 
 // Reads .gdge SQLite package file from path.
-// Returns nullopt if file is invalid, unreadable, or missing required fields.
-std::optional<GdgePackageData> readGdgePackage(std::filesystem::path const& path);
+// Returns ok=false with a specific error reason if file is invalid, unreadable,
+// or missing required fields. Reason is suitable for surfacing to UI.
+Result<GdgePackageData> readGdgePackage(std::filesystem::path const& path);
 
 // Replays the package from root along parent chain to head, nullopt on invalid graph or deltas.
 std::optional<LevelState> reconstructPackageHead(GdgePackageData const& pkg);

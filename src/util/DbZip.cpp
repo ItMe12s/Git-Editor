@@ -1,6 +1,5 @@
 #include "DbZip.hpp"
 
-#include "BlobCodec.hpp"
 #include "FileAtomic.hpp"
 
 #include <Geode/loader/Log.hpp>
@@ -117,33 +116,30 @@ Result<ByteVector> readZipEntry(std::filesystem::path const& inZip,
         return out;
     }
 
-    auto bytes = std::move(bytesRes).unwrap();
-    if (bytes.size() > kMaxBlobFootprintBytes) {
-        out.error = "readZipEntry: extracted size " + std::to_string(bytes.size())
-            + " exceeds cap " + std::to_string(kMaxBlobFootprintBytes);
-        return out;
-    }
-
-    out.value = std::move(bytes);
+    out.value = std::move(bytesRes).unwrap();
     out.ok = true;
     return out;
 }
 
-bool extractZipToFile(std::filesystem::path const& inZip,
-                      std::filesystem::path const& outFile,
-                      std::string const&            entryName) {
+Result<void> extractZipToFile(std::filesystem::path const& inZip,
+                              std::filesystem::path const& outFile,
+                              std::string const&            entryName) {
+    Result<void> out;
     auto res = readZipEntry(inZip, entryName);
     if (!res.ok) {
         geode::log::error("extractZipToFile: {}", res.error);
-        return false;
+        out.error = res.error;
+        return out;
     }
 
     auto writeRes = geode::utils::file::writeBinary(outFile, res.value);
     if (writeRes.isErr()) {
-        geode::log::error("extractZipToFile: writeBinary failed: {}", writeRes.unwrapErr());
-        return false;
+        out.error = "writeBinary failed: " + writeRes.unwrapErr();
+        geode::log::error("extractZipToFile: {}", out.error);
+        return out;
     }
-    return true;
+    out.ok = true;
+    return out;
 }
 
 } // namespace git_editor

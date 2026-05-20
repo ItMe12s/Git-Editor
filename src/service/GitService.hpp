@@ -30,10 +30,15 @@ struct ImportManyPayload {
     int        sequentialCount = 0;
 };
 
+struct InvalidImport {
+    std::filesystem::path path;
+    std::string           reason;
+};
+
 struct ImportPlan {
     std::vector<std::filesystem::path> smart;
     std::vector<std::filesystem::path> sequential;
-    std::vector<std::filesystem::path> invalid;
+    std::vector<InvalidImport>         invalid;
     std::string localRootHash;
     bool noLocalCommits = false;
 };

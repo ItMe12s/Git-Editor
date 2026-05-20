@@ -481,14 +481,19 @@ Prepared<ImportManyPayload> GitService::prepareImportManyFromGdge(
         std::string err;
         for (auto const& inPath : plan.smart) {
             auto pkg = readGdgePackage(inPath);
-            if (!pkg || pkg->commits.empty() || !pkg->metadata.headIndex) {
-                err = "invalid .gdge file";
+            if (!pkg.ok) {
+                err = git_editor::pathUtf8(inPath.filename()) + ": " + pkg.error;
                 ok = false;
                 break;
             }
-            auto theirs = reconstructPackageHead(*pkg);
+            if (pkg.value.commits.empty() || !pkg.value.metadata.headIndex) {
+                err = git_editor::pathUtf8(inPath.filename()) + ": missing commits or head_index";
+                ok = false;
+                break;
+            }
+            auto theirs = reconstructPackageHead(pkg.value);
             if (!theirs) {
-                err = "package history graph invalid";
+                err = git_editor::pathUtf8(inPath.filename()) + ": package history graph invalid";
                 ok = false;
                 break;
             }
@@ -539,14 +544,21 @@ Prepared<ImportManyPayload> GitService::prepareImportManyFromGdge(
 
     for (auto const& path : plan.sequential) {
         auto pkg = readGdgePackage(path);
-        if (!pkg || pkg->commits.empty() || !pkg->metadata.headIndex) {
+        if (!pkg.ok) {
             payload.skippedCount++;
             if (lastError.empty()) {
-                lastError = git_editor::pathUtf8(path.filename()) + ": invalid .gdge file";
+                lastError = git_editor::pathUtf8(path.filename()) + ": " + pkg.error;
             }
             continue;
         }
-        auto theirs = reconstructPackageHead(*pkg);
+        if (pkg.value.commits.empty() || !pkg.value.metadata.headIndex) {
+            payload.skippedCount++;
+            if (lastError.empty()) {
+                lastError = git_editor::pathUtf8(path.filename()) + ": missing commits or head_index";
+            }
+            continue;
+        }
+        auto theirs = reconstructPackageHead(pkg.value);
         if (!theirs) {
             payload.skippedCount++;
             if (lastError.empty()) {

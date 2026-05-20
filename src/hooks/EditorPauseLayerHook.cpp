@@ -94,7 +94,19 @@ std::string planBody(git_editor::ImportPlan const& plan) {
     };
     addBucket("Smart merge (shared root)", plan.smart);
     addBucket("Sequential fallback (different root)", plan.sequential);
-    addBucket("Skipped (unreadable)", plan.invalid);
+    if (!plan.invalid.empty()) {
+        if (!body.empty()) body += "\n\n";
+        body += "Skipped (unreadable):\n";
+        for (auto const& inv : plan.invalid) {
+            auto name = escapePopupText(git_editor::shorten(git_editor::pathUtf8(inv.path.filename()), 40));
+            auto reason = escapePopupText(git_editor::shorten(inv.reason, 60));
+            body += "- ";
+            body += name;
+            body += ": ";
+            body += reason;
+            body += "\n";
+        }
+    }
     if (!body.empty()) body += "\nProceed?";
     return body;
 }
@@ -215,10 +227,17 @@ void showImportPlanPopup(
     auto* editorPtr = editorRef.data();
     if (!alive || !editorPtr) return;
     if (plan.smart.empty() && plan.sequential.empty()) {
-        Notification::create(
-            "No valid .gdge files selected",
-            NotificationIcon::Error
-        )->show();
+        std::string msg = "No valid .gdge files selected";
+        if (!plan.invalid.empty()) {
+            auto const& first = plan.invalid.front();
+            auto name = git_editor::shorten(git_editor::pathUtf8(first.path.filename()), 32);
+            auto reason = git_editor::shorten(first.reason, 80);
+            msg = "Invalid .gdge: " + name + ": " + reason;
+            if (plan.invalid.size() > 1) {
+                msg += " (+" + std::to_string(plan.invalid.size() - 1) + " more)";
+            }
+        }
+        Notification::create(msg.c_str(), NotificationIcon::Error)->show();
         return;
     }
     createQuickPopup(
