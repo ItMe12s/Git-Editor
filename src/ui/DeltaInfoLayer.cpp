@@ -9,14 +9,14 @@ namespace git_editor {
 
 namespace {
 
-constexpr float kWidth       = 320.f;
-constexpr float kHeight      = 200.f;
-constexpr float kTitleBelow  = 48.f;
-constexpr float kHMargin     = 14.f;
-constexpr float kVMargin     = 8.f;
-constexpr float kPanelPad    = 6.f;
-constexpr float kTextScale   = 0.45f;
-constexpr int   kPanelAlpha  = 128;
+constexpr float kWidth      = 320.f;
+constexpr float kHeight     = 200.f;
+constexpr float kTitleBelow = 48.f;
+constexpr float kHMargin    = 14.f;
+constexpr float kVMargin    = 8.f;
+constexpr float kPanelPad   = 6.f;
+constexpr float kTextScale  = 0.45f;
+constexpr int   kPanelAlpha = 128;
 
 } // namespace
 

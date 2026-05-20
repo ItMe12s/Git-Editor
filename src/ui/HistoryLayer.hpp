@@ -46,18 +46,19 @@ protected:
         bool              hasConflicts
     );
 
-    std::string                     m_levelKey;
-    geode::Ref<LevelEditorLayer>    m_editor;
-    geode::Ref<EditorPauseLayer>    m_pauseLayer;
-    geode::ScrollLayer*             m_scroll     = nullptr;
+    std::string                  m_levelKey;
+    geode::Ref<LevelEditorLayer> m_editor;
+    geode::Ref<EditorPauseLayer> m_pauseLayer;
+    geode::ScrollLayer*          m_scroll     = nullptr;
 
-    bool                            m_squashMode = false;
-    bool                            m_busy       = false;
-    std::uint64_t                   m_loadSerial = 0;
-    std::vector<CommitSummary>      m_commits;
-    std::set<CommitId>              m_selected;
-    cocos2d::CCMenu*       m_headerMenu = nullptr;
-    CCMenuItemSpriteExtra* m_squashBtn  = nullptr;
+    bool                         m_squashMode = false;
+    bool                         m_busy       = false;
+    std::uint64_t                m_loadSerial = 0;
+    std::vector<CommitSummary>   m_commits;
+    std::set<CommitId>           m_selected;
+
+    cocos2d::CCMenu*             m_headerMenu = nullptr;
+    CCMenuItemSpriteExtra*       m_squashBtn  = nullptr;
 };
 
 } // namespace git_editor

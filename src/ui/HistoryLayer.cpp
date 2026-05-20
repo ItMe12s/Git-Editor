@@ -59,10 +59,10 @@ constexpr float histListPadX      = 20.f;
 constexpr float histListPadTop    = 36.f;
 constexpr float histListPadBottom = 16.f;
 constexpr float histRowHeight     = 46.f;
-constexpr ccColor3B kAddColor  = {64, 227, 72};
-constexpr ccColor3B kModColor  = {50, 200, 255};
-constexpr ccColor3B kDelColor  = {255, 90, 90};
-constexpr ccColor3B kHdrColor  = {255, 210, 70};
+constexpr ccColor3B kAddColor     = {64, 227, 72};
+constexpr ccColor3B kModColor     = {50, 200, 255};
+constexpr ccColor3B kDelColor     = {255, 90, 90};
+constexpr ccColor3B kHdrColor     = {255, 210, 70};
 
 struct HistoryLoadResult {
     LevelKey                   levelKey;
@@ -444,7 +444,7 @@ void HistoryLayer::startCheckoutFlow(CommitId commitId, std::string const& commi
         "Checkout",
         ("Load state of commit \"" + shorten(commitMsg, 40) +
          "\"? A new auto-revert commit will be added on top of HEAD.").c_str(),
-        "Cancel", "Checkout",
+         "Cancel", "Checkout",
         [self, editorRef, pauseRef, levelKey, commitId](FLAlertLayer*, bool yes) {
             if (!yes) {
                 if (self) finishBusyAction(self->m_busy);
@@ -512,7 +512,7 @@ void HistoryLayer::startRevertFlow(CommitId commitId, std::string const& commitM
         "Revert",
         ("Undo just the changes from commit \"" + shorten(commitMsg, 40) +
          "\"? Later commits are preserved.").c_str(),
-        "Cancel", "Revert",
+         "Cancel", "Revert",
         [self, editorRef, pauseRef, levelKey, commitId](FLAlertLayer*, bool yes) {
             if (!yes) {
                 if (self) finishBusyAction(self->m_busy);

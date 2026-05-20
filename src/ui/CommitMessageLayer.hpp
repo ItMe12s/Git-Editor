@@ -37,7 +37,7 @@ protected:
     void onConfirmClicked(cocos2d::CCObject*);
     void onClose(cocos2d::CCObject* sender) override;
 
-    geode::TextInput* m_input    = nullptr;
+    geode::TextInput* m_input     = nullptr;
     ConfirmFn         m_callback;
     CloseFn           m_onClose;
     bool              m_submitted = false;

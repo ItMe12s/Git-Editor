@@ -222,7 +222,7 @@ std::optional<Delta> parseDelta(std::string const& blob) {
 DeltaStats computeStats(Delta const& d) {
     DeltaStats out;
     out.headerChanges = static_cast<int>(d.headerChanges.size())
-                      + (d.rawHeaderChange.has_value() ? 1 : 0);
+                      + static_cast<int>(d.rawHeaderChange.has_value() ? 1 : 0);
     out.adds          = static_cast<int>(d.adds.size());
     out.modifies      = static_cast<int>(d.modifies.size());
     out.removes       = static_cast<int>(d.removes.size());

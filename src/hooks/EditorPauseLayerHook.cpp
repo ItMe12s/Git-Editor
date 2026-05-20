@@ -276,7 +276,8 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
         EditorPauseLayer::customSetup();
 
         Ref<EditorPauseLayer> safeSelf(this);
-        // Defer one frame so other mods finish customSetup.
+        // Defer one frame so other mods fully finish first like BetterEdit.
+        // Honestly I won't use hook priority.
         geode::queueInMainThread([safeSelf]() {
             auto* self = safeSelf.data();
             if (!self || !self->getParent()) return;

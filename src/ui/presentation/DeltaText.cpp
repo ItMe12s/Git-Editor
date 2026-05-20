@@ -21,7 +21,7 @@ std::string fieldKeyName(std::string const& k) {
 
 std::string describeDeltaText(Delta const& d) {
     constexpr std::size_t kMaxField = 160;
-    constexpr std::size_t kMaxOut  = 32000;
+    constexpr std::size_t kMaxOut   = 32000;
     if (d.headerChanges.empty() && !d.rawHeaderChange.has_value()
         && d.adds.empty() && d.removes.empty() && d.modifies.empty()) {
         return "No recorded changes (empty delta).\n";

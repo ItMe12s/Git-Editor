@@ -15,10 +15,10 @@ struct AutomatedTestCaseResult {
 };
 
 struct AutomatedTestSummary {
-    int                 passCount = 0;
-    int                 failCount = 0;
-    int                 skipCount = 0;
-    std::string         reportText;
+    int passCount = 0;
+    int failCount = 0;
+    int skipCount = 0;
+    std::string reportText;
     std::vector<std::string> actionLog;
     std::vector<AutomatedTestCaseResult> rows;
 };
