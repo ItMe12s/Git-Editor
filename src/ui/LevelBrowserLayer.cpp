@@ -17,7 +17,6 @@
 #include <Geode/ui/Layout.hpp>
 #include <Geode/ui/Notification.hpp>
 #include <Geode/ui/Popup.hpp>
-#include <Geode/ui/ScrollLayer.hpp>
 #include <Geode/utils/cocos.hpp>
 
 #include <fmt/format.h>
@@ -91,14 +90,11 @@ bool LevelBrowserLayer::init(
     float const innerW = browserPopupWidth - browserListPadX * 2.f;
     float const innerH = browserPopupHeight - browserListPadTop - browserListPadBottom;
 
-    m_scroll = ScrollLayer::create({innerW, innerH});
+    m_scroll = alpha::ui::AdvancedScrollLayer::create({innerW, innerH});
     m_scroll->setID("git-editor-levels-scroll"_spr);
-    m_scroll->setAnchorPoint({0.f, 0.f});
-    m_scroll->m_contentLayer->setLayout(
+    m_scroll->setLayout(
         ColumnLayout::create()
-            ->setAxisReverse(true)
             ->setGap(3.f)
-            ->setAxisAlignment(AxisAlignment::End)
             ->setCrossAxisOverflow(false)
             ->setAutoGrowAxis(std::optional<float>(innerH))
     );
@@ -116,7 +112,7 @@ bool LevelBrowserLayer::init(
 void LevelBrowserLayer::rebuildList() {
     if (!m_scroll) return;
 
-    auto* content = m_scroll->m_contentLayer;
+    auto* content = m_scroll->getContentLayer();
     content->removeAllChildren();
 
     auto loading = CCLabelBMFont::create("Loading levels...", "bigFont.fnt");
@@ -140,7 +136,7 @@ void LevelBrowserLayer::rebuildList() {
 void LevelBrowserLayer::renderList(std::vector<LevelSummary> levels) {
     if (!m_scroll) return;
 
-    auto* content = m_scroll->m_contentLayer;
+    auto* content = m_scroll->getContentLayer();
     content->removeAllChildren();
 
     float const rowWidth = content->getContentSize().width;
@@ -152,7 +148,7 @@ void LevelBrowserLayer::renderList(std::vector<LevelSummary> levels) {
         empty->setOpacity(160);
         content->addChild(empty);
         content->updateLayout();
-        m_scroll->scrollToTop();
+        m_scroll->setScrollY(0);
         return;
     }
 
@@ -360,7 +356,7 @@ void LevelBrowserLayer::renderList(std::vector<LevelSummary> levels) {
     }
 
     content->updateLayout();
-    m_scroll->scrollToTop();
+    m_scroll->setScrollY(0);
 }
 
 } // namespace git_editor

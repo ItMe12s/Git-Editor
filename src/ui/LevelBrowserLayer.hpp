@@ -6,7 +6,7 @@
 #include <Geode/binding/EditorPauseLayer.hpp>
 #include <Geode/binding/LevelEditorLayer.hpp>
 #include <Geode/ui/Popup.hpp>
-#include <Geode/ui/ScrollLayer.hpp>
+#include <alphalaneous.alphas-ui-pack/include/API.hpp>
 
 #include <cstdint>
 #include <vector>
@@ -28,7 +28,7 @@ protected:
 
     geode::Ref<LevelEditorLayer>  m_editor;
     geode::Ref<EditorPauseLayer>  m_pauseLayer;
-    geode::ScrollLayer* m_scroll     = nullptr;
+    alpha::ui::AdvancedScrollLayer* m_scroll     = nullptr;
     std::uint64_t       m_loadSerial = 0;
     bool               m_busy       = false;
 };

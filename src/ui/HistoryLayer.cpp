@@ -18,7 +18,6 @@
 #include <Geode/ui/Layout.hpp>
 #include <Geode/ui/Notification.hpp>
 #include <Geode/ui/Popup.hpp>
-#include <Geode/ui/ScrollLayer.hpp>
 #include <Geode/utils/cocos.hpp>
 
 #include <algorithm>
@@ -106,14 +105,11 @@ bool HistoryLayer::init(
     float const innerW = histPopupWidth  - histListPadX * 2.f;
     float const innerH = histPopupHeight - histListPadTop - histListPadBottom;
 
-    m_scroll = ScrollLayer::create({innerW, innerH});
+    m_scroll = alpha::ui::AdvancedScrollLayer::create({innerW, innerH});
     m_scroll->setID("git-editor-history-scroll"_spr);
-    m_scroll->setAnchorPoint({0.f, 0.f});
-    m_scroll->m_contentLayer->setLayout(
+    m_scroll->setLayout(
         ColumnLayout::create()
-            ->setAxisReverse(true)
             ->setGap(3.f)
-            ->setAxisAlignment(AxisAlignment::End)
             ->setCrossAxisOverflow(false)
             ->setAutoGrowAxis(std::optional<float>(innerH))
     );
@@ -182,7 +178,7 @@ void HistoryLayer::rebuildHeader() {
 void HistoryLayer::rebuildList() {
     if (!m_scroll) return;
 
-    auto* content = m_scroll->m_contentLayer;
+    auto* content = m_scroll->getContentLayer();
     content->removeAllChildren();
 
     auto* editor = m_editor.data();
@@ -212,7 +208,7 @@ void HistoryLayer::rebuildList() {
 void HistoryLayer::renderList(std::vector<CommitSummary> loadedCommits) {
     if (!m_scroll) return;
 
-    auto* content = m_scroll->m_contentLayer;
+    auto* content = m_scroll->getContentLayer();
     content->removeAllChildren();
     m_commits = std::move(loadedCommits);
     auto const& commits = m_commits;
@@ -226,7 +222,7 @@ void HistoryLayer::renderList(std::vector<CommitSummary> loadedCommits) {
         empty->setOpacity(160);
         content->addChild(empty);
         content->updateLayout();
-        m_scroll->scrollToTop();
+        m_scroll->setScrollY(0);
         return;
     }
 
@@ -405,7 +401,7 @@ void HistoryLayer::renderList(std::vector<CommitSummary> loadedCommits) {
     }
 
     content->updateLayout();
-    m_scroll->scrollToTop();
+    m_scroll->setScrollY(0);
 }
 
 bool HistoryLayer::tryApplyToEditor(

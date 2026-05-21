@@ -43,9 +43,8 @@ bool DeltaInfoLayer::init(std::string title, std::string body) {
     panel->setID("git-editor-delta-panel"_spr);
     panel->setAnchorPoint({0.f, 0.f});
 
-    m_scroll = ScrollLayer::create({scrollW, scrollH});
+    m_scroll = alpha::ui::AdvancedScrollLayer::create({scrollW, scrollH});
     m_scroll->setID("git-editor-delta-scroll"_spr);
-    m_scroll->setAnchorPoint({0.f, 0.f});
 
     float const lineW   = (scrollW - 4.f) / kTextScale;
     auto* label         = CCLabelBMFont::create(
@@ -54,11 +53,11 @@ bool DeltaInfoLayer::init(std::string title, std::string body) {
     label->setScale(kTextScale);
     float const lh = label->getContentSize().height * kTextScale;
     float const ch = std::max(scrollH, lh + 8.f);
-    m_scroll->m_contentLayer->setContentSize({scrollW, ch});
-    label->setAnchorPoint({0.5f, 1.f});
-    label->setPosition({scrollW * 0.5f, ch - 4.f});
-    m_scroll->m_contentLayer->addChild(label);
-    m_scroll->scrollToTop();
+    m_scroll->setInnerContentSize({scrollW, ch});
+    label->setAnchorPoint({0.5f, 0.f});
+    label->setPosition({scrollW * 0.5f, 4.f});
+    m_scroll->getContentLayer()->addChild(label);
+    m_scroll->setScrollY(0);
 
     panel->addChild(m_scroll);
     m_scroll->setPosition({kPanelPad, kPanelPad});

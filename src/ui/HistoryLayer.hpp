@@ -8,7 +8,7 @@
 #include <Geode/binding/EditorPauseLayer.hpp>
 #include <Geode/binding/LevelEditorLayer.hpp>
 #include <Geode/ui/Popup.hpp>
-#include <Geode/ui/ScrollLayer.hpp>
+#include <alphalaneous.alphas-ui-pack/include/API.hpp>
 
 #include <cocos2d.h>
 #include <cstdint>
@@ -45,17 +45,17 @@ protected:
         bool              hasConflicts
     );
 
-    std::string                  m_levelKey;
-    geode::Ref<LevelEditorLayer> m_editor;
-    geode::Ref<EditorPauseLayer> m_pauseLayer;
-    geode::ScrollLayer*          m_scroll     = nullptr;
+    std::string                     m_levelKey;
+    geode::Ref<LevelEditorLayer>    m_editor;
+    geode::Ref<EditorPauseLayer>    m_pauseLayer;
+    alpha::ui::AdvancedScrollLayer* m_scroll = nullptr;
 
-    bool                         m_squashMode = false;
-    bool                         m_busy       = false;
-    std::uint64_t                m_loadSerial = 0;
-    std::vector<CommitSummary>   m_commits;
-    std::set<CommitId>           m_selected;
-    cocos2d::CCMenu*             m_headerMenu = nullptr;
+    bool                       m_squashMode = false;
+    bool                       m_busy       = false;
+    std::uint64_t              m_loadSerial = 0;
+    std::vector<CommitSummary> m_commits;
+    std::set<CommitId>         m_selected;
+    cocos2d::CCMenu*           m_headerMenu = nullptr;
 };
 
 } // namespace git_editor

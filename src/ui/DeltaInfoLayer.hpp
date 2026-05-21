@@ -1,7 +1,7 @@
 #pragma once
 
 #include <Geode/ui/Popup.hpp>
-#include <Geode/ui/ScrollLayer.hpp>
+#include <alphalaneous.alphas-ui-pack/include/API.hpp>
 #include <string>
 
 namespace git_editor {
@@ -13,7 +13,7 @@ public:
 protected:
     bool init(std::string title, std::string body);
 
-    geode::ScrollLayer* m_scroll = nullptr;
+    alpha::ui::AdvancedScrollLayer* m_scroll = nullptr;
 };
 
 } // namespace git_editor
