@@ -29,6 +29,8 @@ public:
 protected:
     bool init(std::string levelKey, LevelEditorLayer* editor, EditorPauseLayer* pauseLayer);
 
+    void onClose(cocos2d::CCObject* sender) override;
+    bool closeOnce(cocos2d::CCObject* sender = nullptr);
     void rebuildList();
     void renderList(std::vector<CommitSummary> commits);
     void rebuildHeader();
@@ -52,6 +54,7 @@ protected:
 
     bool                       m_squashMode = false;
     bool                       m_busy       = false;
+    bool                       m_closing    = false;
     std::uint64_t              m_loadSerial = 0;
     std::vector<CommitSummary> m_commits;
     std::set<CommitId>         m_selected;

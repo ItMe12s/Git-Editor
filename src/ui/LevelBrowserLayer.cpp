@@ -9,6 +9,7 @@
 #include "presentation/UiAction.hpp"
 #include "presentation/UiText.hpp"
 #include "common/GitUiActionRunner.hpp"
+#include "common/UiNodeLifecycle.hpp"
 
 #include <Geode/Geode.hpp>
 #include <Geode/binding/ButtonSprite.hpp>
@@ -111,8 +112,22 @@ bool LevelBrowserLayer::init(
     return true;
 }
 
+void LevelBrowserLayer::onClose(CCObject* sender) {
+    if (m_closing) return;
+    m_closing = true;
+    ++m_loadSerial;
+    m_scroll = nullptr;
+    Popup::onClose(sender);
+}
+
+bool LevelBrowserLayer::closeOnce(CCObject* sender) {
+    if (m_closing || !ui_node_lifecycle::isNodeActive(this)) return false;
+    this->onClose(sender);
+    return true;
+}
+
 void LevelBrowserLayer::rebuildList() {
-    if (!m_scroll) return;
+    if (m_closing || !m_scroll) return;
 
     auto* content = m_scroll->getContentLayer();
     content->removeAllChildren();
@@ -129,14 +144,14 @@ void LevelBrowserLayer::rebuildList() {
     ui_action_runner::runWorkerResult<std::vector<LevelSummary>>(
         []() { return sharedCommitStore().listLevels(); },
         [self, serial](std::vector<LevelSummary> levels) mutable {
-            if (!self || serial != self->m_loadSerial) return;
+            if (!self || self->m_closing || serial != self->m_loadSerial) return;
             self->renderList(std::move(levels));
         }
     );
 }
 
 void LevelBrowserLayer::renderList(std::vector<LevelSummary> levels) {
-    if (!m_scroll) return;
+    if (m_closing || !m_scroll) return;
 
     auto* content = m_scroll->getContentLayer();
     content->removeAllChildren();
@@ -255,7 +270,7 @@ void LevelBrowserLayer::renderList(std::vector<LevelSummary> levels) {
                                 return sharedGitService().prepareImportLevelFrom(destKey, levelKey);
                             },
                             [alive, editorRef, pauseRef](Prepared<LevelState> prep) mutable {
-                                if (!alive) return;
+                                if (!alive || alive->m_closing) return;
                                 auto* editor = editorRef.data();
                                 if (!prep.result.ok) {
                                     finishBusyAction(alive->m_busy);
@@ -293,7 +308,8 @@ void LevelBrowserLayer::renderList(std::vector<LevelSummary> levels) {
                                         return sharedGitService().finalizeImportLevelFrom(pending, applied);
                                     },
                                     [alive, pauseLocal](Result<void> fin) mutable {
-                                        if (alive) finishBusyAction(alive->m_busy);
+                                        if (!alive) return;
+                                        if (!alive->m_closing) finishBusyAction(alive->m_busy);
                                         if (!fin.ok) {
                                             Notification::create(
                                                 ("Editor applied but history copy failed: " + fin.error).c_str(),
@@ -302,8 +318,10 @@ void LevelBrowserLayer::renderList(std::vector<LevelSummary> levels) {
                                             return;
                                         }
                                         Notification::create("Level loaded", NotificationIcon::Success)->show();
-                                        if (alive) alive->onClose(nullptr);
-                                        if (pauseLocal.data()) pauseLocal.data()->onResume(nullptr);
+                                        bool const closed = alive->closeOnce(nullptr);
+                                        if ((closed || alive->m_closing) && ui_node_lifecycle::isNodeActive(pauseLocal.data())) {
+                                            pauseLocal.data()->onResume(nullptr);
+                                        }
                                     }
                                 );
                             }
@@ -337,14 +355,16 @@ void LevelBrowserLayer::renderList(std::vector<LevelSummary> levels) {
                         },
                         [alive](bool ok) {
                             if (!alive) return;
-                            finishBusyAction(alive->m_busy);
+                            if (!alive->m_closing) finishBusyAction(alive->m_busy);
                             if (!ok) {
                                 Notification::create("Delete failed", NotificationIcon::Error)->show();
                                 return;
                             }
                             Notification::create("Level history removed", NotificationIcon::Success)
                                 ->show();
-                            alive->rebuildList();
+                            if (ui_node_lifecycle::isNodeActive(alive.data())) {
+                                alive->rebuildList();
+                            }
                         }
                     );
                 }

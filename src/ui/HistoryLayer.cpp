@@ -4,6 +4,7 @@
 #include "DeltaInfoLayer.hpp"
 #include "HistoryActions.hpp"
 #include "common/GitUiActionRunner.hpp"
+#include "common/UiNodeLifecycle.hpp"
 #include "editor/LevelKey.hpp"
 #include "editor/LevelStateIO.hpp"
 #include "service/GitService.hpp"
@@ -139,8 +140,23 @@ bool HistoryLayer::init(
     return true;
 }
 
+void HistoryLayer::onClose(CCObject* sender) {
+    if (m_closing) return;
+    m_closing = true;
+    ++m_loadSerial;
+    m_scroll = nullptr;
+    m_headerMenu = nullptr;
+    Popup::onClose(sender);
+}
+
+bool HistoryLayer::closeOnce(CCObject* sender) {
+    if (m_closing || !ui_node_lifecycle::isNodeActive(this)) return false;
+    this->onClose(sender);
+    return true;
+}
+
 void HistoryLayer::rebuildHeader() {
-    if (!m_headerMenu) return;
+    if (m_closing || !m_headerMenu) return;
     m_headerMenu->removeAllChildren();
 
     Ref<HistoryLayer> self(this);
@@ -178,7 +194,7 @@ void HistoryLayer::rebuildHeader() {
 }
 
 void HistoryLayer::rebuildList() {
-    if (!m_scroll) return;
+    if (m_closing || !m_scroll) return;
 
     auto* content = m_scroll->getContentLayer();
     content->removeAllChildren();
@@ -200,7 +216,7 @@ void HistoryLayer::rebuildList() {
             return loadHistory(levelKey, activeKey);
         },
         [self, serial](HistoryLoadResult loaded) mutable {
-            if (!self || serial != self->m_loadSerial) return;
+            if (!self || self->m_closing || serial != self->m_loadSerial) return;
             self->m_levelKey = std::move(loaded.levelKey);
             self->renderList(std::move(loaded.commits));
         }
@@ -208,7 +224,7 @@ void HistoryLayer::rebuildList() {
 }
 
 void HistoryLayer::renderList(std::vector<CommitSummary> loadedCommits) {
-    if (!m_scroll) return;
+    if (m_closing || !m_scroll) return;
 
     auto* content = m_scroll->getContentLayer();
     content->removeAllChildren();
@@ -361,12 +377,15 @@ void HistoryLayer::renderList(std::vector<CommitSummary> loadedCommits) {
                                 return sharedGitService().updateCommitMessage(commitId, newMessage);
                             },
                             [self](bool ok) {
+                                if (!self || self->m_closing) return;
                                 if (!ok) {
                                     Notification::create("Rename failed", NotificationIcon::Error)->show();
                                     return;
                                 }
                                 Notification::create("Renamed commit", NotificationIcon::Success)->show();
-                                if (self) self->rebuildList();
+                                if (ui_node_lifecycle::isNodeActive(self.data())) {
+                                    self->rebuildList();
+                                }
                             }
                         );
                     },
@@ -437,7 +456,7 @@ void HistoryLayer::startCheckoutFlow(CommitId commitId, std::string const& commi
                     return sharedGitService().prepareCheckout(levelKey, commitId);
                 },
                 [self, editorRef, pauseRef](Prepared<LevelState> prep) mutable {
-                    if (!self) return;
+                    if (!self || self->m_closing) return;
                     if (!prep.result.ok) {
                         finishBusyAction(self->m_busy);
                         Notification::create(
@@ -452,8 +471,10 @@ void HistoryLayer::startCheckoutFlow(CommitId commitId, std::string const& commi
                     if (!prep.pendingHead) {
                         finishBusyAction(self->m_busy);
                         Notification::create("Checked out", NotificationIcon::Success)->show();
-                        self->onClose(nullptr);
-                        if (pauseRef.data()) pauseRef.data()->onResume(nullptr);
+                        bool const closed = self->closeOnce(nullptr);
+                        if (closed && ui_node_lifecycle::isNodeActive(pauseRef.data())) {
+                            pauseRef.data()->onResume(nullptr);
+                        }
                         return;
                     }
                     LevelState applied = prep.result.value;
@@ -464,7 +485,8 @@ void HistoryLayer::startCheckoutFlow(CommitId commitId, std::string const& commi
                             return sharedGitService().finalizeCheckout(pending, applied);
                         },
                         [self, pauseLocal](Result<CommitId> fin) mutable {
-                            if (self) finishBusyAction(self->m_busy);
+                            if (!self) return;
+                            if (!self->m_closing) finishBusyAction(self->m_busy);
                             if (!fin.ok) {
                                 Notification::create(
                                     ("Editor applied but DB write failed: " + fin.error + ". Re-commit to persist.").c_str(),
@@ -473,8 +495,10 @@ void HistoryLayer::startCheckoutFlow(CommitId commitId, std::string const& commi
                                 return;
                             }
                             Notification::create("Checked out", NotificationIcon::Success)->show();
-                            if (self) self->onClose(nullptr);
-                            if (pauseLocal.data()) pauseLocal.data()->onResume(nullptr);
+                            bool const closed = self->closeOnce(nullptr);
+                            if ((closed || self->m_closing) && ui_node_lifecycle::isNodeActive(pauseLocal.data())) {
+                                pauseLocal.data()->onResume(nullptr);
+                            }
                         }
                     );
                 }
@@ -505,7 +529,7 @@ void HistoryLayer::startRevertFlow(CommitId commitId, std::string const& commitM
                     return sharedGitService().prepareRevert(levelKey, commitId);
                 },
                 [self, editorRef, pauseRef](Prepared<RevertPayload> prep) mutable {
-                    if (!self) return;
+                    if (!self || self->m_closing) return;
                     if (!prep.result.ok) {
                         finishBusyAction(self->m_busy);
                         Notification::create(
@@ -522,8 +546,10 @@ void HistoryLayer::startRevertFlow(CommitId commitId, std::string const& commitM
                         finishBusyAction(self->m_busy);
                         Notification::create("Reverted", NotificationIcon::Success)->show();
                         history_actions::showConflictSummary(prep.result.value.conflicts);
-                        self->onClose(nullptr);
-                        if (pauseRef.data()) pauseRef.data()->onResume(nullptr);
+                        bool const closed = self->closeOnce(nullptr);
+                        if (closed && ui_node_lifecycle::isNodeActive(pauseRef.data())) {
+                            pauseRef.data()->onResume(nullptr);
+                        }
                         return;
                     }
                     LevelState applied = prep.result.value.state;
@@ -535,7 +561,8 @@ void HistoryLayer::startRevertFlow(CommitId commitId, std::string const& commitM
                             return sharedGitService().finalizeRevert(pending, applied);
                         },
                         [self, pauseLocal, conflicts](Result<CommitId> fin) mutable {
-                            if (self) finishBusyAction(self->m_busy);
+                            if (!self) return;
+                            if (!self->m_closing) finishBusyAction(self->m_busy);
                             if (!fin.ok) {
                                 Notification::create(
                                     ("Editor applied but DB write failed: " + fin.error + ". Re-commit to persist.").c_str(),
@@ -545,8 +572,10 @@ void HistoryLayer::startRevertFlow(CommitId commitId, std::string const& commitM
                             }
                             Notification::create("Reverted", NotificationIcon::Success)->show();
                             history_actions::showConflictSummary(conflicts);
-                            if (self) self->onClose(nullptr);
-                            if (pauseLocal.data()) pauseLocal.data()->onResume(nullptr);
+                            bool const closed = self->closeOnce(nullptr);
+                            if ((closed || self->m_closing) && ui_node_lifecycle::isNodeActive(pauseLocal.data())) {
+                                pauseLocal.data()->onResume(nullptr);
+                            }
                         }
                     );
                 }
@@ -594,7 +623,7 @@ void HistoryLayer::onSquashPressed() {
         "This will combine the selected commit range into a single commit.\nThis CANNOT be undone.",
         "Cancel", "Squash",
         [self, idsOldestFirst, defaultMsg](FLAlertLayer*, bool yes) mutable {
-            if (!self) return;
+            if (!self || self->m_closing) return;
             if (!yes) { finishBusyAction(self->m_busy); return; }
             self->onSquashConfirmed(std::move(idsOldestFirst), std::move(defaultMsg));
         }
@@ -605,12 +634,12 @@ void HistoryLayer::onSquashConfirmed(std::vector<CommitId> idsOldestFirst, std::
     Ref<HistoryLayer> self(this);
     auto popup = CommitMessageLayer::create(
         [self, idsOldestFirst](std::string const& msg) {
-            if (self) self->runSquash(idsOldestFirst, msg);
+            if (self && !self->m_closing) self->runSquash(idsOldestFirst, msg);
         },
         "Squash Commits",
         "Squash",
         defaultMsg,
-        [self]() { if (self) finishBusyAction(self->m_busy); }
+        [self]() { if (self && !self->m_closing) finishBusyAction(self->m_busy); }
     );
     if (popup) popup->show();
     else       finishBusyAction(m_busy);
@@ -626,7 +655,7 @@ void HistoryLayer::runSquash(std::vector<CommitId> idsOldestFirst, std::string m
             return sharedGitService().prepareSquash(levelKey, idsOldestFirst, message);
         },
         [self, editorRef, pauseRef](Prepared<LevelState> prep) mutable {
-            if (!self) return;
+            if (!self || self->m_closing) return;
             if (!prep.result.ok) {
                 finishBusyAction(self->m_busy);
                 Notification::create(
@@ -649,7 +678,8 @@ void HistoryLayer::runSquash(std::vector<CommitId> idsOldestFirst, std::string m
                     return sharedGitService().finalizeSquash(pending, applied);
                 },
                 [self](Result<CommitId> fin) mutable {
-                    if (self) finishBusyAction(self->m_busy);
+                    if (!self) return;
+                    if (!self->m_closing) finishBusyAction(self->m_busy);
                     if (!fin.ok) {
                         Notification::create(
                             ("Editor applied but DB squash failed: " + fin.error).c_str(),
@@ -658,11 +688,12 @@ void HistoryLayer::runSquash(std::vector<CommitId> idsOldestFirst, std::string m
                         return;
                     }
                     Notification::create("Squashed", NotificationIcon::Success)->show();
-                    if (!self) return;
                     self->m_squashMode = false;
                     self->m_selected.clear();
-                    self->rebuildHeader();
-                    self->rebuildList();
+                    if (ui_node_lifecycle::isNodeActive(self.data())) {
+                        self->rebuildHeader();
+                        self->rebuildList();
+                    }
                 }
             );
         }

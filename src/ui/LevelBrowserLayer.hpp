@@ -23,6 +23,8 @@ public:
 protected:
     bool init(LevelEditorLayer* editor, EditorPauseLayer* pauseLayer);
 
+    void onClose(cocos2d::CCObject* sender) override;
+    bool closeOnce(cocos2d::CCObject* sender = nullptr);
     void rebuildList();
     void renderList(std::vector<LevelSummary> levels);
 
@@ -31,6 +33,7 @@ protected:
     alpha::ui::AdvancedScrollLayer* m_scroll     = nullptr;
     std::uint64_t       m_loadSerial = 0;
     bool               m_busy       = false;
+    bool               m_closing    = false;
 };
 
 } // namespace git_editor
