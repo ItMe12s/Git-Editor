@@ -65,6 +65,10 @@ public:
 
     std::vector<CommitSummary> listSummaries(LevelKey const& levelKey);
 
+    bool updateCommitMessage(CommitId id, std::string const& message);
+
+    Result<std::string> describeCommitChanges(CommitId id);
+
     std::optional<LevelState> reconstruct(CommitId commitId);
 
     // Test-only helpers. Do not call from UI.

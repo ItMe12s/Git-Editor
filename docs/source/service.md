@@ -19,7 +19,7 @@ Two-phase prepare then finalize (compute first, save after the editor updates) a
 
 ## Touches
 
-Pause menu and popups go through `GitService`, except a few direct `CommitStore` calls in History and Levels.
+Pause menu and popups go through `GitService`, except a few direct `CommitStore` calls in Levels.
 
 ## You might care if
 

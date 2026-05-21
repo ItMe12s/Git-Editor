@@ -4,12 +4,9 @@
 #include "DeltaInfoLayer.hpp"
 #include "HistoryActions.hpp"
 #include "common/GitUiActionRunner.hpp"
-#include "diff/Delta.hpp"
 #include "editor/LevelKey.hpp"
 #include "editor/LevelStateIO.hpp"
 #include "service/GitService.hpp"
-#include "store/CommitStore.hpp"
-#include "presentation/DeltaText.hpp"
 #include "presentation/UiAction.hpp"
 #include "presentation/UiText.hpp"
 
@@ -339,27 +336,18 @@ void HistoryLayer::renderList(std::vector<CommitSummary> loadedCommits) {
         auto helpBtn = makeBtn(
             "?", "GJ_button_04.png",
             [commitId, commitMsg](CCMenuItemSpriteExtra*) {
-                auto row = sharedCommitStore().get(commitId);
-                if (!row) {
-                    FLAlertLayer::create("Error", "Commit not found.", "OK")->show();
+                auto res = sharedGitService().describeCommitChanges(commitId);
+                if (!res.ok) {
+                    FLAlertLayer::create("Error", res.error, "OK")->show();
                     return;
                 }
-                if (auto opt = parseDelta(row->deltaBlob)) {
-                    std::string body  = describeDeltaText(*opt);
-                    std::string title = "What changed";
-                    if (!commitMsg.empty()) {
-                        title += " - ";
-                        title += shorten(commitMsg, 24);
-                    }
-                    if (auto* p = DeltaInfoLayer::create(std::move(title), std::move(body))) {
-                        p->show();
-                    }
-                } else {
-                    FLAlertLayer::create(
-                        "Error",
-                        "Could not read this commit's delta.",
-                        "OK"
-                    )->show();
+                std::string title = "What changed";
+                if (!commitMsg.empty()) {
+                    title += " - ";
+                    title += shorten(commitMsg, 24);
+                }
+                if (auto* p = DeltaInfoLayer::create(std::move(title), std::move(res.value))) {
+                    p->show();
                 }
             }
         );
@@ -372,7 +360,7 @@ void HistoryLayer::renderList(std::vector<CommitSummary> loadedCommits) {
                     [self, commitId](std::string const& newMessage) {
                         ui_action_runner::runWorkerResult<bool>(
                             [commitId, newMessage]() {
-                                return sharedCommitStore().updateMessage(commitId, newMessage);
+                                return sharedGitService().updateCommitMessage(commitId, newMessage);
                             },
                             [self](bool ok) {
                                 if (!ok) {

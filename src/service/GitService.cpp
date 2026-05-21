@@ -12,6 +12,7 @@
 #include "store/GdgePackage.hpp"
 #include "util/format/Shorten.hpp"
 #include "util/format/StateHash.hpp"
+#include "ui/presentation/DeltaText.hpp"
 #include "util/io/PathUtf8.hpp"
 
 #include <Geode/loader/Log.hpp>
@@ -648,6 +649,22 @@ Result<void> GitService::finalizeImportManyFromGdge(
 
 std::vector<CommitSummary> GitService::listSummaries(LevelKey const& levelKey) {
     return buildCommitSummaries(m_store.listSummaryRows(levelKey));
+}
+
+bool GitService::updateCommitMessage(CommitId id, std::string const& message) {
+    return m_store.updateMessage(id, message);
+}
+
+Result<std::string> GitService::describeCommitChanges(CommitId id) {
+    auto row = m_store.get(id);
+    if (!row) return failResult<std::string>("Commit not found.");
+    if (auto delta = parseDelta(row->deltaBlob)) {
+        Result<std::string> out;
+        out.ok    = true;
+        out.value = describeDeltaText(*delta);
+        return out;
+    }
+    return failResult<std::string>("Could not read this commit's delta.");
 }
 
 void GitService::clearReconstructCache() {

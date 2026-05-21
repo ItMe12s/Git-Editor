@@ -16,7 +16,7 @@ Saves commit history on disk. One live database and portable level packages.
 
 ## Touches
 
-`GitService` is the main caller. History and Levels popups call `CommitStore` for list and delete actions.
+`GitService` is the main caller. Levels popup calls `CommitStore` for level list, delete, and db path.
 
 ## You might care if
 

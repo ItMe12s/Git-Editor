@@ -16,7 +16,7 @@ Popups, confirm dialogs, and text shown in History and Levels.
 
 ## Touches
 
-Opened from [hooks.md](hooks.md). Calls `GitService` and sometimes `CommitStore` directly.
+Opened from [hooks.md](hooks.md). Calls `GitService`, `LevelBrowserLayer` also calls `CommitStore` directly.
 
 ## You might care if
 
