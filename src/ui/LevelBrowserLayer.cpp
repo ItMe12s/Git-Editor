@@ -92,8 +92,10 @@ bool LevelBrowserLayer::init(
 
     m_scroll = alpha::ui::AdvancedScrollLayer::create({innerW, innerH});
     m_scroll->setID("git-editor-levels-scroll"_spr);
+    m_scroll->setAnchorPoint({0.f, 0.f});
     m_scroll->setLayout(
         ColumnLayout::create()
+            ->setAxisReverse(true)
             ->setGap(3.f)
             ->setCrossAxisOverflow(false)
             ->setAutoGrowAxis(std::optional<float>(innerH))

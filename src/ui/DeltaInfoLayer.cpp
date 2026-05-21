@@ -45,6 +45,7 @@ bool DeltaInfoLayer::init(std::string title, std::string body) {
 
     m_scroll = alpha::ui::AdvancedScrollLayer::create({scrollW, scrollH});
     m_scroll->setID("git-editor-delta-scroll"_spr);
+    m_scroll->setAnchorPoint({0.f, 0.f});
 
     float const lineW   = (scrollW - 4.f) / kTextScale;
     auto* label         = CCLabelBMFont::create(
