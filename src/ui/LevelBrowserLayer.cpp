@@ -270,7 +270,7 @@ void LevelBrowserLayer::renderList(std::vector<LevelSummary> levels) {
                                 return sharedGitService().prepareImportLevelFrom(destKey, levelKey);
                             },
                             [alive, editorRef, pauseRef](Prepared<LevelState> prep) mutable {
-                                if (!alive || alive->m_closing) return;
+                                if (!alive || exitBusyIfClosing(alive->m_busy, alive->m_closing)) return;
                                 auto* editor = editorRef.data();
                                 if (!prep.result.ok) {
                                     finishBusyAction(alive->m_busy);
@@ -309,7 +309,8 @@ void LevelBrowserLayer::renderList(std::vector<LevelSummary> levels) {
                                     },
                                     [alive, pauseLocal](Result<void> fin) mutable {
                                         if (!alive) return;
-                                        if (!alive->m_closing) finishBusyAction(alive->m_busy);
+                                        finishBusyAction(alive->m_busy);
+                                        if (alive->m_closing) return;
                                         if (!fin.ok) {
                                             Notification::create(
                                                 ("Editor applied but history copy failed: " + fin.error).c_str(),
@@ -355,7 +356,8 @@ void LevelBrowserLayer::renderList(std::vector<LevelSummary> levels) {
                         },
                         [alive](bool ok) {
                             if (!alive) return;
-                            if (!alive->m_closing) finishBusyAction(alive->m_busy);
+                            finishBusyAction(alive->m_busy);
+                            if (alive->m_closing) return;
                             if (!ok) {
                                 Notification::create("Delete failed", NotificationIcon::Error)->show();
                                 return;

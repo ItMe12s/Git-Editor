@@ -17,4 +17,10 @@ inline void finishBusyAction(bool& busyFlag) {
     busyFlag = false;
 }
 
+inline bool exitBusyIfClosing(bool& busy, bool closing) {
+    if (!closing) return false;
+    finishBusyAction(busy);
+    return true;
+}
+
 } // namespace git_editor
