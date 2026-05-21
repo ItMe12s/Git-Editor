@@ -24,7 +24,8 @@
 	],
 	"dependencies": {
 		"geode.node-ids": ">=v1.23.3",
-		"cvolton.level-id-api": ">=2.0.0"
+		"cvolton.level-id-api": ">=2.0.0",
+		"alphalaneous.alphas-ui-pack": ">=v1.1.1"
 	},
 	"settings": {
 		"size-multiplier": {
