@@ -40,97 +40,77 @@ void CommitStore::resetStatement(sqlite3_stmt* st) {
 }
 
 void CommitStore::finalizeStatements() {
-    auto fin = [](sqlite3_stmt*& p) {
-        if (p) {
-            sqlite3_finalize(p);
-            p = nullptr;
-        }
+    sqlite3_stmt** slots[] = {
+        &m_stmtInsert,
+        &m_stmtGet,
+        &m_stmtList,
+        &m_stmtListSummaries,
+        &m_stmtUpdateMessage,
+        &m_stmtListLevels,
+        &m_stmtDelRefs,
+        &m_stmtDelCommits,
+        &m_stmtGetHead,
+        &m_stmtSetHead,
     };
-    fin(m_stmtInsert);
-    fin(m_stmtGet);
-    fin(m_stmtList);
-    fin(m_stmtListSummaries);
-    fin(m_stmtUpdateMessage);
-    fin(m_stmtListLevels);
-    fin(m_stmtDelRefs);
-    fin(m_stmtDelCommits);
-    fin(m_stmtGetHead);
-    fin(m_stmtSetHead);
+    for (auto* slot : slots) {
+        if (*slot) {
+            sqlite3_finalize(*slot);
+            *slot = nullptr;
+        }
+    }
 }
 
 bool CommitStore::prepareStatements() {
-    auto prep = [this](sqlite3_stmt** out, char const* sql) -> bool {
-        if (sqlite3_prepare_v2(m_db, sql, -1, out, nullptr) != SQLITE_OK) {
-            geode::log::error("prepare failed: {}", sqlite3_errmsg(m_db));
-            return false;
-        }
-        return true;
+    struct Entry {
+        char const* sql;
+        sqlite3_stmt** stmt;
     };
 
-    constexpr char const* kInsert =
-        "INSERT INTO commits(level_key, parent_id, reverts_id, message, created_at, delta_blob) "
-        "VALUES (?, ?, ?, ?, ?, ?);";
-    constexpr char const* kGet =
-        "SELECT id, level_key, parent_id, reverts_id, message, created_at, delta_blob "
-        "FROM commits WHERE id = ?;";
-    constexpr char const* kList =
-        "SELECT id, level_key, parent_id, reverts_id, message, created_at, delta_blob "
-        "FROM commits WHERE level_key = ? "
-        "ORDER BY created_at DESC, id DESC;";
-    constexpr char const* kListSummaries =
-        "SELECT id, message, created_at, delta_blob FROM commits "
-        "WHERE level_key = ? ORDER BY created_at DESC, id DESC;";
-    constexpr char const* kUpdateMessage = "UPDATE commits SET message = ? WHERE id = ?;";
-    constexpr char const* kListLevels =
-        "SELECT level_key, COUNT(*), MAX(created_at), "
-        "COALESCE(SUM(LENGTH(delta_blob)), 0) FROM commits "
-        "GROUP BY level_key ORDER BY MAX(created_at) DESC;";
-    constexpr char const* kDelRefs  = "DELETE FROM refs WHERE level_key = ?;";
-    constexpr char const* kDelCommits = "DELETE FROM commits WHERE level_key = ?;";
-    constexpr char const* kGetHead = "SELECT head_id FROM refs WHERE level_key = ?;";
-    constexpr char const* kSetHead =
-        "INSERT INTO refs(level_key, head_id) VALUES(?, ?) "
-        "ON CONFLICT(level_key) DO UPDATE SET head_id = excluded.head_id;";
+    Entry const entries[] = {
+        {
+            "INSERT INTO commits(level_key, parent_id, reverts_id, message, created_at, delta_blob) "
+            "VALUES (?, ?, ?, ?, ?, ?);",
+            &m_stmtInsert,
+        },
+        {
+            "SELECT id, level_key, parent_id, reverts_id, message, created_at, delta_blob "
+            "FROM commits WHERE id = ?;",
+            &m_stmtGet,
+        },
+        {
+            "SELECT id, level_key, parent_id, reverts_id, message, created_at, delta_blob "
+            "FROM commits WHERE level_key = ? "
+            "ORDER BY created_at DESC, id DESC;",
+            &m_stmtList,
+        },
+        {
+            "SELECT id, message, created_at, delta_blob FROM commits "
+            "WHERE level_key = ? ORDER BY created_at DESC, id DESC;",
+            &m_stmtListSummaries,
+        },
+        {"UPDATE commits SET message = ? WHERE id = ?;", &m_stmtUpdateMessage},
+        {
+            "SELECT level_key, COUNT(*), MAX(created_at), "
+            "COALESCE(SUM(LENGTH(delta_blob)), 0) FROM commits "
+            "GROUP BY level_key ORDER BY MAX(created_at) DESC;",
+            &m_stmtListLevels,
+        },
+        {"DELETE FROM refs WHERE level_key = ?;", &m_stmtDelRefs},
+        {"DELETE FROM commits WHERE level_key = ?;", &m_stmtDelCommits},
+        {"SELECT head_id FROM refs WHERE level_key = ?;", &m_stmtGetHead},
+        {
+            "INSERT INTO refs(level_key, head_id) VALUES(?, ?) "
+            "ON CONFLICT(level_key) DO UPDATE SET head_id = excluded.head_id;",
+            &m_stmtSetHead,
+        },
+    };
 
-    if (!prep(&m_stmtInsert, kInsert)) {
-        this->finalizeStatements();
-        return false;
-    }
-    if (!prep(&m_stmtGet, kGet)) {
-        this->finalizeStatements();
-        return false;
-    }
-    if (!prep(&m_stmtList, kList)) {
-        this->finalizeStatements();
-        return false;
-    }
-    if (!prep(&m_stmtListSummaries, kListSummaries)) {
-        this->finalizeStatements();
-        return false;
-    }
-    if (!prep(&m_stmtUpdateMessage, kUpdateMessage)) {
-        this->finalizeStatements();
-        return false;
-    }
-    if (!prep(&m_stmtListLevels, kListLevels)) {
-        this->finalizeStatements();
-        return false;
-    }
-    if (!prep(&m_stmtDelRefs, kDelRefs)) {
-        this->finalizeStatements();
-        return false;
-    }
-    if (!prep(&m_stmtDelCommits, kDelCommits)) {
-        this->finalizeStatements();
-        return false;
-    }
-    if (!prep(&m_stmtGetHead, kGetHead)) {
-        this->finalizeStatements();
-        return false;
-    }
-    if (!prep(&m_stmtSetHead, kSetHead)) {
-        this->finalizeStatements();
-        return false;
+    for (auto const& entry : entries) {
+        if (sqlite3_prepare_v2(m_db, entry.sql, -1, entry.stmt, nullptr) != SQLITE_OK) {
+            geode::log::error("prepare failed: {}", sqlite3_errmsg(m_db));
+            this->finalizeStatements();
+            return false;
+        }
     }
     return true;
 }
