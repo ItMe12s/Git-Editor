@@ -5,8 +5,9 @@ Popups, confirm dialogs, and text shown in History and Levels.
 ## Main files
 
 - `CommitMessageLayer.cpp`: commit message, squash message, rename
-- `HistoryLayer.cpp`: commit list and actions
-- `HistoryActions.cpp`: revert, checkout, squash flows and conflict alert
+- `HistoryList.cpp`: history popup chrome, commit list load/render
+- `HistoryFlows.cpp`: checkout, revert, squash flows
+- `HistoryActions.cpp`: editor apply and conflict alert
 - `LevelBrowserLayer.cpp`: level list, load, delete
 - `DeltaInfoLayer.cpp`: what-changed viewer
 - `common/GitUiActionRunner.hpp`: slow work in background, update screen when done
@@ -24,7 +25,9 @@ You use History, Levels, or Commit in-game. See [features/README.md](../features
 
 ## Code
 
-- [src/ui/HistoryLayer.cpp](../../src/ui/HistoryLayer.cpp)
+- [src/ui/HistoryLayer.hpp](../../src/ui/HistoryLayer.hpp)
+- [src/ui/HistoryList.cpp](../../src/ui/HistoryList.cpp)
+- [src/ui/HistoryFlows.cpp](../../src/ui/HistoryFlows.cpp)
 - [src/ui/LevelBrowserLayer.cpp](../../src/ui/LevelBrowserLayer.cpp)
 - [src/ui/CommitMessageLayer.cpp](../../src/ui/CommitMessageLayer.cpp)
 - [src/ui/common/GitUiActionRunner.hpp](../../src/ui/common/GitUiActionRunner.hpp)
