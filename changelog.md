@@ -11,9 +11,17 @@ Consider giving it a star and check the commit history for a more technical chan
 
 ---
 
-## 1.0.0-beta.11
+## 1.0.0-beta.11 - The "Better for All" Update
 
-...
+This update focuses on the project's codebase, making it much easier for anyone to contribute.
+Most of the codebase has been reworked, and full documentation is now available.
+
+If you're already using this then you can expect better long-term support, stability, and future improvements.
+
+- UI/UX improvements, no more massive stuttering when clicking buttons while working on a big level.
+- New "What changed" menu, diff texts no longer cap out or lag, and you can now flip through them like pages.
+- Fixed crashes, performance issues, and the bug where the game gets stuck on a black screen when exiting the editor.
+- Lots of internal cleanup for stability and speed.
 
 ## 1.0.0-beta.10
 
