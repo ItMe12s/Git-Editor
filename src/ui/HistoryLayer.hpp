@@ -1,5 +1,6 @@
 #pragma once
 
+#include "HistoryCommitRow.hpp"
 #include "common/ScrollListPopup.hpp"
 #include "model/LevelState.hpp"
 #include "store/CommitStore.hpp"
@@ -18,18 +19,6 @@
 #include <vector>
 
 namespace git_editor {
-
-class HistoryLayer;
-
-namespace history_rows {
-cocos2d::CCNode* createCommitRow(
-    CommitSummary const& commit,
-    float rowWidth,
-    bool squashMode,
-    bool selected,
-    geode::Ref<HistoryLayer> layer
-);
-}
 
 class HistoryLayer : public geode::Popup {
     friend cocos2d::CCNode* history_rows::createCommitRow(

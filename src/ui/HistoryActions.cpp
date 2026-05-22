@@ -1,7 +1,6 @@
 #include "HistoryActions.hpp"
 
 #include "HistoryLayer.hpp"
-
 #include "editor/LevelStateIO.hpp"
 
 #include <Geode/binding/FLAlertLayer.hpp>
