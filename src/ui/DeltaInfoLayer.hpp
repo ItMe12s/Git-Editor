@@ -15,8 +15,6 @@ namespace git_editor {
 
 class DeltaInfoLayer : public geode::Popup {
 public:
-    static DeltaInfoLayer* create(std::string title, std::string body = "");
-
     static DeltaInfoLayer* createAndLoad(
         std::string title,
         geode::Function<Result<std::string>(void)> loadFn

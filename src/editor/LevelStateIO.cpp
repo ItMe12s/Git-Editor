@@ -6,6 +6,15 @@
 
 namespace git_editor {
 
+std::string captureLevelString(LevelEditorLayer* editor) {
+    if (!editor) {
+        geode::log::warn("captureLevelString called with null editor");
+        return {};
+    }
+    auto gdStr = editor->getLevelString();
+    return std::string(gdStr.c_str(), gdStr.size());
+}
+
 namespace {
 
 void refreshEditorVisualState(LevelEditorLayer* editor) {
@@ -25,17 +34,6 @@ void refreshEditorVisualState(LevelEditorLayer* editor) {
     if (auto* objects = editor->getAllObjects()) {
         editor->updateObjectColors(objects);
     }
-}
-
-} // namespace
-
-std::string captureLevelString(LevelEditorLayer* editor) {
-    if (!editor) {
-        geode::log::warn("captureLevelString called with null editor");
-        return {};
-    }
-    auto gdStr = editor->getLevelString();
-    return std::string(gdStr.c_str(), gdStr.size());
 }
 
 bool applyLevelString(LevelEditorLayer* editor, std::string const& levelString) {
@@ -71,6 +69,8 @@ bool applyLevelString(LevelEditorLayer* editor, std::string const& levelString) 
     }
     return true;
 }
+
+} // namespace
 
 bool applyLevelState(LevelEditorLayer* editor, LevelState const& state) {
     return applyLevelString(editor, serializeLevelString(state));

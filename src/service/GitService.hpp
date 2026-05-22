@@ -2,8 +2,6 @@
 
 #include "core/ImportPlan.hpp"
 #include "core/Result.hpp"
-#include "diff/Delta.hpp"
-#include "diff/Differ.hpp"
 #include "model/LevelState.hpp"
 #include "store/CommitStore.hpp"
 #include "PendingOps.hpp"

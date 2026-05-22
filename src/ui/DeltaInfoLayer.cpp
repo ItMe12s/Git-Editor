@@ -60,22 +60,16 @@ std::size_t blockCountFor(std::size_t lineCount) {
 
 } // namespace
 
-DeltaInfoLayer* DeltaInfoLayer::create(std::string title, std::string body) {
-    auto* ret = new DeltaInfoLayer();
-    if (ret && ret->init(std::move(title), std::move(body))) {
-        ret->autorelease();
-        return ret;
-    }
-    delete ret;
-    return nullptr;
-}
-
 DeltaInfoLayer* DeltaInfoLayer::createAndLoad(
     std::string title,
     geode::Function<Result<std::string>(void)> loadFn
 ) {
-    auto* popup = create(std::move(title));
-    if (!popup) return nullptr;
+    auto* popup = new DeltaInfoLayer();
+    if (!popup || !popup->init(std::move(title), "")) {
+        delete popup;
+        return nullptr;
+    }
+    popup->autorelease();
 
     popup->show();
 

@@ -1,6 +1,6 @@
 #include "DeltaText.hpp"
 
-#include "UiText.hpp"
+#include "util/format/Shorten.hpp"
 
 #include <string>
 

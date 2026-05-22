@@ -11,8 +11,6 @@
 
 namespace git_editor::gdge_import_merge {
 
-Result<LevelState> loadGdgeHead(std::filesystem::path const& path);
-
 Prepared<ImportManyPayload> prepareImportManyFromGdge(
     LevelKey const&         dest,
     ImportPlan const&       plan,

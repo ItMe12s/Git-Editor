@@ -16,11 +16,11 @@
 #include <utility>
 #include <vector>
 
-namespace git_editor::gdge_import_merge {
+namespace {
 
-Result<LevelState> loadGdgeHead(std::filesystem::path const& path) {
-    Result<LevelState> out;
-    auto pkg = readGdgePackage(path);
+git_editor::Result<git_editor::LevelState> loadGdgeHead(std::filesystem::path const& path) {
+    git_editor::Result<git_editor::LevelState> out;
+    auto pkg = git_editor::readGdgePackage(path);
     if (!pkg.ok) {
         out.error = git_editor::pathUtf8(path.filename()) + ": " + pkg.error;
         return out;
@@ -29,7 +29,7 @@ Result<LevelState> loadGdgeHead(std::filesystem::path const& path) {
         out.error = git_editor::pathUtf8(path.filename()) + ": missing commits or head_index";
         return out;
     }
-    auto head = reconstructPackageHead(pkg.value);
+    auto head = git_editor::reconstructPackageHead(pkg.value);
     if (!head) {
         out.error = git_editor::pathUtf8(path.filename()) + ": package history graph invalid";
         return out;
@@ -38,6 +38,10 @@ Result<LevelState> loadGdgeHead(std::filesystem::path const& path) {
     out.value = std::move(*head);
     return out;
 }
+
+} // namespace
+
+namespace git_editor::gdge_import_merge {
 
 Prepared<ImportManyPayload> prepareImportManyFromGdge(
     LevelKey const&         dest,
