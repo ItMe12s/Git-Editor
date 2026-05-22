@@ -1,6 +1,9 @@
 #pragma once
 
+#include "core/Result.hpp"
+
 #include <Geode/ui/Popup.hpp>
+#include <Geode/utils/function.hpp>
 #include <alphalaneous.alphas-ui-pack/include/API.hpp>
 
 #include <cocos2d.h>
@@ -14,14 +17,20 @@ class DeltaInfoLayer : public geode::Popup {
 public:
     static DeltaInfoLayer* create(std::string title, std::string body = "");
 
-    void applyBody(std::string body);
-    void showLoadError(std::string error);
+    static DeltaInfoLayer* createAndLoad(
+        std::string title,
+        geode::Function<Result<std::string>(void)> loadFn
+    );
 
 protected:
     bool init(std::string title, std::string body);
 
+    void onClose(cocos2d::CCObject* sender) override;
+
     void showLoading();
     void clearOverlay();
+    void applyBody(std::string body);
+    void showLoadError(std::string error);
     void showBlock(std::size_t blockIndex);
     void onPrevBlock();
     void onNextBlock();

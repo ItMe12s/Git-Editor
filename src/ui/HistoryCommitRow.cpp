@@ -137,25 +137,9 @@ CCNode* createCommitRow(
                     title += shorten(commitMsg, 24);
                 }
 
-                Ref<DeltaInfoLayer> popup;
-                if (auto* p = DeltaInfoLayer::create(std::move(title))) {
-                    popup = p;
-                    p->show();
-                }
-
-                ui_action_runner::runWorkerResult<Result<std::string>>(
-                    [commitId]() {
-                        return sharedGitService().describeCommitChanges(commitId);
-                    },
-                    [popup](Result<std::string> res) mutable {
-                        if (!popup || !ui_node_lifecycle::isNodeActive(popup.data())) return;
-                        if (!res.ok) {
-                            popup->showLoadError(res.error);
-                            return;
-                        }
-                        popup->applyBody(std::move(res.value));
-                    }
-                );
+                DeltaInfoLayer::createAndLoad(std::move(title), [commitId]() {
+                    return sharedGitService().describeCommitChanges(commitId);
+                });
             }
         );
         menu->addChild(helpBtn);

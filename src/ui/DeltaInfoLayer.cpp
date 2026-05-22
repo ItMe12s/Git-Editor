@@ -1,5 +1,7 @@
 #include "DeltaInfoLayer.hpp"
 
+#include "common/GitUiActionRunner.hpp"
+#include "common/UiNodeLifecycle.hpp"
 #include "presentation/DeltaColors.hpp"
 
 #include <Geode/Geode.hpp>
@@ -9,6 +11,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <memory>
 #include <string>
 
 using namespace geode::prelude;
@@ -65,6 +68,32 @@ DeltaInfoLayer* DeltaInfoLayer::create(std::string title, std::string body) {
     }
     delete ret;
     return nullptr;
+}
+
+DeltaInfoLayer* DeltaInfoLayer::createAndLoad(
+    std::string title,
+    geode::Function<Result<std::string>(void)> loadFn
+) {
+    auto* popup = create(std::move(title));
+    if (!popup) return nullptr;
+
+    popup->show();
+
+    Ref<DeltaInfoLayer> self(popup);
+    auto loadFnHolder = std::make_shared<geode::Function<Result<std::string>(void)>>(std::move(loadFn));
+    ui_action_runner::runWorkerResult<Result<std::string>>(
+        [loadFnHolder]() { return (*loadFnHolder)(); },
+        [self](Result<std::string> res) mutable {
+            if (!self || !ui_node_lifecycle::isNodeActive(self.data())) return;
+            if (!res.ok) {
+                self->showLoadError(res.error);
+                return;
+            }
+            self->applyBody(std::move(res.value));
+        }
+    );
+
+    return popup;
 }
 
 bool DeltaInfoLayer::init(std::string title, std::string body) {
@@ -142,8 +171,8 @@ bool DeltaInfoLayer::init(std::string title, std::string body) {
     return true;
 }
 
-void DeltaInfoLayer::clearOverlay() {
-    if (m_scroll) m_scroll->removeChildByID("git-editor-delta-overlay"_spr);
+void DeltaInfoLayer::onClose(CCObject* sender) {
+    Popup::onClose(sender);
 }
 
 void DeltaInfoLayer::showLoading() {
@@ -164,6 +193,10 @@ void DeltaInfoLayer::showLoading() {
     if (m_pageLabel) m_pageLabel->setString("Loading...");
     if (m_prevBtn) m_prevBtn->setEnabled(false);
     if (m_nextBtn) m_nextBtn->setEnabled(false);
+}
+
+void DeltaInfoLayer::clearOverlay() {
+    if (m_scroll) m_scroll->removeChildByID("git-editor-delta-overlay"_spr);
 }
 
 void DeltaInfoLayer::applyBody(std::string body) {
@@ -188,6 +221,15 @@ void DeltaInfoLayer::showLoadError(std::string error) {
     if (m_pageLabel) m_pageLabel->setString("Error");
     if (m_prevBtn) m_prevBtn->setEnabled(false);
     if (m_nextBtn) m_nextBtn->setEnabled(false);
+}
+
+void DeltaInfoLayer::onPrevBlock() {
+    if (m_blockIndex == 0) return;
+    showBlock(m_blockIndex - 1);
+}
+
+void DeltaInfoLayer::onNextBlock() {
+    showBlock(m_blockIndex + 1);
 }
 
 void DeltaInfoLayer::showBlock(std::size_t blockIndex) {
@@ -245,15 +287,6 @@ void DeltaInfoLayer::showBlock(std::size_t blockIndex) {
 
     if (m_prevBtn) m_prevBtn->setEnabled(m_blockIndex > 0);
     if (m_nextBtn) m_nextBtn->setEnabled(m_blockIndex + 1 < blocks);
-}
-
-void DeltaInfoLayer::onPrevBlock() {
-    if (m_blockIndex == 0) return;
-    showBlock(m_blockIndex - 1);
-}
-
-void DeltaInfoLayer::onNextBlock() {
-    showBlock(m_blockIndex + 1);
 }
 
 } // namespace git_editor
