@@ -3,7 +3,6 @@
 #include "model/LevelState.hpp"
 #include "Delta.hpp"
 
-#include <string>
 #include <vector>
 
 namespace git_editor {
@@ -15,10 +14,7 @@ struct Conflict {
         ModifyStale
     };
 
-    Kind        kind;
-    ObjectUuid  uuid = 0;
-    std::string field;
-    std::string note;
+    Kind kind;
 };
 
 Delta diff(LevelState const& prev, LevelState const& next);
