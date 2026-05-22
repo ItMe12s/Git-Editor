@@ -1,5 +1,7 @@
 #include "HistoryActions.hpp"
 
+#include "HistoryLayer.hpp"
+
 #include "../editor/LevelStateIO.hpp"
 
 #include <Geode/binding/FLAlertLayer.hpp>
@@ -66,3 +68,16 @@ void showConflictSummary(std::vector<Conflict> const& conflicts) {
 }
 
 } // namespace git_editor::history_actions
+
+namespace git_editor {
+
+bool HistoryLayer::tryApplyToEditor(
+    char const*       noun,
+    LevelEditorLayer* editor,
+    LevelState const& state,
+    bool              hasConflicts
+) {
+    return history_actions::applyStateToEditorOrNotify(noun, editor, state, hasConflicts);
+}
+
+} // namespace git_editor

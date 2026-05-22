@@ -2,7 +2,6 @@
 
 #include "HistoryCommitRow.hpp"
 #include "common/ScrollListPopup.hpp"
-#include "common/UiNodeLifecycle.hpp"
 #include "editor/LevelKey.hpp"
 #include "service/GitService.hpp"
 
@@ -99,9 +98,7 @@ void HistoryLayer::onClose(CCObject* sender) {
 }
 
 bool HistoryLayer::closeOnce(CCObject* sender) {
-    if (m_listState.closing || !ui_node_lifecycle::isNodeActive(this)) return false;
-    this->onClose(sender);
-    return true;
+    return scroll_list_popup::closeOnce(this, m_listState, sender, [this](CCObject* s) { onClose(s); });
 }
 
 void HistoryLayer::rebuildHeader() {

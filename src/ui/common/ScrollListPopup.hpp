@@ -35,6 +35,13 @@ alpha::ui::AdvancedScrollLayer* attachScrollList(
 
 void markClosing(ListState& state, alpha::ui::AdvancedScrollLayer*& scroll);
 
+bool closeOnce(
+    geode::Popup* popup,
+    ListState const& state,
+    cocos2d::CCObject* sender,
+    std::function<void(cocos2d::CCObject*)> onClose
+);
+
 bool isStaleLoad(ListState const& state, std::uint64_t serial);
 
 void showCenteredLabel(

@@ -1,5 +1,7 @@
 #include "ScrollListPopup.hpp"
 
+#include "UiNodeLifecycle.hpp"
+
 #include <Geode/ui/Layout.hpp>
 
 using namespace geode::prelude;
@@ -48,6 +50,17 @@ void markClosing(ListState& state, alpha::ui::AdvancedScrollLayer*& scroll) {
     state.closing = true;
     ++state.loadSerial;
     scroll = nullptr;
+}
+
+bool closeOnce(
+    geode::Popup* popup,
+    ListState const& state,
+    cocos2d::CCObject* sender,
+    std::function<void(cocos2d::CCObject*)> onClose
+) {
+    if (state.closing || !ui_node_lifecycle::isNodeActive(popup)) return false;
+    onClose(sender);
+    return true;
 }
 
 bool isStaleLoad(ListState const& state, std::uint64_t serial) {

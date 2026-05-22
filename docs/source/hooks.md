@@ -5,6 +5,7 @@ Where the mod plugs into Geometry Dash. Adds Git Editor to the editor pause menu
 ## Main files
 
 - `EditorPauseLayerHook.cpp`: Commit, History, Levels, Import, Export buttons and file flows
+- `ImportGdgeFlow.cpp`: GDGE import plan popup, prepare/apply/finalize merge flow
 
 ## Touches
 
@@ -17,3 +18,4 @@ You want to find where pause menu buttons are wired. Player details are in [feat
 ## Code
 
 - [src/hooks/EditorPauseLayerHook.cpp](../../src/hooks/EditorPauseLayerHook.cpp)
+- [src/hooks/ImportGdgeFlow.cpp](../../src/hooks/ImportGdgeFlow.cpp)

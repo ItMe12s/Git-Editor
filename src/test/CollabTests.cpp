@@ -31,22 +31,10 @@ void runCollabPlanTest(GitService& git, CommitStore& st, std::filesystem::path c
     if (!requireCommit(git, R, kSuiteCollab, "layout_commit", T.ms(), kCollabLay, "lay_edit", levelAt(1), "commit kCollabLay lay_edit")) {
         return;
     }
-    if (!requireImportMany(git, R, kSuiteCollab, "dec_a_import", T.ms(), kDecA, { basePath }, "importMany kDecA <- base")) {
+    if (!forkExport(git, R, kSuiteCollab, T.ms(), kDecA, basePath, decAPath, 100, "a")) {
         return;
     }
-    if (!requireCommit(git, R, kSuiteCollab, "dec_a_commit", T.ms(), kDecA, "a_edit", levelAt(100), "commit kDecA a_edit")) {
-        return;
-    }
-    if (!requireExport(git, R, kSuiteCollab, "export_a", T.ms(), kDecA, decAPath, fmt::format("export decA {}", pathUtf8(decAPath)))) {
-        return;
-    }
-    if (!requireImportMany(git, R, kSuiteCollab, "dec_b_import", T.ms(), kDecB, { basePath }, "importMany kDecB <- base")) {
-        return;
-    }
-    if (!requireCommit(git, R, kSuiteCollab, "dec_b_commit", T.ms(), kDecB, "b_edit", levelAt(200), "commit kDecB b_edit")) {
-        return;
-    }
-    if (!requireExport(git, R, kSuiteCollab, "export_b", T.ms(), kDecB, decBPath, fmt::format("export decB {}", pathUtf8(decBPath)))) {
+    if (!forkExport(git, R, kSuiteCollab, T.ms(), kDecB, basePath, decBPath, 200, "b")) {
         return;
     }
 

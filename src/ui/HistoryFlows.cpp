@@ -41,15 +41,6 @@ std::vector<CommitId> selectedOldestFirst(
 
 } // namespace
 
-bool HistoryLayer::tryApplyToEditor(
-    char const*       noun,
-    LevelEditorLayer* editor,
-    LevelState const& state,
-    bool              hasConflicts
-) {
-    return history_actions::applyStateToEditorOrNotify(noun, editor, state, hasConflicts);
-}
-
 void HistoryLayer::startCheckoutFlow(CommitId commitId, std::string const& commitMsg) {
     if (!tryBeginBusyAction(m_busy)) return;
     Ref<HistoryLayer> self(this);
