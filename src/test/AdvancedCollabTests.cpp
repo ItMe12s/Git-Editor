@@ -66,64 +66,81 @@ void runAdvancedCollabSimulatorTests(
         return;
     }
 
-    if (!git.commit(kAdvCollabBase, "adv_base", levelAt(0)).ok) {
-        R.addFail(kSuiteAdvancedCollab, "base_commit", "failed", T.ms());
+    if (!requireCommit(git, R, kSuiteAdvancedCollab, "base_commit", T.ms(), kAdvCollabBase, "adv_base", levelAt(0))) {
         return;
     }
-    R.addAction(kSuiteAdvancedCollab, fmt::format("export base {}", pathUtf8(basePath)));
-    if (auto ex = git.exportLevelToGdge(kAdvCollabBase, basePath); !ex.ok) {
-        R.addFail(kSuiteAdvancedCollab, "export_base", ex.error, T.ms());
+    if (!requireExport(
+            git,
+            R,
+            kSuiteAdvancedCollab,
+            "export_base",
+            T.ms(),
+            kAdvCollabBase,
+            basePath,
+            fmt::format("export base {}", pathUtf8(basePath))
+        )) {
+        return;
+    }
+    if (!requireImportMany(
+            git,
+            R,
+            kSuiteAdvancedCollab,
+            "integrator_import",
+            T.ms(),
+            kAdvCollabIntegrator,
+            { basePath },
+            "importMany integrator<-base"
+        )) {
+        return;
+    }
+    if (!requireCommit(
+            git,
+            R,
+            kSuiteAdvancedCollab,
+            "integrator_commit",
+            T.ms(),
+            kAdvCollabIntegrator,
+            "integrator_layout",
+            levelAt(1),
+            "commit integrator layout"
+        )) {
         return;
     }
 
-    R.addAction(kSuiteAdvancedCollab, "importMany integrator<-base");
-    if (auto m0 = git.importManyFromGdge(kAdvCollabIntegrator, { basePath }); !m0.ok) {
-        R.addFail(kSuiteAdvancedCollab, "integrator_import", m0.error, T.ms());
+    if (!forkExport(git, R, kSuiteAdvancedCollab, T.ms(), kAdvCollabAlice, basePath, alicePath, 301, "alice")) {
         return;
     }
-    R.addAction(kSuiteAdvancedCollab, "commit integrator layout");
-    if (!git.commit(kAdvCollabIntegrator, "integrator_layout", levelAt(1)).ok) {
-        R.addFail(kSuiteAdvancedCollab, "integrator_commit", "failed", T.ms());
+    if (!forkExport(git, R, kSuiteAdvancedCollab, T.ms(), kAdvCollabBob, basePath, bobPath, 302, "bob")) {
         return;
     }
-
-    auto forkExport = [&](LevelKey const& k, std::filesystem::path const& outPath, int xField, char const* label) -> bool {
-        R.addAction(kSuiteAdvancedCollab, fmt::format("importMany {}<-base {}", label, pathUtf8(basePath)));
-        if (auto m = git.importManyFromGdge(k, { basePath }); !m.ok) {
-            R.addFail(kSuiteAdvancedCollab, fmt::format("{}_import", label), m.error, T.ms());
-            return false;
-        }
-        if (!git.commit(k, fmt::format("{}_edit", label), levelAt(xField)).ok) {
-            R.addFail(kSuiteAdvancedCollab, fmt::format("{}_commit", label), "failed", T.ms());
-            return false;
-        }
-        R.addAction(kSuiteAdvancedCollab, fmt::format("export {} {}", label, pathUtf8(outPath)));
-        if (auto e = git.exportLevelToGdge(k, outPath); !e.ok) {
-            R.addFail(kSuiteAdvancedCollab, fmt::format("{}_export", label), e.error, T.ms());
-            return false;
-        }
-        return true;
-    };
-
-    if (!forkExport(kAdvCollabAlice, alicePath, 301, "alice")) {
-        return;
-    }
-    if (!forkExport(kAdvCollabBob, bobPath, 302, "bob")) {
-        return;
-    }
-    if (!forkExport(kAdvCollabScratch, scratchPath, 303, "scratch")) {
+    if (!forkExport(git, R, kSuiteAdvancedCollab, T.ms(), kAdvCollabScratch, basePath, scratchPath, 303, "scratch")) {
         return;
     }
 
     st.deleteLevel(kAdvCollabLegacy);
-    R.addAction(kSuiteAdvancedCollab, "commit legacy divergent root");
-    if (!git.commit(kAdvCollabLegacy, "legacy_root", levelAt(9000)).ok) {
-        R.addFail(kSuiteAdvancedCollab, "legacy_commit", "failed", T.ms());
+    if (!requireCommit(
+            git,
+            R,
+            kSuiteAdvancedCollab,
+            "legacy_commit",
+            T.ms(),
+            kAdvCollabLegacy,
+            "legacy_root",
+            levelAt(9000),
+            "commit legacy divergent root"
+        )) {
         return;
     }
-    R.addAction(kSuiteAdvancedCollab, fmt::format("export legacy {}", pathUtf8(legacyPath)));
-    if (auto el = git.exportLevelToGdge(kAdvCollabLegacy, legacyPath); !el.ok) {
-        R.addFail(kSuiteAdvancedCollab, "export_legacy", el.error, T.ms());
+    if (!requireExport(
+            git,
+            R,
+            kSuiteAdvancedCollab,
+            "export_legacy",
+            T.ms(),
+            kAdvCollabLegacy,
+            legacyPath,
+            fmt::format("export legacy {}", pathUtf8(legacyPath))
+        )) {
         return;
     }
 
@@ -163,29 +180,14 @@ void runAdvancedCollabSimulatorTests(
         return;
     }
     if (batch.value.skippedCount < 1) {
-        R.addFail(
-            kSuiteAdvancedCollab,
-            "invalid_skip_count",
-            fmt::format("skipped {}", batch.value.skippedCount),
-            T.ms()
-        );
+        R.addFail(kSuiteAdvancedCollab, "invalid_skip_count", fmt::format("skipped {}", batch.value.skippedCount), T.ms());
         return;
     }
     if (batch.value.smartCount != 3) {
-        R.addFail(
-            kSuiteAdvancedCollab,
-            "triple_merge_shape",
-            fmt::format("smart {}", batch.value.smartCount),
-            T.ms()
-        );
+        R.addFail(kSuiteAdvancedCollab, "triple_merge_shape", fmt::format("smart {}", batch.value.smartCount), T.ms());
         return;
     }
-    R.addPass(
-        kSuiteAdvancedCollab,
-        "advanced_invalid_skip",
-        fmt::format("skipped {}", batch.value.skippedCount),
-        T.ms()
-    );
+    R.addPass(kSuiteAdvancedCollab, "advanced_invalid_skip", fmt::format("skipped {}", batch.value.skippedCount), T.ms());
     R.addPass(
         kSuiteAdvancedCollab,
         "advanced_batch_merge",
@@ -222,12 +224,10 @@ void runAdvancedCollabSimulatorTests(
 
     R.addAction(kSuiteAdvancedCollab, "reset integrator for conflict wave");
     st.deleteLevel(kAdvCollabIntegrator);
-    if (auto m1 = git.importManyFromGdge(kAdvCollabIntegrator, { basePath }); !m1.ok) {
-        R.addFail(kSuiteAdvancedCollab, "integrator_reset_import", m1.error, T.ms());
+    if (!requireImportMany(git, R, kSuiteAdvancedCollab, "integrator_reset_import", T.ms(), kAdvCollabIntegrator, { basePath })) {
         return;
     }
-    if (!git.commit(kAdvCollabIntegrator, "integrator_pre_conflict", levelAt(10)).ok) {
-        R.addFail(kSuiteAdvancedCollab, "integrator_pre_cf_commit", "failed", T.ms());
+    if (!requireCommit(git, R, kSuiteAdvancedCollab, "integrator_pre_cf_commit", T.ms(), kAdvCollabIntegrator, "integrator_pre_conflict", levelAt(10))) {
         return;
     }
 
@@ -235,30 +235,24 @@ void runAdvancedCollabSimulatorTests(
     std::string const conflictC = allObjectsKeyX(parseLevelString(levelAt(20)), "222");
 
     st.deleteLevel(kAdvCollabBob);
-    if (auto mb = git.importManyFromGdge(kAdvCollabBob, { basePath }); !mb.ok) {
-        R.addFail(kSuiteAdvancedCollab, "cf_bob_import", mb.error, T.ms());
+    if (!requireImportMany(git, R, kSuiteAdvancedCollab, "cf_bob_import", T.ms(), kAdvCollabBob, { basePath })) {
         return;
     }
-    if (!git.commit(kAdvCollabBob, "bob_cf", conflictB).ok) {
-        R.addFail(kSuiteAdvancedCollab, "bob_cf_commit", "failed", T.ms());
+    if (!requireCommit(git, R, kSuiteAdvancedCollab, "bob_cf_commit", T.ms(), kAdvCollabBob, "bob_cf", conflictB)) {
         return;
     }
-    if (auto eb = git.exportLevelToGdge(kAdvCollabBob, conflictBobExport); !eb.ok) {
-        R.addFail(kSuiteAdvancedCollab, "export_cf_bob", eb.error, T.ms());
+    if (!requireExport(git, R, kSuiteAdvancedCollab, "export_cf_bob", T.ms(), kAdvCollabBob, conflictBobExport)) {
         return;
     }
 
     st.deleteLevel(kAdvCollabCara);
-    if (auto mc = git.importManyFromGdge(kAdvCollabCara, { basePath }); !mc.ok) {
-        R.addFail(kSuiteAdvancedCollab, "cf_cara_import", mc.error, T.ms());
+    if (!requireImportMany(git, R, kSuiteAdvancedCollab, "cf_cara_import", T.ms(), kAdvCollabCara, { basePath })) {
         return;
     }
-    if (!git.commit(kAdvCollabCara, "cara_cf", conflictC).ok) {
-        R.addFail(kSuiteAdvancedCollab, "cara_cf_commit", "failed", T.ms());
+    if (!requireCommit(git, R, kSuiteAdvancedCollab, "cara_cf_commit", T.ms(), kAdvCollabCara, "cara_cf", conflictC)) {
         return;
     }
-    if (auto ec = git.exportLevelToGdge(kAdvCollabCara, conflictCaraExport); !ec.ok) {
-        R.addFail(kSuiteAdvancedCollab, "export_cf_cara", ec.error, T.ms());
+    if (!requireExport(git, R, kSuiteAdvancedCollab, "export_cf_cara", T.ms(), kAdvCollabCara, conflictCaraExport)) {
         return;
     }
 
@@ -269,37 +263,17 @@ void runAdvancedCollabSimulatorTests(
         return;
     }
     if (mergeCf.value.conflictCount <= 0) {
-        R.addFail(
-            kSuiteAdvancedCollab,
-            "merge_cf_count",
-            fmt::format("conflictCount {}", mergeCf.value.conflictCount),
-            T.ms()
-        );
+        R.addFail(kSuiteAdvancedCollab, "merge_cf_count", fmt::format("conflictCount {}", mergeCf.value.conflictCount), T.ms());
         return;
     }
-    R.addPass(
-        kSuiteAdvancedCollab,
-        "advanced_conflict_merge",
-        fmt::format("conflictCount {}", mergeCf.value.conflictCount),
-        T.ms()
-    );
+    R.addPass(kSuiteAdvancedCollab, "advanced_conflict_merge", fmt::format("conflictCount {}", mergeCf.value.conflictCount), T.ms());
 
     auto chain = chainOldestToNewest(st, kAdvCollabIntegrator);
     if (chain.size() < 2) {
-        R.addFail(
-            kSuiteAdvancedCollab,
-            "final_chain",
-            fmt::format("commits {}", chain.size()),
-            T.ms()
-        );
+        R.addFail(kSuiteAdvancedCollab, "final_chain", fmt::format("commits {}", chain.size()), T.ms());
         return;
     }
-    R.addPass(
-        kSuiteAdvancedCollab,
-        "advanced_final_history",
-        fmt::format("commits {}", chain.size()),
-        T.ms()
-    );
+    R.addPass(kSuiteAdvancedCollab, "advanced_final_history", fmt::format("commits {}", chain.size()), T.ms());
 }
 
 } // namespace git_editor

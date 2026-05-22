@@ -12,15 +12,13 @@ void runHistoryCopyTest(GitService& git, CommitStore& st, ReportBuilder& R) {
     st.deleteLevel(kHistSrc);
     st.deleteLevel(kHistDst);
     R.addAction(kSuiteHistory, "commit kHistSrc h1 h2 h3");
-    if (!git.commit(kHistSrc, "h1", levelAt(0)).ok
-        || !git.commit(kHistSrc, "h2", levelAt(5)).ok
-        || !git.commit(kHistSrc, "h3", levelAt(9)).ok) {
-        R.addFail(kSuiteHistory, "setup_src", "commit failed", T.ms());
+    if (!requireCommit(git, R, kSuiteHistory, "setup_src", T.ms(), kHistSrc, "h1", levelAt(0))
+        || !requireCommit(git, R, kSuiteHistory, "setup_src", T.ms(), kHistSrc, "h2", levelAt(5))
+        || !requireCommit(git, R, kSuiteHistory, "setup_src", T.ms(), kHistSrc, "h3", levelAt(9))) {
         return;
     }
     R.addAction(kSuiteHistory, "commit kHistDst d0");
-    if (!git.commit(kHistDst, "d0", levelAt(99)).ok) {
-        R.addFail(kSuiteHistory, "setup_dst", "commit failed", T.ms());
+    if (!requireCommit(git, R, kSuiteHistory, "setup_dst", T.ms(), kHistDst, "d0", levelAt(99))) {
         return;
     }
 

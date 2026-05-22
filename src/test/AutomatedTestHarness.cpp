@@ -171,6 +171,125 @@ bool startsWithPk(std::string const& prefix) {
         && static_cast<unsigned char>(prefix[1]) == 0x4B;
 }
 
+namespace {
+
+void addActionIf(ReportBuilder& R, std::string_view suite, std::string_view actionText) {
+    if (!actionText.empty()) {
+        R.addAction(std::string(suite), std::string(actionText));
+    }
+}
+
+std::string failDetail(std::string const& error) {
+    return error.empty() ? "failed" : error;
+}
+
+} // namespace
+
+std::optional<CommitId> requireCommit(
+    GitService& git,
+    ReportBuilder& R,
+    std::string_view suite,
+    std::string_view failName,
+    double elapsedMs,
+    LevelKey const& key,
+    std::string_view message,
+    std::string const& levelData,
+    std::string_view actionText
+) {
+    addActionIf(R, suite, actionText);
+    auto r = git.commit(key, std::string(message), levelData);
+    if (!r.ok) {
+        R.addFail(std::string(suite), std::string(failName), failDetail(r.error), elapsedMs);
+        return std::nullopt;
+    }
+    return r.value;
+}
+
+bool requireExport(
+    GitService& git,
+    ReportBuilder& R,
+    std::string_view suite,
+    std::string_view failName,
+    double elapsedMs,
+    LevelKey const& key,
+    std::filesystem::path const& outPath,
+    std::string_view actionText
+) {
+    addActionIf(R, suite, actionText);
+    auto ex = git.exportLevelToGdge(key, outPath);
+    if (!ex.ok) {
+        R.addFail(std::string(suite), std::string(failName), ex.error, elapsedMs);
+        return false;
+    }
+    return true;
+}
+
+std::optional<ImportManyPayload> requireImportMany(
+    GitService& git,
+    ReportBuilder& R,
+    std::string_view suite,
+    std::string_view failName,
+    double elapsedMs,
+    LevelKey const& dest,
+    std::vector<std::filesystem::path> const& paths,
+    std::string_view actionText
+) {
+    addActionIf(R, suite, actionText);
+    auto imp = git.importManyFromGdge(dest, paths);
+    if (!imp.ok) {
+        R.addFail(std::string(suite), std::string(failName), imp.error, elapsedMs);
+        return std::nullopt;
+    }
+    return imp.value;
+}
+
+bool forkExport(
+    GitService& git,
+    ReportBuilder& R,
+    std::string_view suite,
+    double elapsedMs,
+    LevelKey const& key,
+    std::filesystem::path const& basePath,
+    std::filesystem::path const& outPath,
+    int xField,
+    char const* label
+) {
+    if (!requireImportMany(
+            git,
+            R,
+            suite,
+            fmt::format("{}_import", label),
+            elapsedMs,
+            key,
+            { basePath },
+            fmt::format("importMany {}<-base {}", label, pathUtf8(basePath))
+        )) {
+        return false;
+    }
+    if (!requireCommit(
+            git,
+            R,
+            suite,
+            fmt::format("{}_commit", label),
+            elapsedMs,
+            key,
+            fmt::format("{}_edit", label),
+            levelAt(xField)
+        )) {
+        return false;
+    }
+    return requireExport(
+        git,
+        R,
+        suite,
+        fmt::format("{}_export", label),
+        elapsedMs,
+        key,
+        outPath,
+        fmt::format("export {} {}", label, pathUtf8(outPath))
+    );
+}
+
 void formatReport(AutomatedTestSummary& s, std::filesystem::path const& saveDir, std::string const& modId) {
     std::ostringstream os;
     os << "=== Git Editor automated test ===\n";

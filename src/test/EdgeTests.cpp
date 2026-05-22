@@ -31,8 +31,16 @@ void runEdgeTests(GitService& git, CommitStore& st, std::filesystem::path const&
     ScopedTimer unicodeRoundtrip;
     st.deleteLevel(kZipEx);
     R.addAction(kSuiteEdge, "commit unicode_setup kZipEx");
-    if (!git.commit(kZipEx, "unicode_path", levelAt(7)).ok) {
-        R.addFail(kSuiteEdge, "unicode_setup", "commit failed", unicodeRoundtrip.ms());
+    if (!requireCommit(
+            git,
+            R,
+            kSuiteEdge,
+            "unicode_setup",
+            unicodeRoundtrip.ms(),
+            kZipEx,
+            "unicode_path",
+            levelAt(7)
+        )) {
         return;
     }
     std::filesystem::path unicodeFile = testDir / std::filesystem::path(std::u8string(u8"at_\u0442\u0435\u0441\u0442.gdge"));
@@ -119,12 +127,10 @@ void runEdgeTests(GitService& git, CommitStore& st, std::filesystem::path const&
     st.deleteLevel(kMix);
     auto const planPath = testDir / "at_plan_empty.gdge";
     st.deleteLevel(kRawEx);
-    if (!git.commit(kRawEx, "plan_probe", levelAt(3)).ok) {
-        R.addFail(kSuiteEdge, "plan_setup_commit", "commit failed", planT.ms());
+    if (!requireCommit(git, R, kSuiteEdge, "plan_setup_commit", planT.ms(), kRawEx, "plan_probe", levelAt(3))) {
         return;
     }
-    if (auto exPlan = git.exportLevelToGdge(kRawEx, planPath); !exPlan.ok) {
-        R.addFail(kSuiteEdge, "plan_setup_export", exPlan.error, planT.ms());
+    if (!requireExport(git, R, kSuiteEdge, "plan_setup_export", planT.ms(), kRawEx, planPath)) {
         return;
     }
     if (st.getHead(kMix).has_value()) {

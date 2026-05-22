@@ -93,12 +93,10 @@ void runTwoPhaseTests(GitService& git, CommitStore& st, std::filesystem::path co
     auto const gdgePath = testDir / "at_two_phase.gdge";
     R.addAction(kSuiteTwoPhase, fmt::format("export for import test {}", pathUtf8(gdgePath)));
     st.deleteLevel(kRawEx);
-    if (!git.commit(kRawEx, "tp_export", levelAt(5)).ok) {
-        R.addFail(kSuiteTwoPhase, "export_setup", "commit failed", suiteT.ms());
+    if (!requireCommit(git, R, kSuiteTwoPhase, "export_setup", suiteT.ms(), kRawEx, "tp_export", levelAt(5))) {
         return;
     }
-    if (auto ex = git.exportLevelToGdge(kRawEx, gdgePath); !ex.ok) {
-        R.addFail(kSuiteTwoPhase, "export_gdge", ex.error, suiteT.ms());
+    if (!requireExport(git, R, kSuiteTwoPhase, "export_gdge", suiteT.ms(), kRawEx, gdgePath)) {
         return;
     }
 

@@ -29,8 +29,8 @@ void runGdgeExportImportTests(GitService& git, CommitStore& st, std::filesystem:
     st.deleteLevel(kZipEx);
     st.deleteLevel(kMix);
     R.addAction(kSuiteGdge, fmt::format("commit kRawEx kZipEx levelAt"));
-    if (!git.commit(kRawEx, "one", levelAt(1)).ok || !git.commit(kZipEx, "one", levelAt(2)).ok) {
-        R.addFail(kSuiteGdge, "setup_export_levels", "commit failed", setupLevels.ms());
+    if (!requireCommit(git, R, kSuiteGdge, "setup_export_levels", setupLevels.ms(), kRawEx, "one", levelAt(1))
+        || !requireCommit(git, R, kSuiteGdge, "setup_export_levels", setupLevels.ms(), kZipEx, "one", levelAt(2))) {
         return;
     }
 
@@ -41,8 +41,7 @@ void runGdgeExportImportTests(GitService& git, CommitStore& st, std::filesystem:
         return;
     }
     R.addAction(kSuiteGdge, fmt::format("exportLevelToGdge raw {}", pathUtf8(rawPath)));
-    if (auto ex = git.exportLevelToGdge(kRawEx, rawPath); !ex.ok) {
-        R.addFail(kSuiteGdge, "export_raw", ex.error, rawPhase.ms());
+    if (!requireExport(git, R, kSuiteGdge, "export_raw", rawPhase.ms(), kRawEx, rawPath)) {
         return;
     }
     auto rawSig = readFirstBytes(rawPath, 16);
@@ -59,8 +58,7 @@ void runGdgeExportImportTests(GitService& git, CommitStore& st, std::filesystem:
         return;
     }
     R.addAction(kSuiteGdge, fmt::format("exportLevelToGdge zip {}", pathUtf8(zipPath)));
-    if (auto ex2 = git.exportLevelToGdge(kZipEx, zipPath); !ex2.ok) {
-        R.addFail(kSuiteGdge, "export_zip", ex2.error, zipPhase.ms());
+    if (!requireExport(git, R, kSuiteGdge, "export_zip", zipPhase.ms(), kZipEx, zipPath)) {
         return;
     }
     auto zipSig = readFirstBytes(zipPath, 4);
@@ -73,28 +71,36 @@ void runGdgeExportImportTests(GitService& git, CommitStore& st, std::filesystem:
     R.addAction(kSuiteGdge, fmt::format("restore compress {}", guard.previousCompress()));
     static_cast<void>(guard.setValue(guard.previousCompress()));
 
-    R.addAction(kSuiteGdge, "importManyFromGdge kMix rawPath+zipPath");
     ScopedTimer importPhase;
-    auto many = git.importManyFromGdge(kMix, { rawPath, zipPath });
-    if (!many.ok) {
-        R.addFail(kSuiteGdge, "import_mixed", many.error, importPhase.ms());
+    auto manyOpt = requireImportMany(
+        git,
+        R,
+        kSuiteGdge,
+        "import_mixed",
+        importPhase.ms(),
+        kMix,
+        { rawPath, zipPath },
+        "importManyFromGdge kMix rawPath+zipPath"
+    );
+    if (!manyOpt) {
         return;
     }
+    auto const& many = *manyOpt;
     R.addAction(
         kSuiteGdge,
         fmt::format(
             "mergedCount {} smart {} sequential {} skipped {}",
-            many.value.mergedCount,
-            many.value.smartCount,
-            many.value.sequentialCount,
-            many.value.skippedCount
+            many.mergedCount,
+            many.smartCount,
+            many.sequentialCount,
+            many.skippedCount
         )
     );
-    if (many.value.mergedCount < 2) {
+    if (many.mergedCount < 2) {
         R.addFail(
             kSuiteGdge,
             "import_mixed_counts",
-            fmt::format("mergedCount {}", many.value.mergedCount),
+            fmt::format("mergedCount {}", many.mergedCount),
             importPhase.ms()
         );
         return;
@@ -120,7 +126,7 @@ void runGdgeExportImportTests(GitService& git, CommitStore& st, std::filesystem:
         R.addFail(kSuiteGdge, "import_reconstruct", "reconstruct HEAD failed", importPhase.ms());
         return;
     }
-    auto const payloadHash = hashLevelState(many.value.state);
+    auto const payloadHash = hashLevelState(many.state);
     auto const dbHash      = hashLevelState(*reconMix);
     R.addAction(kSuiteGdge, fmt::format("import state hash payload={} db={}", payloadHash, dbHash));
     if (payloadHash != dbHash) {
@@ -138,9 +144,9 @@ void runGdgeExportImportTests(GitService& git, CommitStore& st, std::filesystem:
         "export_import_mixed",
         fmt::format(
             "smart={} sequential={} skipped={} commits={} hash={}",
-            many.value.smartCount,
-            many.value.sequentialCount,
-            many.value.skippedCount,
+            many.smartCount,
+            many.sequentialCount,
+            many.skippedCount,
             chainMix.size(),
             dbHash
         ),

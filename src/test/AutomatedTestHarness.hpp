@@ -5,9 +5,13 @@
 #include "../service/GitService.hpp"
 #include "../store/CommitStore.hpp"
 
+#include "../core/ImportPlan.hpp"
+
 #include <chrono>
 #include <filesystem>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace git_editor {
@@ -77,6 +81,52 @@ std::vector<CommitId> chainOldestToNewest(CommitStore& st, LevelKey const& k);
 std::string readFirstBytes(std::filesystem::path const& p, std::size_t n);
 bool startsWithSqlite(std::string const& prefix);
 bool startsWithPk(std::string const& prefix);
+
+std::optional<CommitId> requireCommit(
+    GitService& git,
+    ReportBuilder& R,
+    std::string_view suite,
+    std::string_view failName,
+    double elapsedMs,
+    LevelKey const& key,
+    std::string_view message,
+    std::string const& levelData,
+    std::string_view actionText = {}
+);
+
+bool requireExport(
+    GitService& git,
+    ReportBuilder& R,
+    std::string_view suite,
+    std::string_view failName,
+    double elapsedMs,
+    LevelKey const& key,
+    std::filesystem::path const& outPath,
+    std::string_view actionText = {}
+);
+
+std::optional<ImportManyPayload> requireImportMany(
+    GitService& git,
+    ReportBuilder& R,
+    std::string_view suite,
+    std::string_view failName,
+    double elapsedMs,
+    LevelKey const& dest,
+    std::vector<std::filesystem::path> const& paths,
+    std::string_view actionText = {}
+);
+
+bool forkExport(
+    GitService& git,
+    ReportBuilder& R,
+    std::string_view suite,
+    double elapsedMs,
+    LevelKey const& key,
+    std::filesystem::path const& basePath,
+    std::filesystem::path const& outPath,
+    int xField,
+    char const* label
+);
 
 void formatReport(AutomatedTestSummary& s, std::filesystem::path const& saveDir, std::string const& modId);
 
