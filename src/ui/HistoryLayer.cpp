@@ -1,16 +1,15 @@
 #include "HistoryLayer.hpp"
 
-#include "CommitMessageLayer.hpp"
-#include "DeltaInfoLayer.hpp"
 #include "HistoryActions.hpp"
+#include "CommitMessageLayer.hpp"
+#include "HistoryCommitRow.hpp"
 #include "common/GitUiActionRunner.hpp"
 #include "common/UiNodeLifecycle.hpp"
 #include "editor/LevelKey.hpp"
 #include "editor/LevelStateIO.hpp"
 #include "service/GitService.hpp"
-#include "presentation/DeltaColors.hpp"
 #include "presentation/UiAction.hpp"
-#include "presentation/UiText.hpp"
+#include "util/format/Shorten.hpp"
 
 #include <Geode/Geode.hpp>
 #include <Geode/binding/ButtonSprite.hpp>
@@ -52,7 +51,6 @@ constexpr float histPopupHeight   = 280.f;
 constexpr float histListPadX      = 20.f;
 constexpr float histListPadTop    = 36.f;
 constexpr float histListPadBottom = 16.f;
-constexpr float histRowHeight     = 46.f;
 struct HistoryLoadResult {
     LevelKey                   levelKey;
     std::vector<CommitSummary> commits;
@@ -243,193 +241,11 @@ void HistoryLayer::renderList(std::vector<CommitSummary> loadedCommits) {
 
     Ref<HistoryLayer> self(this);
 
-    auto makeBtn = [](char const* label, char const* texture,
-                      geode::Function<void(CCMenuItemSpriteExtra*)> cb) -> CCMenuItemSpriteExtra* {
-        auto spr = ButtonSprite::create(label, "bigFont.fnt", texture, .8f);
-        spr->setScale(.4f);
-        return CCMenuItemExt::createSpriteExtra(spr, std::move(cb));
-    };
-
     for (auto const& c : commits) {
-        auto row = CCNode::create();
-        row->setID("git-editor-history-row"_spr);
-        row->setContentSize({rowWidth, histRowHeight});
-        row->setAnchorPoint({0.f, 0.f});
-        row->setLayout(AnchorLayout::create());
-
-        auto bg = CCLayerColor::create({0, 0, 0, 60}, rowWidth, histRowHeight);
-        bg->ignoreAnchorPointForPosition(false);
-        bg->setAnchorPoint({.5f, .5f});
-        row->addChildAtPosition(bg, Anchor::Center);
-
-        auto timeLbl = CCLabelBMFont::create(
-            formatTimestamp(c.createdAt).c_str(), "chatFont.fnt"
-        );
-        timeLbl->setScale(.5f);
-        timeLbl->setAnchorPoint({0.f, .5f});
-        row->addChildAtPosition(timeLbl, Anchor::Left, {6.f, 11.f});
-
-        auto statsNode = CCNode::create();
-        statsNode->setContentSize({110.f, 12.f});
-        statsNode->setAnchorPoint({0.f, .5f});
-        statsNode->setLayout(
-            RowLayout::create()
-                ->setGap(4.f)
-                ->setAxisAlignment(AxisAlignment::Start)
-                ->setCrossAxisOverflow(false)
-        );
-        {
-            auto makeStat = [](std::string const& text, ccColor3B color) {
-                auto* lbl = CCLabelBMFont::create(text.c_str(), "chatFont.fnt");
-                lbl->setScale(.45f);
-                lbl->setColor(color);
-                return lbl;
-            };
-            if (c.headerCount > 0) {
-                statsNode->addChild(makeStat("h" + std::to_string(c.headerCount), kHdrColor));
-            }
-            if (c.addCount > 0) {
-                statsNode->addChild(makeStat("+" + std::to_string(c.addCount), kAddColor));
-            }
-            if (c.modifyCount > 0) {
-                statsNode->addChild(makeStat("~" + std::to_string(c.modifyCount), kModColor));
-            }
-            if (c.removeCount > 0) {
-                statsNode->addChild(makeStat("-" + std::to_string(c.removeCount), kDelColor));
-            }
-        }
-        statsNode->updateLayout();
-        float const timeWidth = timeLbl->getContentSize().width * timeLbl->getScale();
-        row->addChildAtPosition(statsNode, Anchor::Left, {10.f + timeWidth, 11.f});
-
-        auto msgLbl = CCLabelBMFont::create(
-            shorten(c.message, 34).c_str(), "chatFont.fnt"
-        );
-        msgLbl->setScale(.55f);
-        msgLbl->setAnchorPoint({0.f, .5f});
-        row->addChildAtPosition(msgLbl, Anchor::Left, {6.f, -8.f});
-
-        auto menu = CCMenu::create();
-        menu->setID("git-editor-history-row-menu"_spr);
-        menu->setContentSize({210.f, histRowHeight});
-        menu->setAnchorPoint({1.f, .5f});
-        menu->setLayout(
-            RowLayout::create()
-                ->setGap(4.f)
-                ->setAxisAlignment(AxisAlignment::End)
-                ->setCrossAxisOverflow(true)
-        );
-
-        auto const commitId  = c.id;
-        auto const commitMsg = c.message;
-
-        if (m_squashMode) {
-            bool const checked = m_selected.count(commitId) > 0;
-            auto tickBtn = CCMenuItemExt::createTogglerWithStandardSprites(
-                .6f,
-                [self, commitId](CCMenuItemToggler*) {
-                    if (!self) return;
-                    // Track m_selected, not isToggled(). GD binding mismatch.
-                    if (self->m_selected.count(commitId)) self->m_selected.erase(commitId);
-                    else                                  self->m_selected.insert(commitId);
-                    self->rebuildHeader();
-                }
-            );
-            tickBtn->toggle(checked);
-            menu->addChild(tickBtn);
-
-            menu->updateLayout();
-            row->addChildAtPosition(menu, Anchor::Right, {-6.f, 0.f});
-            content->addChild(row);
-            continue;
-        }
-
-        auto helpBtn = makeBtn(
-            "?", "GJ_button_04.png",
-            [self, commitId, commitMsg](CCMenuItemSpriteExtra*) {
-                if (!self || self->m_closing) return;
-
-                std::string title = "What changed";
-                if (!commitMsg.empty()) {
-                    title += " - ";
-                    title += shorten(commitMsg, 24);
-                }
-
-                Ref<DeltaInfoLayer> popup;
-                if (auto* p = DeltaInfoLayer::create(std::move(title))) {
-                    popup = p;
-                    p->show();
-                }
-
-                ui_action_runner::runWorkerResult<Result<std::string>>(
-                    [commitId]() {
-                        return sharedGitService().describeCommitChanges(commitId);
-                    },
-                    [popup](Result<std::string> res) mutable {
-                        if (!popup || !ui_node_lifecycle::isNodeActive(popup.data())) return;
-                        if (!res.ok) {
-                            popup->showLoadError(res.error);
-                            return;
-                        }
-                        popup->applyBody(std::move(res.value));
-                    }
-                );
-            }
-        );
-        menu->addChild(helpBtn);
-
-        auto renameBtn = makeBtn(
-            "Rename", "GJ_button_04.png",
-            [self, commitId, commitMsg](CCMenuItemSpriteExtra*) {
-                if (auto popup = CommitMessageLayer::create(
-                    [self, commitId](std::string const& newMessage) {
-                        ui_action_runner::runWorkerResult<bool>(
-                            [commitId, newMessage]() {
-                                return sharedGitService().updateCommitMessage(commitId, newMessage);
-                            },
-                            [self](bool ok) {
-                                if (!self || self->m_closing) return;
-                                if (!ok) {
-                                    Notification::create("Rename failed", NotificationIcon::Error)->show();
-                                    return;
-                                }
-                                Notification::create("Renamed commit", NotificationIcon::Success)->show();
-                                if (ui_node_lifecycle::isNodeActive(self.data())) {
-                                    self->rebuildList();
-                                }
-                            }
-                        );
-                    },
-                    "Rename Commit",
-                    "Save",
-                    commitMsg
-                )) {
-                    popup->show();
-                }
-            }
-        );
-        menu->addChild(renameBtn);
-
-        auto checkoutBtn = makeBtn(
-            "Checkout", "GJ_button_02.png",
-            [self, commitId, commitMsg](CCMenuItemSpriteExtra*) {
-                if (self) self->startCheckoutFlow(commitId, commitMsg);
-            }
-        );
-        menu->addChild(checkoutBtn);
-
-        auto revertBtn = makeBtn(
-            "Revert", "GJ_button_06.png",
-            [self, commitId, commitMsg](CCMenuItemSpriteExtra*) {
-                if (self) self->startRevertFlow(commitId, commitMsg);
-            }
-        );
-        menu->addChild(revertBtn);
-
-        menu->updateLayout();
-        row->addChildAtPosition(menu, Anchor::Right, {-6.f, 0.f});
-
-        content->addChild(row);
+        bool const selected = m_squashMode && m_selected.count(c.id) > 0;
+        content->addChild(history_rows::createCommitRow(
+            c, rowWidth, m_squashMode, selected, self
+        ));
     }
 
     content->updateLayout();
