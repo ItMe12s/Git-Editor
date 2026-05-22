@@ -1,8 +1,7 @@
 #include "GitService.hpp"
 #include "CommitSummaryBuilder.hpp"
+#include "GdgeImportMerge.hpp"
 #include "GdgeImportPlanner.hpp"
-#include "MergeService.hpp"
-#include "PackageReconstruction.hpp"
 #include "ReconstructionService.hpp"
 
 #include "diff/Delta.hpp"
@@ -411,9 +410,6 @@ Prepared<ImportManyPayload> GitService::prepareImportManyFromGdge(
     }
 
     auto plan = this->classifyImports(dest, inPaths);
-    ImportManyPayload payload;
-    payload.skippedCount += static_cast<int>(plan.invalid.size());
-
     auto headBefore = m_store.getHead(dest);
     LevelState ours;
     LevelState rootBefore;
@@ -432,153 +428,9 @@ Prepared<ImportManyPayload> GitService::prepareImportManyFromGdge(
         ours = std::move(*recon);
     }
 
-    PendingMergeImport pendingMerge;
-    LevelState runningState = ours;
-    bool anyMerged = false;
-    std::string lastError;
-
-    if (!plan.smart.empty()) {
-        LevelState merged = ours;
-        int conflicts = 0;
-        std::vector<std::string> names;
-        names.reserve(plan.smart.size());
-        bool ok = true;
-        std::string err;
-        for (auto const& inPath : plan.smart) {
-            auto pkg = readGdgePackage(inPath);
-            if (!pkg.ok) {
-                err = git_editor::pathUtf8(inPath.filename()) + ": " + pkg.error;
-                ok = false;
-                break;
-            }
-            if (pkg.value.commits.empty() || !pkg.value.metadata.headIndex) {
-                err = git_editor::pathUtf8(inPath.filename()) + ": missing commits or head_index";
-                ok = false;
-                break;
-            }
-            auto theirs = reconstructPackageHead(pkg.value);
-            if (!theirs) {
-                err = git_editor::pathUtf8(inPath.filename()) + ": package history graph invalid";
-                ok = false;
-                break;
-            }
-            int stepConflicts = 0;
-            auto step = mergeStates3Way(rootBefore, merged, *theirs, stepConflicts);
-            if (!step) {
-                err = "3-way merge failed";
-                ok = false;
-                break;
-            }
-            merged = std::move(*step);
-            conflicts += stepConflicts;
-            names.push_back(git_editor::pathUtf8(inPath.filename()));
-        }
-        if (!ok) {
-            payload.skippedCount += static_cast<int>(plan.smart.size());
-            if (lastError.empty()) lastError = err;
-        } else {
-            std::string preview;
-            for (std::size_t i = 0; i < names.size(); ++i) {
-                if (i > 0) preview += ", ";
-                preview += names[i];
-                if (preview.size() >= 80) break;
-            }
-            auto message = shorten(
-                fmt::format("Smart merge: {} imports ({})", plan.smart.size(), preview), 120
-            );
-            PendingHeadUpdate p;
-            p.levelKey  = dest;
-            p.parent    = headBefore;
-            p.message   = std::move(message);
-            p.deltaBlob = dumpDelta(diff(ours, merged));
-            pendingMerge.commits.push_back(std::move(p));
-
-            anyMerged = true;
-            payload.smartCount = static_cast<int>(plan.smart.size());
-            payload.mergedCount += payload.smartCount;
-            payload.conflictCount += conflicts;
-            runningState = std::move(merged);
-            payload.state = runningState;
-            if (!headBefore) {
-                rootBefore = runningState;
-            }
-        }
-    }
-
-    for (auto const& path : plan.sequential) {
-        auto pkg = readGdgePackage(path);
-        if (!pkg.ok) {
-            payload.skippedCount++;
-            if (lastError.empty()) {
-                lastError = git_editor::pathUtf8(path.filename()) + ": " + pkg.error;
-            }
-            continue;
-        }
-        if (pkg.value.commits.empty() || !pkg.value.metadata.headIndex) {
-            payload.skippedCount++;
-            if (lastError.empty()) {
-                lastError = git_editor::pathUtf8(path.filename()) + ": missing commits or head_index";
-            }
-            continue;
-        }
-        auto theirs = reconstructPackageHead(pkg.value);
-        if (!theirs) {
-            payload.skippedCount++;
-            if (lastError.empty()) {
-                lastError = git_editor::pathUtf8(path.filename()) + ": package history graph invalid";
-            }
-            continue;
-        }
-
-        bool const freshRoot = !headBefore && pendingMerge.commits.empty();
-
-        PendingHeadUpdate p;
-        p.levelKey = dest;
-        if (freshRoot) {
-            p.message    = "Import .gdge: " + git_editor::pathUtf8(path.filename());
-            p.deltaBlob  = dumpDelta(diff(LevelState {}, *theirs));
-            runningState = *theirs;
-            rootBefore   = *theirs;
-        } else {
-            int conflicts = 0;
-            auto merged = mergeStates3Way(rootBefore, runningState, *theirs, conflicts);
-            if (!merged) {
-                payload.skippedCount++;
-                if (lastError.empty()) {
-                    lastError = git_editor::pathUtf8(path.filename()) + ": 3-way merge failed";
-                }
-                continue;
-            }
-            p.message   = "Merge import: " + git_editor::pathUtf8(path.filename());
-            p.deltaBlob = dumpDelta(diff(runningState, *merged));
-            if (!pendingMerge.commits.empty()) {
-                p.parentPendingIx = pendingMerge.commits.size() - 1;
-            } else {
-                p.parent = headBefore;
-            }
-            payload.conflictCount += conflicts;
-            runningState = std::move(*merged);
-        }
-        pendingMerge.commits.push_back(std::move(p));
-        anyMerged = true;
-        payload.sequentialCount++;
-        payload.mergedCount++;
-        payload.state = runningState;
-    }
-
-    if (!anyMerged) {
-        out.result.error = lastError.empty() ? "none of selected files merged" : lastError;
-        return out;
-    }
-
-    if (!pendingMerge.commits.empty()) {
-        pendingMerge.commits.back().cacheState = payload.state;
-    }
-
-    out.result.ok          = true;
-    out.result.value       = std::move(payload);
-    out.pendingMergeImport = std::move(pendingMerge);
-    return out;
+    return gdge_import_merge::prepareImportManyFromGdge(
+        dest, plan, headBefore, std::move(ours), std::move(rootBefore)
+    );
 }
 
 Result<void> GitService::finalizeImportManyFromGdge(
