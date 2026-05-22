@@ -9,6 +9,7 @@
 #include "diff/Differ.hpp"
 #include "identity/Matcher.hpp"
 #include "model/LevelParser.hpp"
+#include "store/GdgeExport.hpp"
 #include "store/GdgePackage.hpp"
 #include "util/format/Shorten.hpp"
 #include "util/format/StateHash.hpp"
@@ -20,7 +21,6 @@
 #include <fmt/format.h>
 
 #include <algorithm>
-#include <unordered_map>
 #include <utility>
 
 namespace git_editor {
@@ -350,56 +350,25 @@ Result<void> GitService::exportLevelToGdge(LevelKey const& levelKey, std::filesy
         out.error = "no commits to export";
         return out;
     }
-    std::reverse(rows.begin(), rows.end());
     auto head = m_store.getHead(levelKey);
     if (!head) {
         out.error = "missing HEAD";
         return out;
     }
 
-    std::unordered_map<CommitId, std::int64_t> indexById;
-    indexById.reserve(rows.size());
-    GdgePackageData pkg;
-    pkg.commits.reserve(rows.size());
-    for (std::size_t i = 0; i < rows.size(); ++i) {
-        indexById[rows[i].id] = static_cast<std::int64_t>(i);
-    }
-    for (std::size_t i = 0; i < rows.size(); ++i) {
-        auto const& r = rows[i];
-        GdgePackageCommit c;
-        c.commitIndex = static_cast<std::int64_t>(i);
-        if (r.parent) {
-            auto it = indexById.find(*r.parent);
-            if (it == indexById.end()) {
-                out.error = "parent reference missing during export";
-                return out;
-            }
-            c.parentIndex = it->second;
-        }
-        if (r.reverts) {
-            auto it = indexById.find(*r.reverts);
-            if (it == indexById.end()) {
-                out.error = "reverts reference missing during export";
-                return out;
-            }
-            c.revertsIndex = it->second;
-        }
-        c.message = r.message;
-        c.createdAt = r.createdAt;
-        c.deltaBlob = r.deltaBlob;
-        pkg.commits.push_back(std::move(c));
-    }
-    pkg.metadata.sourceLevelKey = levelKey;
-    pkg.metadata.headIndex = indexById.at(*head);
-
     auto root = reconstructRoot(m_store, *this, levelKey);
     if (!root) {
         out.error = "failed to reconstruct root";
         return out;
     }
-    pkg.metadata.rootHash = hashLevelState(*root);
 
-    auto writeRes = writeGdgePackage(outPath, pkg);
+    auto pkgRes = buildGdgePackageFromCommits(levelKey, *head, hashLevelState(*root), rows);
+    if (!pkgRes.ok) {
+        out.error = pkgRes.error;
+        return out;
+    }
+
+    auto writeRes = writeGdgePackage(outPath, pkgRes.value);
     if (!writeRes.ok) {
         out.error = writeRes.error.empty() ? "failed to write .gdge package" : writeRes.error;
         return out;
