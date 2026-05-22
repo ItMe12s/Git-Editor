@@ -4,8 +4,8 @@ Compares two saved level versions and stores only the changes. Replays those cha
 
 ## Main files
 
-- `Delta.cpp`: change data and JSON save/load
-- `Differ.cpp`: compare, apply, undo a change set, conflict list
+- `Delta.hpp` / `Delta.cpp`: change data and JSON save/load
+- `Differ.hpp` / `Differ.cpp`: compare, apply, undo a change set, conflict list
 
 ## Notes
 
@@ -14,6 +14,7 @@ Compares two saved level versions and stores only the changes. Replays those cha
 - `-`: removed objects
 - `~`: changed objects
 - Each level has one straight timeline of saves. No split timelines.
+- Conflicts come up when an object is already gone, never existed, or has moved on from the version the change expected. Revert shows these in a short alert.
 
 ## Touches
 

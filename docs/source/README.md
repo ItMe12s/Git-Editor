@@ -19,7 +19,7 @@ Code lives under `src/`. Menus talk to **service/**. Service talks to **store/**
 - `diff/`: changes between two saved versions. [diff.md](diff.md)
 - `identity/`: stable object IDs across saves. [identity.md](identity.md)
 - `store/`: SQLite database and `.gdge` files. [store.md](store.md)
-- `service/`: commit, checkout, revert, merge. [service.md](service.md)
+- `service/`: commit, checkout, revert, merge, plus `GdgeExport` (write `.gdge`) and `GdgeImportMerge` (multi-file import). [service.md](service.md)
 - `editor/`: level key and editor read/write. [editor.md](editor.md)
 - `hooks/`: pause menu entry. [hooks.md](hooks.md)
 - `ui/`: popups and labels. [ui.md](ui.md)

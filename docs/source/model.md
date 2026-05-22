@@ -6,7 +6,7 @@ Turns a Geometry Dash level string into memory you can compare and merge.
 
 - `LevelState.hpp`: header fields and objects keyed by stable IDs
 - `LevelParser.cpp`: splits level text into header and objects
-- `GdHeader.cpp`: merges level settings and color channels for collab
+- `GdHeader.hpp` / `GdHeader.cpp`: merges level settings and color channels for collab
 
 ## Touches
 

@@ -12,7 +12,8 @@ Saves commit history on disk. One live database and portable level packages.
 
 - `git-editor.db`: all levels on your PC (normal SQLite database file)
 - `.gdge`: one level's history to share or back up (can be zipped)
-- `deltaBlob` encoding: `CommitRow` from `get()` / `list()` holds decompressed delta JSON. `CommitSummaryRow` from `listSummaryRows()` holds the compressed SQLite blob (`decompressBlob` returns `nullopt` on corrupt data). Writes via `insertAndSetHead` / `squash` take uncompressed JSON, `insertAt` compresses on store. `writeGdgePackage` / `readGdgePackage` both return `Result`.
+- Reads hand back ready-to-use change data. Writes compress before they save. Summary lists hand back the raw compressed blob so the History popup can load fast and only unpack what it shows.
+- `.gdge` read and write both return a `Result` so callers can show a clear error if a file is broken.
 
 ## Touches
 

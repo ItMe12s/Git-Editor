@@ -4,9 +4,11 @@ Main brain for history: commit, checkout, revert, squash, import, export, and me
 
 ## Main files
 
-- `GitService.cpp`: public API used by UI and hooks
+- `GitService.cpp`: public API used by UI and hooks. Also builds the text for the **? changes** viewer
 - `MergeService.cpp`: merge using your version, a friend's version, and a shared starting point
 - `GdgeImportPlanner.cpp`: groups import files into auto-merge vs step-by-step import
+- `GdgeImportMerge.cpp`: rebuilds state and runs the merge during a multi-file import
+- `GdgeExport.cpp`: writes the current level's history to a `.gdge` package
 - `ReconstructionService.hpp`: rebuild level state by walking the commit chain
 - `StateCache.cpp`: keeps up to 64 recently rebuilt levels in memory for speed
 - `CommitSummaryBuilder.cpp`: stats shown in the History list
@@ -15,7 +17,7 @@ Main brain for history: commit, checkout, revert, squash, import, export, and me
 
 ## Notes
 
-Two-phase prepare then finalize (compute first, save after the editor updates) applies to checkout, revert, squash, load level, and import-many. Commit and export save in one step.
+Heavy actions run in two steps. First, do the math on a background thread. Second, update the editor and save. This keeps the game smooth on big levels. Checkout, revert, squash, load level, and multi-file import use this. Commit and export save in one step.
 
 ## Touches
 
