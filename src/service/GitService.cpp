@@ -376,21 +376,6 @@ Result<void> GitService::exportLevelToGdge(LevelKey const& levelKey, std::filesy
     return out;
 }
 
-ImportPlan GitService::classifyImports(
-    LevelKey const& dest,
-    std::vector<std::filesystem::path> const& inPaths
-) {
-    ImportPlan plan;
-    plan.noLocalCommits = !m_store.getHead(dest).has_value();
-    auto root = reconstructRoot(m_store, *this, dest);
-    auto classified = gdge_import_planner::classifyImports(m_store, root, inPaths);
-    plan.localRootHash = std::move(classified.localRootHash);
-    plan.smart = std::move(classified.smart);
-    plan.sequential = std::move(classified.sequential);
-    plan.invalid = std::move(classified.invalid);
-    return plan;
-}
-
 ImportPlan GitService::planImport(
     LevelKey const& dest,
     std::vector<std::filesystem::path> const& inPaths
@@ -468,6 +453,10 @@ Result<void> GitService::finalizeImportManyFromGdge(
     return out;
 }
 
+void GitService::clearReconstructCache() {
+    m_cache.clear();
+}
+
 std::vector<CommitSummary> GitService::listSummaries(LevelKey const& levelKey) {
     return buildCommitSummaries(m_store.listSummaryRows(levelKey));
 }
@@ -488,8 +477,13 @@ Result<std::string> GitService::describeCommitChanges(CommitId id) {
     return failResult<std::string>("Could not read this commit's delta.");
 }
 
-void GitService::clearReconstructCache() {
-    m_cache.clear();
+std::optional<LevelState> GitService::reconstruct(CommitId commitId) {
+    return reconstruction_service::reconstructCommitChain(
+        m_store,
+        commitId,
+        [this](CommitId id) { return this->cacheGet(id); },
+        [this](CommitId id, LevelState const& state) { this->cachePut(id, state); }
+    );
 }
 
 Result<LevelState> GitService::checkout(LevelKey const& levelKey, CommitId target) {
@@ -544,13 +538,19 @@ Result<ImportManyPayload> GitService::importManyFromGdge(
     return prep.result;
 }
 
-std::optional<LevelState> GitService::reconstruct(CommitId commitId) {
-    return reconstruction_service::reconstructCommitChain(
-        m_store,
-        commitId,
-        [this](CommitId id) { return this->cacheGet(id); },
-        [this](CommitId id, LevelState const& state) { this->cachePut(id, state); }
-    );
+ImportPlan GitService::classifyImports(
+    LevelKey const& dest,
+    std::vector<std::filesystem::path> const& inPaths
+) {
+    ImportPlan plan;
+    plan.noLocalCommits = !m_store.getHead(dest).has_value();
+    auto root = reconstructRoot(m_store, *this, dest);
+    auto classified = gdge_import_planner::classifyImports(m_store, root, inPaths);
+    plan.localRootHash = std::move(classified.localRootHash);
+    plan.smart = std::move(classified.smart);
+    plan.sequential = std::move(classified.sequential);
+    plan.invalid = std::move(classified.invalid);
+    return plan;
 }
 
 void GitService::cachePut(CommitId id, LevelState state) {

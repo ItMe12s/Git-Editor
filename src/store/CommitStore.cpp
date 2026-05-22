@@ -24,6 +24,33 @@ std::int64_t commitStoreNowSeconds() {
     return duration_cast<seconds>(system_clock::now().time_since_epoch()).count();
 }
 
+CommitRow rowFromStatement(sqlite3_stmt* st, bool includeBlob) {
+    CommitRow r;
+    r.id         = sqlite3_column_int64(st, 0);
+    auto const* key = reinterpret_cast<char const*>(sqlite3_column_text(st, 1));
+    r.levelKey   = key ? key : "";
+    if (sqlite3_column_type(st, 2) != SQLITE_NULL) {
+        r.parent = sqlite3_column_int64(st, 2);
+    }
+    if (sqlite3_column_type(st, 3) != SQLITE_NULL) {
+        r.reverts = sqlite3_column_int64(st, 3);
+    }
+    auto const* msg = reinterpret_cast<char const*>(sqlite3_column_text(st, 4));
+    r.message   = msg ? msg : "";
+    r.createdAt = sqlite3_column_int64(st, 5);
+    if (includeBlob) {
+        auto const* data = static_cast<char const*>(sqlite3_column_blob(st, 6));
+        int len = sqlite3_column_bytes(st, 6);
+        if (data && len > 0) {
+            std::string stored(data, data + len);
+            if (auto json = decompressBlob(stored)) {
+                r.deltaBlob = std::move(*json);
+            }
+        }
+    }
+    return r;
+}
+
 } // namespace
 
 CommitStore::~CommitStore() {
@@ -32,87 +59,6 @@ CommitStore::~CommitStore() {
         sqlite3_close(m_db);
         m_db = nullptr;
     }
-}
-
-void CommitStore::resetStatement(sqlite3_stmt* st) {
-    sqlite3_reset(st);
-    sqlite3_clear_bindings(st);
-}
-
-void CommitStore::finalizeStatements() {
-    sqlite3_stmt** slots[] = {
-        &m_stmtInsert,
-        &m_stmtGet,
-        &m_stmtList,
-        &m_stmtListSummaries,
-        &m_stmtUpdateMessage,
-        &m_stmtListLevels,
-        &m_stmtDelRefs,
-        &m_stmtDelCommits,
-        &m_stmtGetHead,
-        &m_stmtSetHead,
-    };
-    for (auto* slot : slots) {
-        if (*slot) {
-            sqlite3_finalize(*slot);
-            *slot = nullptr;
-        }
-    }
-}
-
-bool CommitStore::prepareStatements() {
-    struct Entry {
-        char const* sql;
-        sqlite3_stmt** stmt;
-    };
-
-    Entry const entries[] = {
-        {
-            "INSERT INTO commits(level_key, parent_id, reverts_id, message, created_at, delta_blob) "
-            "VALUES (?, ?, ?, ?, ?, ?);",
-            &m_stmtInsert,
-        },
-        {
-            "SELECT id, level_key, parent_id, reverts_id, message, created_at, delta_blob "
-            "FROM commits WHERE id = ?;",
-            &m_stmtGet,
-        },
-        {
-            "SELECT id, level_key, parent_id, reverts_id, message, created_at, delta_blob "
-            "FROM commits WHERE level_key = ? "
-            "ORDER BY created_at DESC, id DESC;",
-            &m_stmtList,
-        },
-        {
-            "SELECT id, message, created_at, delta_blob FROM commits "
-            "WHERE level_key = ? ORDER BY created_at DESC, id DESC;",
-            &m_stmtListSummaries,
-        },
-        {"UPDATE commits SET message = ? WHERE id = ?;", &m_stmtUpdateMessage},
-        {
-            "SELECT level_key, COUNT(*), MAX(created_at), "
-            "COALESCE(SUM(LENGTH(delta_blob)), 0) FROM commits "
-            "GROUP BY level_key ORDER BY MAX(created_at) DESC;",
-            &m_stmtListLevels,
-        },
-        {"DELETE FROM refs WHERE level_key = ?;", &m_stmtDelRefs},
-        {"DELETE FROM commits WHERE level_key = ?;", &m_stmtDelCommits},
-        {"SELECT head_id FROM refs WHERE level_key = ?;", &m_stmtGetHead},
-        {
-            "INSERT INTO refs(level_key, head_id) VALUES(?, ?) "
-            "ON CONFLICT(level_key) DO UPDATE SET head_id = excluded.head_id;",
-            &m_stmtSetHead,
-        },
-    };
-
-    for (auto const& entry : entries) {
-        if (sqlite3_prepare_v2(m_db, entry.sql, -1, entry.stmt, nullptr) != SQLITE_OK) {
-            geode::log::error("prepare failed: {}", sqlite3_errmsg(m_db));
-            this->finalizeStatements();
-            return false;
-        }
-    }
-    return true;
 }
 
 bool CommitStore::init(std::filesystem::path const& dbPath) {
@@ -152,51 +98,6 @@ bool CommitStore::init(std::filesystem::path const& dbPath) {
     return true;
 }
 
-bool CommitStore::ensureSchema() {
-    return commit_schema::ensureSchema(m_db, kSchemaVersion);
-}
-
-std::optional<CommitId> CommitStore::insertAt(
-    LevelKey const&         levelKey,
-    std::optional<CommitId> parent,
-    std::optional<CommitId> reverts,
-    std::string const&      message,
-    std::int64_t            createdAt,
-    std::string const&      deltaBlob
-) {
-    if (!m_db) return std::nullopt;
-
-    this->resetStatement(m_stmtInsert);
-    sqlite3_bind_text(
-        m_stmtInsert, 1, levelKey.c_str(), static_cast<int>(levelKey.size()), SQLITE_TRANSIENT
-    );
-    if (parent)  sqlite3_bind_int64(m_stmtInsert, 2, *parent);   else sqlite3_bind_null(m_stmtInsert, 2);
-    if (reverts) sqlite3_bind_int64(m_stmtInsert, 3, *reverts);  else sqlite3_bind_null(m_stmtInsert, 3);
-    sqlite3_bind_text(
-        m_stmtInsert, 4, message.c_str(), static_cast<int>(message.size()), SQLITE_TRANSIENT
-    );
-    sqlite3_bind_int64(m_stmtInsert, 5, createdAt);
-    auto const stored = compressBlob(deltaBlob);
-    if (!stored) {
-        geode::log::error("insertAt: compressBlob refused payload (size={})", deltaBlob.size());
-        this->resetStatement(m_stmtInsert);
-        return std::nullopt;
-    }
-    sqlite3_bind_blob(
-        m_stmtInsert, 6, stored->data(), static_cast<int>(stored->size()), SQLITE_TRANSIENT
-    );
-
-    std::optional<CommitId> out;
-    if (sqlite3_step(m_stmtInsert) == SQLITE_DONE) {
-        out = sqlite3_last_insert_rowid(m_db);
-
-    } else {
-        geode::log::error("insert step failed: {}", sqlite3_errmsg(m_db));
-    }
-    this->resetStatement(m_stmtInsert);
-    return out;
-}
-
 std::optional<CommitId> CommitStore::insertAndSetHead(
     LevelKey const&         levelKey,
     std::optional<CommitId> parent,
@@ -223,37 +124,6 @@ std::optional<CommitId> CommitStore::insertAndSetHead(
 
     return id;
 }
-
-namespace {
-
-CommitRow rowFromStatement(sqlite3_stmt* st, bool includeBlob) {
-    CommitRow r;
-    r.id         = sqlite3_column_int64(st, 0);
-    auto const* key = reinterpret_cast<char const*>(sqlite3_column_text(st, 1));
-    r.levelKey   = key ? key : "";
-    if (sqlite3_column_type(st, 2) != SQLITE_NULL) {
-        r.parent = sqlite3_column_int64(st, 2);
-    }
-    if (sqlite3_column_type(st, 3) != SQLITE_NULL) {
-        r.reverts = sqlite3_column_int64(st, 3);
-    }
-    auto const* msg = reinterpret_cast<char const*>(sqlite3_column_text(st, 4));
-    r.message   = msg ? msg : "";
-    r.createdAt = sqlite3_column_int64(st, 5);
-    if (includeBlob) {
-        auto const* data = static_cast<char const*>(sqlite3_column_blob(st, 6));
-        int len = sqlite3_column_bytes(st, 6);
-        if (data && len > 0) {
-            std::string stored(data, data + len);
-            if (auto json = decompressBlob(stored)) {
-                r.deltaBlob = std::move(*json);
-            }
-        }
-    }
-    return r;
-}
-
-} // namespace
 
 std::optional<CommitRow> CommitStore::get(CommitId id) {
     std::lock_guard<std::recursive_mutex> lk(m_mutex);
@@ -434,40 +304,6 @@ std::vector<LevelSummary> CommitStore::listLevels() {
     return out;
 }
 
-bool CommitStore::deleteCommitsAndRefsForKeyNoTransaction(
-    LevelKey const& levelKey
-) {
-    if (!m_db) return false;
-
-    {
-        this->resetStatement(m_stmtDelRefs);
-        sqlite3_bind_text(
-            m_stmtDelRefs, 1, levelKey.c_str(), static_cast<int>(levelKey.size()), SQLITE_TRANSIENT
-        );
-        if (sqlite3_step(m_stmtDelRefs) != SQLITE_DONE) {
-            geode::log::error("deleteLevel refs step: {}", sqlite3_errmsg(m_db));
-            this->resetStatement(m_stmtDelRefs);
-            return false;
-        }
-        this->resetStatement(m_stmtDelRefs);
-    }
-
-    {
-        this->resetStatement(m_stmtDelCommits);
-        sqlite3_bind_text(
-            m_stmtDelCommits, 1, levelKey.c_str(), static_cast<int>(levelKey.size()), SQLITE_TRANSIENT
-        );
-        if (sqlite3_step(m_stmtDelCommits) != SQLITE_DONE) {
-            geode::log::error("deleteLevel commits step: {}", sqlite3_errmsg(m_db));
-            this->resetStatement(m_stmtDelCommits);
-            return false;
-        }
-        this->resetStatement(m_stmtDelCommits);
-    }
-
-    return true;
-}
-
 bool CommitStore::deleteLevel(LevelKey const& levelKey) {
     std::lock_guard<std::recursive_mutex> lk(m_mutex);
     if (!m_db) return false;
@@ -638,6 +474,166 @@ bool CommitStore::setHead(LevelKey const& levelKey, CommitId head) {
     bool ok = (sqlite3_step(m_stmtSetHead) == SQLITE_DONE);
     this->resetStatement(m_stmtSetHead);
     return ok;
+}
+
+bool CommitStore::ensureSchema() {
+    return commit_schema::ensureSchema(m_db, kSchemaVersion);
+}
+
+std::optional<CommitId> CommitStore::insertAt(
+    LevelKey const&         levelKey,
+    std::optional<CommitId> parent,
+    std::optional<CommitId> reverts,
+    std::string const&      message,
+    std::int64_t            createdAt,
+    std::string const&      deltaBlob
+) {
+    if (!m_db) return std::nullopt;
+
+    this->resetStatement(m_stmtInsert);
+    sqlite3_bind_text(
+        m_stmtInsert, 1, levelKey.c_str(), static_cast<int>(levelKey.size()), SQLITE_TRANSIENT
+    );
+    if (parent)  sqlite3_bind_int64(m_stmtInsert, 2, *parent);   else sqlite3_bind_null(m_stmtInsert, 2);
+    if (reverts) sqlite3_bind_int64(m_stmtInsert, 3, *reverts);  else sqlite3_bind_null(m_stmtInsert, 3);
+    sqlite3_bind_text(
+        m_stmtInsert, 4, message.c_str(), static_cast<int>(message.size()), SQLITE_TRANSIENT
+    );
+    sqlite3_bind_int64(m_stmtInsert, 5, createdAt);
+    auto const stored = compressBlob(deltaBlob);
+    if (!stored) {
+        geode::log::error("insertAt: compressBlob refused payload (size={})", deltaBlob.size());
+        this->resetStatement(m_stmtInsert);
+        return std::nullopt;
+    }
+    sqlite3_bind_blob(
+        m_stmtInsert, 6, stored->data(), static_cast<int>(stored->size()), SQLITE_TRANSIENT
+    );
+
+    std::optional<CommitId> out;
+    if (sqlite3_step(m_stmtInsert) == SQLITE_DONE) {
+        out = sqlite3_last_insert_rowid(m_db);
+
+    } else {
+        geode::log::error("insert step failed: {}", sqlite3_errmsg(m_db));
+    }
+    this->resetStatement(m_stmtInsert);
+    return out;
+}
+
+bool CommitStore::deleteCommitsAndRefsForKeyNoTransaction(
+    LevelKey const& levelKey
+) {
+    if (!m_db) return false;
+
+    {
+        this->resetStatement(m_stmtDelRefs);
+        sqlite3_bind_text(
+            m_stmtDelRefs, 1, levelKey.c_str(), static_cast<int>(levelKey.size()), SQLITE_TRANSIENT
+        );
+        if (sqlite3_step(m_stmtDelRefs) != SQLITE_DONE) {
+            geode::log::error("deleteLevel refs step: {}", sqlite3_errmsg(m_db));
+            this->resetStatement(m_stmtDelRefs);
+            return false;
+        }
+        this->resetStatement(m_stmtDelRefs);
+    }
+
+    {
+        this->resetStatement(m_stmtDelCommits);
+        sqlite3_bind_text(
+            m_stmtDelCommits, 1, levelKey.c_str(), static_cast<int>(levelKey.size()), SQLITE_TRANSIENT
+        );
+        if (sqlite3_step(m_stmtDelCommits) != SQLITE_DONE) {
+            geode::log::error("deleteLevel commits step: {}", sqlite3_errmsg(m_db));
+            this->resetStatement(m_stmtDelCommits);
+            return false;
+        }
+        this->resetStatement(m_stmtDelCommits);
+    }
+
+    return true;
+}
+
+bool CommitStore::prepareStatements() {
+    struct Entry {
+        char const* sql;
+        sqlite3_stmt** stmt;
+    };
+
+    Entry const entries[] = {
+        {
+            "INSERT INTO commits(level_key, parent_id, reverts_id, message, created_at, delta_blob) "
+            "VALUES (?, ?, ?, ?, ?, ?);",
+            &m_stmtInsert,
+        },
+        {
+            "SELECT id, level_key, parent_id, reverts_id, message, created_at, delta_blob "
+            "FROM commits WHERE id = ?;",
+            &m_stmtGet,
+        },
+        {
+            "SELECT id, level_key, parent_id, reverts_id, message, created_at, delta_blob "
+            "FROM commits WHERE level_key = ? "
+            "ORDER BY created_at DESC, id DESC;",
+            &m_stmtList,
+        },
+        {
+            "SELECT id, message, created_at, delta_blob FROM commits "
+            "WHERE level_key = ? ORDER BY created_at DESC, id DESC;",
+            &m_stmtListSummaries,
+        },
+        {"UPDATE commits SET message = ? WHERE id = ?;", &m_stmtUpdateMessage},
+        {
+            "SELECT level_key, COUNT(*), MAX(created_at), "
+            "COALESCE(SUM(LENGTH(delta_blob)), 0) FROM commits "
+            "GROUP BY level_key ORDER BY MAX(created_at) DESC;",
+            &m_stmtListLevels,
+        },
+        {"DELETE FROM refs WHERE level_key = ?;", &m_stmtDelRefs},
+        {"DELETE FROM commits WHERE level_key = ?;", &m_stmtDelCommits},
+        {"SELECT head_id FROM refs WHERE level_key = ?;", &m_stmtGetHead},
+        {
+            "INSERT INTO refs(level_key, head_id) VALUES(?, ?) "
+            "ON CONFLICT(level_key) DO UPDATE SET head_id = excluded.head_id;",
+            &m_stmtSetHead,
+        },
+    };
+
+    for (auto const& entry : entries) {
+        if (sqlite3_prepare_v2(m_db, entry.sql, -1, entry.stmt, nullptr) != SQLITE_OK) {
+            geode::log::error("prepare failed: {}", sqlite3_errmsg(m_db));
+            this->finalizeStatements();
+            return false;
+        }
+    }
+    return true;
+}
+
+void CommitStore::finalizeStatements() {
+    sqlite3_stmt** slots[] = {
+        &m_stmtInsert,
+        &m_stmtGet,
+        &m_stmtList,
+        &m_stmtListSummaries,
+        &m_stmtUpdateMessage,
+        &m_stmtListLevels,
+        &m_stmtDelRefs,
+        &m_stmtDelCommits,
+        &m_stmtGetHead,
+        &m_stmtSetHead,
+    };
+    for (auto* slot : slots) {
+        if (*slot) {
+            sqlite3_finalize(*slot);
+            *slot = nullptr;
+        }
+    }
+}
+
+void CommitStore::resetStatement(sqlite3_stmt* st) {
+    sqlite3_reset(st);
+    sqlite3_clear_bindings(st);
 }
 
 CommitStore& sharedCommitStore() {
