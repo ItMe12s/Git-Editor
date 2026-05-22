@@ -60,7 +60,7 @@ bool applyLevelString(LevelEditorLayer* editor, std::string const& levelString) 
         editor->m_level->levelWasAltered();
     }
 
-    gd::string s(levelString.c_str(), levelString.size()); // copy: createObjectsFromSetup mutates
+    gd::string s(levelString.c_str(), levelString.size());
     editor->createObjectsFromSetup(s);
     refreshEditorVisualState(editor);
 

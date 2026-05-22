@@ -24,7 +24,7 @@ std::mt19937_64& rng() {
 }
 
 ObjectUuid freshUuid() {
-    ObjectUuid v = 0; // 0 reserved as placeholder in parser
+    ObjectUuid v = 0; // 0 reserved as placeholder in parser.
     do {
         v = rng()();
     } while (v == 0);

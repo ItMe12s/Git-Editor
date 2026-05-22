@@ -23,8 +23,8 @@ struct Delta {
     std::vector<Object> removes;
 
     struct Modify {
-        ObjectUuid                            uuid = 0;
-        std::map<std::string, FieldChange>    fields;
+        ObjectUuid                         uuid = 0;
+        std::map<std::string, FieldChange> fields;
     };
     std::vector<Modify> modifies;
 };

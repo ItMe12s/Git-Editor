@@ -119,16 +119,16 @@ private:
     sqlite3*              m_db    = nullptr;
     std::filesystem::path m_dbPath;
 
-    sqlite3_stmt* m_stmtInsert         = nullptr;
-    sqlite3_stmt* m_stmtGet            = nullptr;
-    sqlite3_stmt* m_stmtList           = nullptr;
-    sqlite3_stmt* m_stmtListSummaries  = nullptr;
-    sqlite3_stmt* m_stmtUpdateMessage  = nullptr;
-    sqlite3_stmt* m_stmtListLevels     = nullptr;
-    sqlite3_stmt* m_stmtDelRefs        = nullptr;
-    sqlite3_stmt* m_stmtDelCommits     = nullptr;
-    sqlite3_stmt* m_stmtGetHead        = nullptr;
-    sqlite3_stmt* m_stmtSetHead        = nullptr;
+    sqlite3_stmt* m_stmtInsert        = nullptr;
+    sqlite3_stmt* m_stmtGet           = nullptr;
+    sqlite3_stmt* m_stmtList          = nullptr;
+    sqlite3_stmt* m_stmtListSummaries = nullptr;
+    sqlite3_stmt* m_stmtUpdateMessage = nullptr;
+    sqlite3_stmt* m_stmtListLevels    = nullptr;
+    sqlite3_stmt* m_stmtDelRefs       = nullptr;
+    sqlite3_stmt* m_stmtDelCommits    = nullptr;
+    sqlite3_stmt* m_stmtGetHead       = nullptr;
+    sqlite3_stmt* m_stmtSetHead       = nullptr;
 };
 
 CommitStore& sharedCommitStore();

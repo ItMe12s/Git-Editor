@@ -16,7 +16,7 @@ struct Conflict {
     };
 
     Kind        kind;
-    ObjectUuid  uuid   = 0;
+    ObjectUuid  uuid = 0;
     std::string field;
     std::string note;
 };
