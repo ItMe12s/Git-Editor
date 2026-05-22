@@ -6,9 +6,9 @@
 #include "service/GitService.hpp"
 #include "store/CommitStore.hpp"
 #include "util/GitWorker.hpp"
-#include "presentation/UiAction.hpp"
-#include "presentation/UiText.hpp"
 #include "common/GitUiActionRunner.hpp"
+#include "common/UiAction.hpp"
+#include "presentation/UiText.hpp"
 #include "common/UiNodeLifecycle.hpp"
 
 #include <Geode/Geode.hpp>
