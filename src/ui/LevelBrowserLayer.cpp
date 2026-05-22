@@ -5,11 +5,12 @@
 #include "editor/LevelStateIO.hpp"
 #include "service/GitService.hpp"
 #include "store/CommitStore.hpp"
-#include "util/GitWorker.hpp"
 #include "common/GitUiActionRunner.hpp"
+#include "common/PreparedEditorFlow.hpp"
+#include "common/ScrollListPopup.hpp"
 #include "common/UiAction.hpp"
-#include "presentation/UiText.hpp"
 #include "common/UiNodeLifecycle.hpp"
+#include "presentation/UiText.hpp"
 
 #include <Geode/Geode.hpp>
 #include <Geode/binding/ButtonSprite.hpp>
@@ -32,13 +33,8 @@ namespace git_editor {
 
 namespace {
 
-constexpr float browserPopupWidth     = 420.f;
-constexpr float browserPopupHeight    = 280.f;
-constexpr float browserListPadX       = 20.f;
-constexpr float browserListPadTop     = 36.f;
-constexpr float browserListPadBottom  = 16.f;
-constexpr float browserRowHeight      = 50.f;
-constexpr float kRowMenuWidth   = 144.f;
+constexpr float browserRowHeight = 50.f;
+constexpr float kRowMenuWidth    = 144.f;
 
 } // namespace
 
@@ -65,7 +61,7 @@ bool LevelBrowserLayer::init(
     m_editor     = editor;
     m_pauseLayer = pauseLayer;
 
-    if (!Popup::init(browserPopupWidth, browserPopupHeight)) {
+    if (!Popup::init(scroll_list_popup::Layout::kWidth, scroll_list_popup::Layout::kHeight)) {
         return false;
     }
 
@@ -88,24 +84,8 @@ bool LevelBrowserLayer::init(
         );
     }
 
-    float const innerW = browserPopupWidth - browserListPadX * 2.f;
-    float const innerH = browserPopupHeight - browserListPadTop - browserListPadBottom;
-
-    m_scroll = alpha::ui::AdvancedScrollLayer::create({innerW, innerH});
-    m_scroll->setID("git-editor-levels-scroll"_spr);
-    m_scroll->setAnchorPoint({0.f, 0.f});
-    m_scroll->setLayout(
-        ColumnLayout::create()
-            ->setAxisReverse(true)
-            ->setGap(3.f)
-            ->setCrossAxisOverflow(false)
-            ->setAutoGrowAxis(std::optional<float>(innerH))
-    );
-
-    m_mainLayer->addChildAtPosition(
-        m_scroll, Anchor::Center,
-        {-innerW * .5f, -innerH * .55f},
-        false
+    m_scroll = scroll_list_popup::attachScrollList(
+        this, m_mainLayer, "git-editor-levels-scroll"_spr
     );
 
     this->rebuildList();
@@ -113,45 +93,35 @@ bool LevelBrowserLayer::init(
 }
 
 void LevelBrowserLayer::onClose(CCObject* sender) {
-    if (m_closing) return;
-    m_closing = true;
-    ++m_loadSerial;
-    m_scroll = nullptr;
+    scroll_list_popup::markClosing(m_listState, m_scroll);
     Popup::onClose(sender);
 }
 
 bool LevelBrowserLayer::closeOnce(CCObject* sender) {
-    if (m_closing || !ui_node_lifecycle::isNodeActive(this)) return false;
+    if (m_listState.closing || !ui_node_lifecycle::isNodeActive(this)) return false;
     this->onClose(sender);
     return true;
 }
 
 void LevelBrowserLayer::rebuildList() {
-    if (m_closing || !m_scroll) return;
-
-    auto* content = m_scroll->getContentLayer();
-    content->removeAllChildren();
-
-    auto loading = CCLabelBMFont::create("Loading levels...", "bigFont.fnt");
-    loading->setID("git-editor-levels-loading"_spr);
-    loading->setScale(.5f);
-    loading->setOpacity(160);
-    content->addChild(loading);
-    content->updateLayout();
-
-    auto const serial = ++m_loadSerial;
     Ref<LevelBrowserLayer> self(this);
-    ui_action_runner::runWorkerResult<std::vector<LevelSummary>>(
+    scroll_list_popup::loadAsync<std::vector<LevelSummary>>(
+        m_listState,
+        m_scroll,
+        "Loading levels...",
+        "git-editor-levels-loading"_spr,
         []() { return sharedCommitStore().listLevels(); },
-        [self, serial](std::vector<LevelSummary> levels) mutable {
-            if (!self || self->m_closing || serial != self->m_loadSerial) return;
+        [self](std::uint64_t serial) {
+            return self && !scroll_list_popup::isStaleLoad(self->m_listState, serial);
+        },
+        [self](std::vector<LevelSummary> levels) mutable {
             self->renderList(std::move(levels));
         }
     );
 }
 
 void LevelBrowserLayer::renderList(std::vector<LevelSummary> levels) {
-    if (m_closing || !m_scroll) return;
+    if (m_listState.closing || !m_scroll) return;
 
     auto* content = m_scroll->getContentLayer();
     content->removeAllChildren();
@@ -159,20 +129,17 @@ void LevelBrowserLayer::renderList(std::vector<LevelSummary> levels) {
     float const rowWidth = content->getContentSize().width;
 
     if (levels.empty()) {
-        auto empty = CCLabelBMFont::create("No levels with commits.", "bigFont.fnt");
-        empty->setID("git-editor-levels-empty"_spr);
-        empty->setScale(.5f);
-        empty->setOpacity(160);
-        content->addChild(empty);
-        content->updateLayout();
-        m_scroll->setScrollY(0);
+        scroll_list_popup::showCenteredLabel(
+            content, "No levels with commits.", "git-editor-levels-empty"_spr
+        );
+        scroll_list_popup::resetScrollTop(m_scroll);
         return;
     }
 
     Ref<LevelBrowserLayer> self(this);
     auto* editor = m_editor.data();
     if (!editor) return;
-    std::string const      destKey = levelKeyFor(editor->m_level);
+    std::string const destKey = levelKeyFor(editor->m_level);
 
     auto makeDeleteBtn = [](geode::Function<void(CCMenuItemSpriteExtra*)> cb)
         -> CCMenuItemSpriteExtra* {
@@ -264,67 +231,53 @@ void LevelBrowserLayer::renderList(std::vector<LevelSummary> levels) {
                         }
                         Ref<LevelEditorLayer> editorRef(self->m_editor.data());
                         Ref<EditorPauseLayer> pauseRef(self->m_pauseLayer.data());
-                        Ref<LevelBrowserLayer> alive(self.data());
-                        ui_action_runner::runWorkerResult<Prepared<LevelState>>(
+                        prepared_editor_flow::run<LevelState, PendingHistoryReplace, void>(
+                            {self->m_busy, self->m_listState.closing},
                             [levelKey, destKey]() {
                                 return sharedGitService().prepareImportLevelFrom(destKey, levelKey);
                             },
-                            [alive, editorRef, pauseRef](Prepared<LevelState> prep) mutable {
-                                if (!alive || exitBusyIfClosing(alive->m_busy, alive->m_closing)) return;
+                            [editorRef](Prepared<LevelState> const& prep) {
                                 auto* editor = editorRef.data();
-                                if (!prep.result.ok) {
-                                    finishBusyAction(alive->m_busy);
-                                    Notification::create(
-                                        ("Load failed: " + prep.result.error).c_str(),
-                                        NotificationIcon::Error
-                                    )->show();
-                                    return;
-                                }
                                 if (!history_actions::canApplyEditorResult(editor)) {
-                                    finishBusyAction(alive->m_busy);
                                     Notification::create(
                                         "Load ready but editor is no longer active; aborted before DB write",
                                         NotificationIcon::Warning
                                     )->show();
-                                    return;
+                                    return false;
                                 }
                                 if (!applyLevelState(editor, prep.result.value)) {
-                                    finishBusyAction(alive->m_busy);
                                     Notification::create(
                                         "Editor refused load; aborted before DB write",
                                         NotificationIcon::Warning
                                     )->show();
-                                    return;
+                                    return false;
                                 }
-                                if (!prep.pendingReplace) {
-                                    finishBusyAction(alive->m_busy);
-                                    return;
-                                }
-                                LevelState applied = prep.result.value;
-                                PendingHistoryReplace pending = *prep.pendingReplace;
-                                Ref<EditorPauseLayer> pauseLocal = pauseRef;
-                                ui_action_runner::runWorkerResult<Result<void>>(
-                                    [pending, applied]() {
-                                        return sharedGitService().finalizeImportLevelFrom(pending, applied);
-                                    },
-                                    [alive, pauseLocal](Result<void> fin) mutable {
-                                        if (!alive) return;
-                                        finishBusyAction(alive->m_busy);
-                                        if (alive->m_closing) return;
-                                        if (!fin.ok) {
-                                            Notification::create(
-                                                ("Editor applied but history copy failed: " + fin.error).c_str(),
-                                                NotificationIcon::Error
-                                            )->show();
-                                            return;
-                                        }
-                                        Notification::create("Level loaded", NotificationIcon::Success)->show();
-                                        bool const closed = alive->closeOnce(nullptr);
-                                        if ((closed || alive->m_closing) && ui_node_lifecycle::isNodeActive(pauseLocal.data())) {
-                                            pauseLocal.data()->onResume(nullptr);
-                                        }
-                                    }
-                                );
+                                return true;
+                            },
+                            [](Prepared<LevelState> const& prep) { return prep.pendingReplace; },
+                            [](PendingHistoryReplace pending, LevelState const& applied) {
+                                return sharedGitService().finalizeImportLevelFrom(pending, applied);
+                            },
+                            prepared_editor_flow::OutcomeHandlers{
+                                .onSuccess = [self, pauseRef]() {
+                                    Notification::create("Level loaded", NotificationIcon::Success)->show();
+                                    bool const closed = self->closeOnce(nullptr);
+                                    prepared_editor_flow::resumePauseIfNeeded(
+                                        pauseRef, closed || self->m_listState.closing
+                                    );
+                                },
+                                .onPrepareError = [](std::string const& error) {
+                                    Notification::create(
+                                        ("Load failed: " + error).c_str(), NotificationIcon::Error
+                                    )->show();
+                                },
+                                .onFinalizeError = [](std::string const& error) {
+                                    Notification::create(
+                                        ("Editor applied but history copy failed: " + error).c_str(),
+                                        NotificationIcon::Error
+                                    )->show();
+                                },
+                                .onAppliedOnly = []() {},
                             }
                         );
                     }
@@ -357,7 +310,7 @@ void LevelBrowserLayer::renderList(std::vector<LevelSummary> levels) {
                         [alive](bool ok) {
                             if (!alive) return;
                             finishBusyAction(alive->m_busy);
-                            if (alive->m_closing) return;
+                            if (alive->m_listState.closing) return;
                             if (!ok) {
                                 Notification::create("Delete failed", NotificationIcon::Error)->show();
                                 return;
@@ -380,7 +333,7 @@ void LevelBrowserLayer::renderList(std::vector<LevelSummary> levels) {
     }
 
     content->updateLayout();
-    m_scroll->setScrollY(0);
+    scroll_list_popup::resetScrollTop(m_scroll);
 }
 
 } // namespace git_editor

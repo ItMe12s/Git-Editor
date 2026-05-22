@@ -4,6 +4,8 @@
 #include "CommitMessageLayer.hpp"
 #include "HistoryCommitRow.hpp"
 #include "common/GitUiActionRunner.hpp"
+#include "common/PreparedEditorFlow.hpp"
+#include "common/ScrollListPopup.hpp"
 #include "common/UiAction.hpp"
 #include "common/UiNodeLifecycle.hpp"
 #include "editor/LevelKey.hpp"
@@ -22,6 +24,7 @@
 #include <Geode/utils/cocos.hpp>
 
 #include <algorithm>
+#include <memory>
 #include <set>
 #include <vector>
 
@@ -46,11 +49,8 @@ std::vector<CommitId> selectedOldestFirst(
     return ids;
 }
 
-constexpr float histPopupWidth    = 420.f;
-constexpr float histPopupHeight   = 280.f;
-constexpr float histListPadX      = 20.f;
-constexpr float histListPadTop    = 36.f;
-constexpr float histListPadBottom = 16.f;
+constexpr float histPopupWidth    = scroll_list_popup::Layout::kWidth;
+constexpr float histPopupHeight   = scroll_list_popup::Layout::kHeight;
 struct HistoryLoadResult {
     LevelKey                   levelKey;
     std::vector<CommitSummary> commits;
@@ -97,24 +97,8 @@ bool HistoryLayer::init(
 
     this->setTitle("History");
 
-    float const innerW = histPopupWidth  - histListPadX * 2.f;
-    float const innerH = histPopupHeight - histListPadTop - histListPadBottom;
-
-    m_scroll = alpha::ui::AdvancedScrollLayer::create({innerW, innerH});
-    m_scroll->setID("git-editor-history-scroll"_spr);
-    m_scroll->setAnchorPoint({0.f, 0.f});
-    m_scroll->setLayout(
-        ColumnLayout::create()
-            ->setAxisReverse(true)
-            ->setGap(3.f)
-            ->setCrossAxisOverflow(false)
-            ->setAutoGrowAxis(std::optional<float>(innerH))
-    );
-
-    m_mainLayer->addChildAtPosition(
-        m_scroll, Anchor::Center,
-        { -innerW * .5f, -innerH * .55f },
-        /* useAnchorLayout */ false
+    m_scroll = scroll_list_popup::attachScrollList(
+        this, m_mainLayer, "git-editor-history-scroll"_spr
     );
 
     m_headerMenu = CCMenu::create();
@@ -135,22 +119,19 @@ bool HistoryLayer::init(
 }
 
 void HistoryLayer::onClose(CCObject* sender) {
-    if (m_closing) return;
-    m_closing = true;
-    ++m_loadSerial;
-    m_scroll = nullptr;
+    scroll_list_popup::markClosing(m_listState, m_scroll);
     m_headerMenu = nullptr;
     Popup::onClose(sender);
 }
 
 bool HistoryLayer::closeOnce(CCObject* sender) {
-    if (m_closing || !ui_node_lifecycle::isNodeActive(this)) return false;
+    if (m_listState.closing || !ui_node_lifecycle::isNodeActive(this)) return false;
     this->onClose(sender);
     return true;
 }
 
 void HistoryLayer::rebuildHeader() {
-    if (m_closing || !m_headerMenu) return;
+    if (m_listState.closing || !m_headerMenu) return;
     m_headerMenu->removeAllChildren();
 
     Ref<HistoryLayer> self(this);
@@ -189,29 +170,23 @@ void HistoryLayer::rebuildHeader() {
 }
 
 void HistoryLayer::rebuildList() {
-    if (m_closing || !m_scroll) return;
-
-    auto* content = m_scroll->getContentLayer();
-    content->removeAllChildren();
+    if (m_listState.closing || !m_scroll) return;
 
     auto* editor = m_editor.data();
     auto const activeKey = (editor && editor->m_level) ? levelKeyFor(editor->m_level) : "";
-    auto loading = CCLabelBMFont::create("Loading commits...", "bigFont.fnt");
-    loading->setID("git-editor-history-loading"_spr);
-    loading->setScale(.5f);
-    loading->setOpacity(160);
-    content->addChild(loading);
-    content->updateLayout();
-
-    auto const serial = ++m_loadSerial;
     Ref<HistoryLayer> self(this);
     std::string levelKey = m_levelKey;
-    ui_action_runner::runWorkerResult<HistoryLoadResult>(
-        [levelKey, activeKey]() {
-            return loadHistory(levelKey, activeKey);
+
+    scroll_list_popup::loadAsync<HistoryLoadResult>(
+        m_listState,
+        m_scroll,
+        "Loading commits...",
+        "git-editor-history-loading"_spr,
+        [levelKey, activeKey]() { return loadHistory(levelKey, activeKey); },
+        [self](std::uint64_t serial) {
+            return self && !scroll_list_popup::isStaleLoad(self->m_listState, serial);
         },
-        [self, serial](HistoryLoadResult loaded) mutable {
-            if (!self || self->m_closing || serial != self->m_loadSerial) return;
+        [self](HistoryLoadResult loaded) mutable {
             self->m_levelKey = std::move(loaded.levelKey);
             self->renderList(std::move(loaded.commits));
         }
@@ -219,7 +194,7 @@ void HistoryLayer::rebuildList() {
 }
 
 void HistoryLayer::renderList(std::vector<CommitSummary> loadedCommits) {
-    if (m_closing || !m_scroll) return;
+    if (m_listState.closing || !m_scroll) return;
 
     auto* content = m_scroll->getContentLayer();
     content->removeAllChildren();
@@ -229,13 +204,10 @@ void HistoryLayer::renderList(std::vector<CommitSummary> loadedCommits) {
     float const rowWidth = content->getContentSize().width;
 
     if (commits.empty()) {
-        auto empty = CCLabelBMFont::create("No commits yet.", "bigFont.fnt");
-        empty->setID("git-editor-history-empty"_spr);
-        empty->setScale(.5f);
-        empty->setOpacity(160);
-        content->addChild(empty);
-        content->updateLayout();
-        m_scroll->setScrollY(0);
+        scroll_list_popup::showCenteredLabel(
+            content, "No commits yet.", "git-editor-history-empty"_spr
+        );
+        scroll_list_popup::resetScrollTop(m_scroll);
         return;
     }
 
@@ -249,7 +221,7 @@ void HistoryLayer::renderList(std::vector<CommitSummary> loadedCommits) {
     }
 
     content->updateLayout();
-    m_scroll->setScrollY(0);
+    scroll_list_popup::resetScrollTop(m_scroll);
 }
 
 bool HistoryLayer::tryApplyToEditor(
@@ -278,57 +250,40 @@ void HistoryLayer::startCheckoutFlow(CommitId commitId, std::string const& commi
                 return;
             }
             if (!self) return;
-            ui_action_runner::runWorkerResult<Prepared<LevelState>>(
+            prepared_editor_flow::run<LevelState, PendingHeadUpdate, CommitId>(
+                {self->m_busy, self->m_listState.closing},
                 [levelKey, commitId]() {
                     return sharedGitService().prepareCheckout(levelKey, commitId);
                 },
-                [self, editorRef, pauseRef](Prepared<LevelState> prep) mutable {
-                    if (!self || exitBusyIfClosing(self->m_busy, self->m_closing)) return;
-                    if (!prep.result.ok) {
-                        finishBusyAction(self->m_busy);
-                        Notification::create(
-                            ("Checkout failed: " + prep.result.error).c_str(), NotificationIcon::Error
-                        )->show();
-                        return;
-                    }
-                    if (!self->tryApplyToEditor("Checkout", editorRef.data(), prep.result.value, false)) {
-                        finishBusyAction(self->m_busy);
-                        return;
-                    }
-                    if (!prep.pendingHead) {
-                        finishBusyAction(self->m_busy);
+                [self, editorRef](Prepared<LevelState> const& prep) {
+                    return self->tryApplyToEditor(
+                        "Checkout", editorRef.data(), prep.result.value, false
+                    );
+                },
+                [](Prepared<LevelState> const& prep) { return prep.pendingHead; },
+                [](PendingHeadUpdate pending, LevelState const& applied) {
+                    return sharedGitService().finalizeCheckout(pending, applied);
+                },
+                prepared_editor_flow::OutcomeHandlers{
+                    .onSuccess = [self, pauseRef]() {
                         Notification::create("Checked out", NotificationIcon::Success)->show();
                         bool const closed = self->closeOnce(nullptr);
-                        if (closed && ui_node_lifecycle::isNodeActive(pauseRef.data())) {
-                            pauseRef.data()->onResume(nullptr);
-                        }
-                        return;
-                    }
-                    LevelState applied = prep.result.value;
-                    PendingHeadUpdate pending = *prep.pendingHead;
-                    Ref<EditorPauseLayer> pauseLocal = pauseRef;
-                    ui_action_runner::runWorkerResult<Result<CommitId>>(
-                        [pending, applied]() {
-                            return sharedGitService().finalizeCheckout(pending, applied);
-                        },
-                        [self, pauseLocal](Result<CommitId> fin) mutable {
-                            if (!self) return;
-                            finishBusyAction(self->m_busy);
-                            if (self->m_closing) return;
-                            if (!fin.ok) {
-                                Notification::create(
-                                    ("Editor applied but DB write failed: " + fin.error + ". Re-commit to persist.").c_str(),
-                                    NotificationIcon::Error
-                                )->show();
-                                return;
-                            }
-                            Notification::create("Checked out", NotificationIcon::Success)->show();
-                            bool const closed = self->closeOnce(nullptr);
-                            if ((closed || self->m_closing) && ui_node_lifecycle::isNodeActive(pauseLocal.data())) {
-                                pauseLocal.data()->onResume(nullptr);
-                            }
-                        }
-                    );
+                        prepared_editor_flow::resumePauseIfNeeded(
+                            pauseRef, closed || self->m_listState.closing
+                        );
+                    },
+                    .onPrepareError = [](std::string const& error) {
+                        Notification::create(
+                            ("Checkout failed: " + error).c_str(), NotificationIcon::Error
+                        )->show();
+                    },
+                    .onFinalizeError = [](std::string const& error) {
+                        Notification::create(
+                            ("Editor applied but DB write failed: " + error +
+                             ". Re-commit to persist.").c_str(),
+                            NotificationIcon::Error
+                        )->show();
+                    },
                 }
             );
         }
@@ -352,61 +307,44 @@ void HistoryLayer::startRevertFlow(CommitId commitId, std::string const& commitM
                 return;
             }
             if (!self) return;
-            ui_action_runner::runWorkerResult<Prepared<RevertPayload>>(
+            auto conflicts = std::make_shared<std::vector<Conflict>>();
+            prepared_editor_flow::run<RevertPayload, PendingHeadUpdate, CommitId>(
+                {self->m_busy, self->m_listState.closing},
                 [levelKey, commitId]() {
                     return sharedGitService().prepareRevert(levelKey, commitId);
                 },
-                [self, editorRef, pauseRef](Prepared<RevertPayload> prep) mutable {
-                    if (!self || exitBusyIfClosing(self->m_busy, self->m_closing)) return;
-                    if (!prep.result.ok) {
-                        finishBusyAction(self->m_busy);
-                        Notification::create(
-                            ("Revert failed: " + prep.result.error).c_str(), NotificationIcon::Error
-                        )->show();
-                        return;
-                    }
-                    bool const hasConflicts = !prep.result.value.conflicts.empty();
-                    if (!self->tryApplyToEditor("Revert", editorRef.data(), prep.result.value.state, hasConflicts)) {
-                        finishBusyAction(self->m_busy);
-                        return;
-                    }
-                    if (!prep.pendingHead) {
-                        finishBusyAction(self->m_busy);
-                        Notification::create("Reverted", NotificationIcon::Success)->show();
-                        history_actions::showConflictSummary(prep.result.value.conflicts);
-                        bool const closed = self->closeOnce(nullptr);
-                        if (closed && ui_node_lifecycle::isNodeActive(pauseRef.data())) {
-                            pauseRef.data()->onResume(nullptr);
-                        }
-                        return;
-                    }
-                    LevelState applied = prep.result.value.state;
-                    PendingHeadUpdate pending = *prep.pendingHead;
-                    std::vector<Conflict> conflicts = prep.result.value.conflicts;
-                    Ref<EditorPauseLayer> pauseLocal = pauseRef;
-                    ui_action_runner::runWorkerResult<Result<CommitId>>(
-                        [pending, applied]() {
-                            return sharedGitService().finalizeRevert(pending, applied);
-                        },
-                        [self, pauseLocal, conflicts](Result<CommitId> fin) mutable {
-                            if (!self) return;
-                            finishBusyAction(self->m_busy);
-                            if (self->m_closing) return;
-                            if (!fin.ok) {
-                                Notification::create(
-                                    ("Editor applied but DB write failed: " + fin.error + ". Re-commit to persist.").c_str(),
-                                    NotificationIcon::Error
-                                )->show();
-                                return;
-                            }
-                            Notification::create("Reverted", NotificationIcon::Success)->show();
-                            history_actions::showConflictSummary(conflicts);
-                            bool const closed = self->closeOnce(nullptr);
-                            if ((closed || self->m_closing) && ui_node_lifecycle::isNodeActive(pauseLocal.data())) {
-                                pauseLocal.data()->onResume(nullptr);
-                            }
-                        }
+                [self, editorRef, conflicts](Prepared<RevertPayload> const& prep) {
+                    *conflicts = prep.result.value.conflicts;
+                    bool const hasConflicts = !conflicts->empty();
+                    return self->tryApplyToEditor(
+                        "Revert", editorRef.data(), prep.result.value.state, hasConflicts
                     );
+                },
+                [](Prepared<RevertPayload> const& prep) { return prep.pendingHead; },
+                [](PendingHeadUpdate pending, RevertPayload const& payload) {
+                    return sharedGitService().finalizeRevert(pending, payload.state);
+                },
+                prepared_editor_flow::OutcomeHandlers{
+                    .onSuccess = [self, pauseRef, conflicts]() {
+                        Notification::create("Reverted", NotificationIcon::Success)->show();
+                        history_actions::showConflictSummary(*conflicts);
+                        bool const closed = self->closeOnce(nullptr);
+                        prepared_editor_flow::resumePauseIfNeeded(
+                            pauseRef, closed || self->m_listState.closing
+                        );
+                    },
+                    .onPrepareError = [](std::string const& error) {
+                        Notification::create(
+                            ("Revert failed: " + error).c_str(), NotificationIcon::Error
+                        )->show();
+                    },
+                    .onFinalizeError = [](std::string const& error) {
+                        Notification::create(
+                            ("Editor applied but DB write failed: " + error +
+                             ". Re-commit to persist.").c_str(),
+                            NotificationIcon::Error
+                        )->show();
+                    },
                 }
             );
         }
@@ -452,7 +390,7 @@ void HistoryLayer::onSquashPressed() {
         "This will combine the selected commit range into a single commit.\nThis CANNOT be undone.",
         "Cancel", "Squash",
         [self, idsOldestFirst, defaultMsg](FLAlertLayer*, bool yes) mutable {
-            if (!self || exitBusyIfClosing(self->m_busy, self->m_closing)) return;
+            if (!self || exitBusyIfClosing(self->m_busy, self->m_listState.closing)) return;
             if (!yes) { finishBusyAction(self->m_busy); return; }
             self->onSquashConfirmed(std::move(idsOldestFirst), std::move(defaultMsg));
         }
@@ -463,12 +401,12 @@ void HistoryLayer::onSquashConfirmed(std::vector<CommitId> idsOldestFirst, std::
     Ref<HistoryLayer> self(this);
     auto popup = CommitMessageLayer::create(
         [self, idsOldestFirst](std::string const& msg) {
-            if (self && !self->m_closing) self->runSquash(idsOldestFirst, msg);
+            if (self && !self->m_listState.closing) self->runSquash(idsOldestFirst, msg);
         },
         "Squash Commits",
         "Squash",
         defaultMsg,
-        [self]() { if (self && !self->m_closing) finishBusyAction(self->m_busy); }
+        [self]() { if (self && !self->m_listState.closing) finishBusyAction(self->m_busy); }
     );
     if (popup) popup->show();
     else       finishBusyAction(m_busy);
@@ -477,55 +415,41 @@ void HistoryLayer::onSquashConfirmed(std::vector<CommitId> idsOldestFirst, std::
 void HistoryLayer::runSquash(std::vector<CommitId> idsOldestFirst, std::string message) {
     Ref<HistoryLayer> self(this);
     Ref<LevelEditorLayer> editorRef(m_editor.data());
-    Ref<EditorPauseLayer> pauseRef(m_pauseLayer.data());
     std::string levelKey = m_levelKey;
-    ui_action_runner::runWorkerResult<Prepared<LevelState>>(
+    prepared_editor_flow::run<LevelState, PendingSquash, CommitId>(
+        {self->m_busy, self->m_listState.closing},
         [levelKey, idsOldestFirst, message]() {
             return sharedGitService().prepareSquash(levelKey, idsOldestFirst, message);
         },
-        [self, editorRef, pauseRef](Prepared<LevelState> prep) mutable {
-            if (!self || exitBusyIfClosing(self->m_busy, self->m_closing)) return;
-            if (!prep.result.ok) {
-                finishBusyAction(self->m_busy);
-                Notification::create(
-                    ("Squash failed: " + prep.result.error).c_str(), NotificationIcon::Error
-                )->show();
-                return;
-            }
-            if (!self->tryApplyToEditor("Squash", editorRef.data(), prep.result.value, false)) {
-                finishBusyAction(self->m_busy);
-                return;
-            }
-            if (!prep.pendingSquash) {
-                finishBusyAction(self->m_busy);
-                return;
-            }
-            LevelState applied = prep.result.value;
-            PendingSquash pending = *prep.pendingSquash;
-            ui_action_runner::runWorkerResult<Result<CommitId>>(
-                [pending, applied]() {
-                    return sharedGitService().finalizeSquash(pending, applied);
-                },
-                [self](Result<CommitId> fin) mutable {
-                    if (!self) return;
-                    finishBusyAction(self->m_busy);
-                    if (self->m_closing) return;
-                    if (!fin.ok) {
-                        Notification::create(
-                            ("Editor applied but DB squash failed: " + fin.error).c_str(),
-                            NotificationIcon::Error
-                        )->show();
-                        return;
-                    }
-                    Notification::create("Squashed", NotificationIcon::Success)->show();
-                    self->m_squashMode = false;
-                    self->m_selected.clear();
-                    if (ui_node_lifecycle::isNodeActive(self.data())) {
-                        self->rebuildHeader();
-                        self->rebuildList();
-                    }
+        [self, editorRef](Prepared<LevelState> const& prep) {
+            return self->tryApplyToEditor("Squash", editorRef.data(), prep.result.value, false);
+        },
+        [](Prepared<LevelState> const& prep) { return prep.pendingSquash; },
+        [](PendingSquash pending, LevelState const& applied) {
+            return sharedGitService().finalizeSquash(pending, applied);
+        },
+        prepared_editor_flow::OutcomeHandlers{
+            .onSuccess = [self]() {
+                Notification::create("Squashed", NotificationIcon::Success)->show();
+                self->m_squashMode = false;
+                self->m_selected.clear();
+                if (ui_node_lifecycle::isNodeActive(self.data())) {
+                    self->rebuildHeader();
+                    self->rebuildList();
                 }
-            );
+            },
+            .onPrepareError = [](std::string const& error) {
+                Notification::create(
+                    ("Squash failed: " + error).c_str(), NotificationIcon::Error
+                )->show();
+            },
+            .onFinalizeError = [](std::string const& error) {
+                Notification::create(
+                    ("Editor applied but DB squash failed: " + error).c_str(),
+                    NotificationIcon::Error
+                )->show();
+            },
+            .onAppliedOnly = []() {},
         }
     );
 }

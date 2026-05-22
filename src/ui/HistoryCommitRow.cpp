@@ -129,7 +129,7 @@ CCNode* createCommitRow(
         auto helpBtn = makeBtn(
             "?", "GJ_button_04.png",
             [self, commitId, commitMsg](CCMenuItemSpriteExtra*) {
-                if (!self || self->m_closing) return;
+                if (!self || self->m_listState.closing) return;
 
                 std::string title = "What changed";
                 if (!commitMsg.empty()) {
@@ -170,7 +170,7 @@ CCNode* createCommitRow(
                                 return sharedGitService().updateCommitMessage(commitId, newMessage);
                             },
                             [self](bool ok) {
-                                if (!self || self->m_closing) return;
+                                if (!self || self->m_listState.closing) return;
                                 if (!ok) {
                                     Notification::create("Rename failed", NotificationIcon::Error)->show();
                                     return;

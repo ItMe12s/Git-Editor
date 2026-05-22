@@ -1,5 +1,6 @@
 #pragma once
 
+#include "common/ScrollListPopup.hpp"
 #include "model/LevelState.hpp"
 #include "store/CommitStore.hpp"
 
@@ -72,13 +73,12 @@ protected:
     geode::Ref<EditorPauseLayer>    m_pauseLayer;
     alpha::ui::AdvancedScrollLayer* m_scroll = nullptr;
 
-    bool                       m_squashMode = false;
-    bool                       m_busy       = false;
-    bool                       m_closing    = false;
-    std::uint64_t              m_loadSerial = 0;
-    std::vector<CommitSummary> m_commits;
-    std::set<CommitId>         m_selected;
-    cocos2d::CCMenu*           m_headerMenu = nullptr;
+    bool                         m_squashMode = false;
+    bool                         m_busy       = false;
+    scroll_list_popup::ListState m_listState{};
+    std::vector<CommitSummary>   m_commits;
+    std::set<CommitId>           m_selected;
+    cocos2d::CCMenu*             m_headerMenu = nullptr;
 };
 
 } // namespace git_editor

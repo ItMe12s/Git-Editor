@@ -1,5 +1,6 @@
 #pragma once
 
+#include "common/ScrollListPopup.hpp"
 #include "store/CommitStore.hpp"
 
 #include <Geode/Geode.hpp>
@@ -30,10 +31,9 @@ protected:
 
     geode::Ref<LevelEditorLayer>  m_editor;
     geode::Ref<EditorPauseLayer>  m_pauseLayer;
-    alpha::ui::AdvancedScrollLayer* m_scroll     = nullptr;
-    std::uint64_t       m_loadSerial = 0;
-    bool               m_busy       = false;
-    bool               m_closing    = false;
+    alpha::ui::AdvancedScrollLayer* m_scroll = nullptr;
+    scroll_list_popup::ListState    m_listState{};
+    bool                            m_busy = false;
 };
 
 } // namespace git_editor
