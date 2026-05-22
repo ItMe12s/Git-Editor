@@ -116,7 +116,7 @@ private:
     static void resetStatement(sqlite3_stmt* st);
 
     mutable std::recursive_mutex m_mutex;
-    sqlite3*              m_db    = nullptr;
+    sqlite3*              m_db        = nullptr;
     std::filesystem::path m_dbPath;
 
     sqlite3_stmt* m_stmtInsert        = nullptr;

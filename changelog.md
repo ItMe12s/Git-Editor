@@ -11,6 +11,10 @@ Consider giving it a star and check the commit history for a more technical chan
 
 ---
 
+## 1.0.0-beta.11
+
+...
+
 ## 1.0.0-beta.10
 
 Going forward, I'll be adding auto-migrations once the mod leaves beta.

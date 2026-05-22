@@ -8,7 +8,7 @@
 	},
 	"id": "imes.git-editor",
 	"name": "Git Editor (Collab, History, Backup)",
-	"version": "v1.0.0-beta.10",
+	"version": "v1.0.0-beta.11",
 	"developer": "imes",
 	"description": "Per-level commit history for the GD editor, collab merging, and more.",
 	"links": {
