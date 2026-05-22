@@ -92,16 +92,6 @@ double distanceSquared(FieldMap const& a, FieldMap const& b) {
 
 } // namespace
 
-void assignFreshUuids(LevelState& state) {
-    std::unordered_map<ObjectUuid, Object> rebuilt;
-    rebuilt.reserve(state.objects.size());
-    for (auto& [_, obj] : state.objects) {
-        obj.uuid = freshUuid();
-        rebuilt.emplace(obj.uuid, std::move(obj));
-    }
-    state.objects = std::move(rebuilt);
-}
-
 void assignUuids(LevelState const& previous, LevelState& incoming) {
     if (previous.objects.empty()) {
         assignFreshUuids(incoming);
@@ -173,6 +163,16 @@ void assignUuids(LevelState const& previous, LevelState& incoming) {
     }
 
     incoming.objects = std::move(rebuilt);
+}
+
+void assignFreshUuids(LevelState& state) {
+    std::unordered_map<ObjectUuid, Object> rebuilt;
+    rebuilt.reserve(state.objects.size());
+    for (auto& [_, obj] : state.objects) {
+        obj.uuid = freshUuid();
+        rebuilt.emplace(obj.uuid, std::move(obj));
+    }
+    state.objects = std::move(rebuilt);
 }
 
 } // namespace git_editor

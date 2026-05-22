@@ -223,15 +223,6 @@ void DeltaInfoLayer::showLoadError(std::string error) {
     if (m_nextBtn) m_nextBtn->setEnabled(false);
 }
 
-void DeltaInfoLayer::onPrevBlock() {
-    if (m_blockIndex == 0) return;
-    showBlock(m_blockIndex - 1);
-}
-
-void DeltaInfoLayer::onNextBlock() {
-    showBlock(m_blockIndex + 1);
-}
-
 void DeltaInfoLayer::showBlock(std::size_t blockIndex) {
     if (!m_scroll) return;
 
@@ -287,6 +278,15 @@ void DeltaInfoLayer::showBlock(std::size_t blockIndex) {
 
     if (m_prevBtn) m_prevBtn->setEnabled(m_blockIndex > 0);
     if (m_nextBtn) m_nextBtn->setEnabled(m_blockIndex + 1 < blocks);
+}
+
+void DeltaInfoLayer::onPrevBlock() {
+    if (m_blockIndex == 0) return;
+    showBlock(m_blockIndex - 1);
+}
+
+void DeltaInfoLayer::onNextBlock() {
+    showBlock(m_blockIndex + 1);
 }
 
 } // namespace git_editor
