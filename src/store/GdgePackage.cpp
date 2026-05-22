@@ -1,10 +1,10 @@
 #include "GdgePackage.hpp"
 
-#include "../diff/Delta.hpp"
-#include "../util/io/BlobCodec.hpp"
-#include "../util/io/DbZip.hpp"
-#include "../util/io/FileAtomic.hpp"
-#include "../util/io/PathUtf8.hpp"
+#include "diff/Delta.hpp"
+#include "util/io/BlobCodec.hpp"
+#include "util/io/DbZip.hpp"
+#include "util/io/FileAtomic.hpp"
+#include "util/io/PathUtf8.hpp"
 
 #include <Geode/loader/Log.hpp>
 #include <Geode/loader/Mod.hpp>

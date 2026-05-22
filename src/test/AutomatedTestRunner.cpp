@@ -2,8 +2,8 @@
 
 #include "AutomatedTestHarness.hpp"
 
-#include "../service/GitService.hpp"
-#include "../store/CommitStore.hpp"
+#include "service/GitService.hpp"
+#include "store/CommitStore.hpp"
 
 #include <fmt/format.h>
 #include <Geode/utils/file.hpp>

@@ -1,6 +1,6 @@
 #include "AutomatedTestHarness.hpp"
 
-#include "../model/LevelParser.hpp"
+#include "model/LevelParser.hpp"
 
 #include <fmt/format.h>
 

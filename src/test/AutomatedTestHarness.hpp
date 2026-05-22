@@ -2,10 +2,10 @@
 
 #include "AutomatedTestRunner.hpp"
 
-#include "../service/GitService.hpp"
-#include "../store/CommitStore.hpp"
+#include "service/GitService.hpp"
+#include "store/CommitStore.hpp"
 
-#include "../core/ImportPlan.hpp"
+#include "core/ImportPlan.hpp"
 
 #include <chrono>
 #include <filesystem>

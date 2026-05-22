@@ -1,8 +1,8 @@
 #include "CommitStore.hpp"
 #include "CommitSchema.hpp"
 
-#include "../util/io/BlobCodec.hpp"
-#include "../util/io/PathUtf8.hpp"
+#include "util/io/BlobCodec.hpp"
+#include "util/io/PathUtf8.hpp"
 
 #include <Geode/loader/Log.hpp>
 #include <Geode/loader/Mod.hpp>

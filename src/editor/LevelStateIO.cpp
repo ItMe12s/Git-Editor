@@ -1,6 +1,6 @@
 #include "LevelStateIO.hpp"
 
-#include "../model/LevelParser.hpp"
+#include "model/LevelParser.hpp"
 
 #include <Geode/loader/Log.hpp>
 

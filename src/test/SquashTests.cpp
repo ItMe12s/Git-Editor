@@ -1,6 +1,6 @@
 #include "AutomatedTestHarness.hpp"
 
-#include "../util/format/StateHash.hpp"
+#include "util/format/StateHash.hpp"
 
 #include <fmt/format.h>
 #include <optional>

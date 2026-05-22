@@ -2,7 +2,7 @@
 
 #include "HistoryLayer.hpp"
 
-#include "../editor/LevelStateIO.hpp"
+#include "editor/LevelStateIO.hpp"
 
 #include <Geode/binding/FLAlertLayer.hpp>
 #include <Geode/ui/Notification.hpp>

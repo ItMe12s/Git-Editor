@@ -1,6 +1,6 @@
 #include "AutomatedTestHarness.hpp"
 
-#include "../util/io/PathUtf8.hpp"
+#include "util/io/PathUtf8.hpp"
 
 #include <fmt/format.h>
 

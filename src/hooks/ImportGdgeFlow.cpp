@@ -1,10 +1,10 @@
 #include "ImportGdgeFlow.hpp"
 
-#include "../editor/LevelStateIO.hpp"
-#include "../service/GitService.hpp"
-#include "../ui/common/GitUiActionRunner.hpp"
-#include "../util/format/Shorten.hpp"
-#include "../util/io/PathUtf8.hpp"
+#include "editor/LevelStateIO.hpp"
+#include "service/GitService.hpp"
+#include "ui/common/GitUiActionRunner.hpp"
+#include "util/format/Shorten.hpp"
+#include "util/io/PathUtf8.hpp"
 
 #include <Geode/Geode.hpp>
 #include <Geode/binding/FLAlertLayer.hpp>

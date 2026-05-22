@@ -1,11 +1,11 @@
 #pragma once
 
-#include "../core/ImportPlan.hpp"
-#include "../core/Result.hpp"
-#include "../diff/Delta.hpp"
-#include "../diff/Differ.hpp"
-#include "../model/LevelState.hpp"
-#include "../store/CommitStore.hpp"
+#include "core/ImportPlan.hpp"
+#include "core/Result.hpp"
+#include "diff/Delta.hpp"
+#include "diff/Differ.hpp"
+#include "model/LevelState.hpp"
+#include "store/CommitStore.hpp"
 #include "PendingOps.hpp"
 #include "StateCache.hpp"
 

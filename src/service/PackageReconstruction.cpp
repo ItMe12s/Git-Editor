@@ -1,7 +1,7 @@
 #include "PackageReconstruction.hpp"
 
-#include "../diff/Delta.hpp"
-#include "../diff/Differ.hpp"
+#include "diff/Delta.hpp"
+#include "diff/Differ.hpp"
 
 #include <algorithm>
 #include <unordered_map>

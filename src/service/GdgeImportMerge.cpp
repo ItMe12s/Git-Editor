@@ -3,12 +3,12 @@
 #include "MergeService.hpp"
 #include "PackageReconstruction.hpp"
 
-#include "../core/Result.hpp"
-#include "../diff/Delta.hpp"
-#include "../diff/Differ.hpp"
-#include "../store/GdgePackage.hpp"
-#include "../util/format/Shorten.hpp"
-#include "../util/io/PathUtf8.hpp"
+#include "core/Result.hpp"
+#include "diff/Delta.hpp"
+#include "diff/Differ.hpp"
+#include "store/GdgePackage.hpp"
+#include "util/format/Shorten.hpp"
+#include "util/io/PathUtf8.hpp"
 
 #include <fmt/format.h>
 

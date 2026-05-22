@@ -1,8 +1,8 @@
 #pragma once
 
-#include "../model/LevelState.hpp"
-#include "../store/CommitStore.hpp"
-#include "../core/Result.hpp"
+#include "model/LevelState.hpp"
+#include "store/CommitStore.hpp"
+#include "core/Result.hpp"
 
 #include <cstddef>
 #include <optional>

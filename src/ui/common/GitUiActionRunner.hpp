@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../../util/GitWorker.hpp"
+#include "util/GitWorker.hpp"
 
 #include <Geode/Geode.hpp>
 

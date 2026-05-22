@@ -2,7 +2,7 @@
 
 #include "CommitStore.hpp"
 #include "GdgePackage.hpp"
-#include "../core/Result.hpp"
+#include "core/Result.hpp"
 
 #include <string>
 #include <vector>

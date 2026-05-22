@@ -1,6 +1,6 @@
 #include "AutomatedTestHarness.hpp"
 
-#include "../service/CommitSummaryBuilder.hpp"
+#include "service/CommitSummaryBuilder.hpp"
 
 #include <fmt/format.h>
 

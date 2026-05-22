@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../model/LevelState.hpp"
+#include "model/LevelState.hpp"
 
 #include <optional>
 

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "../diff/Differ.hpp"
-#include "../model/LevelState.hpp"
+#include "diff/Differ.hpp"
+#include "model/LevelState.hpp"
 
 #include <Geode/binding/LevelEditorLayer.hpp>
 #include <vector>

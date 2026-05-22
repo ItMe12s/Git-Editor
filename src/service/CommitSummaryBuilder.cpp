@@ -1,7 +1,7 @@
 #include "CommitSummaryBuilder.hpp"
 
-#include "../diff/Delta.hpp"
-#include "../util/io/BlobCodec.hpp"
+#include "diff/Delta.hpp"
+#include "util/io/BlobCodec.hpp"
 
 namespace git_editor {
 

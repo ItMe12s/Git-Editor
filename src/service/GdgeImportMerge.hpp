@@ -1,8 +1,8 @@
 #pragma once
 
-#include "../core/ImportPlan.hpp"
-#include "../model/LevelState.hpp"
-#include "../store/CommitStore.hpp"
+#include "core/ImportPlan.hpp"
+#include "model/LevelState.hpp"
+#include "store/CommitStore.hpp"
 #include "PendingOps.hpp"
 
 #include <filesystem>

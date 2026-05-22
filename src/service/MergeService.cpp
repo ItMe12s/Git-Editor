@@ -1,6 +1,6 @@
 #include "MergeService.hpp"
 
-#include "../model/GdHeader.hpp"
+#include "model/GdHeader.hpp"
 
 #include <set>
 

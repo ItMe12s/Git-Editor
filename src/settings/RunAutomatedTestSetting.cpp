@@ -2,10 +2,10 @@
 #include <Geode/loader/SettingV3.hpp>
 #include <Geode/ui/Notification.hpp>
 
-#include "../test/AutomatedTestRunner.hpp"
-#include "../util/GitWorker.hpp"
-#include "../util/io/PathUtf8.hpp"
-#include "../util/io/TextFileUtf8.hpp"
+#include "test/AutomatedTestRunner.hpp"
+#include "util/GitWorker.hpp"
+#include "util/io/PathUtf8.hpp"
+#include "util/io/TextFileUtf8.hpp"
 
 #include <fmt/format.h>
 

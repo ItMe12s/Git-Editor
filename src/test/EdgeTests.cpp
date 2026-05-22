@@ -1,8 +1,8 @@
 #include "AutomatedTestHarness.hpp"
 
-#include "../model/LevelParser.hpp"
-#include "../service/CommitSummaryBuilder.hpp"
-#include "../util/io/PathUtf8.hpp"
+#include "model/LevelParser.hpp"
+#include "service/CommitSummaryBuilder.hpp"
+#include "util/io/PathUtf8.hpp"
 
 #include <fmt/format.h>
 

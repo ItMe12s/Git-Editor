@@ -1,6 +1,6 @@
 #include "StateHash.hpp"
 
-#include "../../model/LevelParser.hpp"
+#include "model/LevelParser.hpp"
 
 #include <array>
 

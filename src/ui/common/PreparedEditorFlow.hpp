@@ -12,8 +12,8 @@
 //   3. prepared_editor_flow::run(...)
 //   4. onSuccess closes popup / resumes pause / refreshes list
 
-#include "../../service/PendingOps.hpp"
-#include "../../core/Result.hpp"
+#include "service/PendingOps.hpp"
+#include "core/Result.hpp"
 #include "GitUiActionRunner.hpp"
 #include "UiAction.hpp"
 

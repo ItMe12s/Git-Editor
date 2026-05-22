@@ -1,7 +1,7 @@
 #pragma once
 
-#include "../model/LevelState.hpp"
-#include "../store/GdgePackage.hpp"
+#include "model/LevelState.hpp"
+#include "store/GdgePackage.hpp"
 
 #include <optional>
 

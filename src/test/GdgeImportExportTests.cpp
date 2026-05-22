@@ -1,7 +1,7 @@
 #include "AutomatedTestHarness.hpp"
 
-#include "../util/format/StateHash.hpp"
-#include "../util/io/PathUtf8.hpp"
+#include "util/format/StateHash.hpp"
+#include "util/io/PathUtf8.hpp"
 
 #include <fmt/format.h>
 
