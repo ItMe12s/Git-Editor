@@ -21,5 +21,5 @@ cocos2d::CCNode* createCommitRow(
     geode::Ref<HistoryLayer> layer
 );
 
-} // namespace history_rows
+} // namespace git_editor::history_rows
 } // namespace git_editor

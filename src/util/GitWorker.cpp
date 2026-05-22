@@ -9,14 +9,14 @@ namespace git_editor {
 
 namespace {
 
-static std::mutex s_gitWorkerMutex;
+std::mutex gitWorkerMutex;
 
 } // namespace
 
 void postToGitWorker(std::function<void()> job) {
     auto boxed = std::make_unique<std::function<void()>>(std::move(job));
     geode::async::runtime().spawnBlocking<void>([box = std::move(boxed)]() mutable {
-        std::lock_guard lock(s_gitWorkerMutex);
+        std::lock_guard lock(gitWorkerMutex);
         (*box)();
     });
 }

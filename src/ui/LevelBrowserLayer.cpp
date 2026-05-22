@@ -33,8 +33,8 @@ namespace git_editor {
 
 namespace {
 
-constexpr float browserRowHeight = 50.f;
-constexpr float kRowMenuWidth    = 144.f;
+constexpr float kBrowserRowHeight = 50.f;
+constexpr float kRowMenuWidth     = 144.f;
 
 } // namespace
 
@@ -156,11 +156,11 @@ void LevelBrowserLayer::renderList(std::vector<LevelSummary> levels) {
     for (auto const& lv : levels) {
         auto row = CCNode::create();
         row->setID("git-editor-levels-row"_spr);
-        row->setContentSize({rowWidth, browserRowHeight});
+        row->setContentSize({rowWidth, kBrowserRowHeight});
         row->setAnchorPoint({0.f, 0.f});
         row->setLayout(AnchorLayout::create());
 
-        auto bg = CCLayerColor::create({0, 0, 0, 60}, rowWidth, browserRowHeight);
+        auto bg = CCLayerColor::create({0, 0, 0, 60}, rowWidth, kBrowserRowHeight);
         bg->ignoreAnchorPointForPosition(false);
         bg->setAnchorPoint({.5f, .5f});
         row->addChildAtPosition(bg, Anchor::Center);
@@ -184,7 +184,7 @@ void LevelBrowserLayer::renderList(std::vector<LevelSummary> levels) {
 
         auto menu = CCMenu::create();
         menu->setID("git-editor-levels-row-menu"_spr);
-        menu->setContentSize({kRowMenuWidth, browserRowHeight});
+        menu->setContentSize({kRowMenuWidth, kBrowserRowHeight});
         menu->setAnchorPoint({1.f, .5f});
         menu->setLayout(
             RowLayout::create()
