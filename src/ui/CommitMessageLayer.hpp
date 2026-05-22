@@ -19,7 +19,7 @@ public:
 
     static CommitMessageLayer* create(
         ConfirmFn onConfirm,
-        std::string title = "New Commit",
+        std::string title       = "New Commit",
         std::string buttonLabel = "Commit",
         std::string initialText = "",
         CloseFn onClose = {}

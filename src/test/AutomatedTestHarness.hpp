@@ -16,16 +16,16 @@
 
 namespace git_editor {
 
-inline constexpr char kSuiteCheckout[] = "Checkout";
-inline constexpr char kSuiteRevert[]   = "Revert";
-inline constexpr char kSuiteSquash[]   = "Squash";
-inline constexpr char kSuiteGdge[]       = "ImportExport";
-inline constexpr char kSuiteHistory[]  = "LoadLevelHistory";
-inline constexpr char kSuiteCollab[]    = "Collab";
+inline constexpr char kSuiteCheckout[]       = "Checkout";
+inline constexpr char kSuiteRevert[]         = "Revert";
+inline constexpr char kSuiteSquash[]         = "Squash";
+inline constexpr char kSuiteGdge[]           = "ImportExport";
+inline constexpr char kSuiteHistory[]        = "LoadLevelHistory";
+inline constexpr char kSuiteCollab[]         = "Collab";
 inline constexpr char kSuiteAdvancedCollab[] = "AdvancedCollab";
-inline constexpr char kSuiteEdge[]       = "Edge";
-inline constexpr char kSuiteTwoPhase[]   = "TwoPhase";
-inline constexpr char kSuiteManual[]    = "ManualChecklist";
+inline constexpr char kSuiteEdge[]           = "Edge";
+inline constexpr char kSuiteTwoPhase[]       = "TwoPhase";
+inline constexpr char kSuiteManual[]         = "ManualChecklist";
 
 inline LevelKey const kCheckout{"__git_editor_at_checkout"};
 inline LevelKey const kRevert{"__git_editor_at_revert"};

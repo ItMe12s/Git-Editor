@@ -1,17 +1,5 @@
 #pragma once
 
-// Two-phase editor flow: prepare on worker -> apply to live editor -> finalize on worker.
-//
-// Use when GitService exposes prepare/finalize pairs (checkout, revert, squash, level load).
-// Guards: pass m_busy + listState.closing from popup layer, bump load serial on close so list reloads
-// ignore stale callbacks. Prefer one-shot service APIs only when no editor apply gate exists.
-//
-// Pattern:
-//   1. tryBeginBusyAction(m_busy)
-//   2. optional confirm popup
-//   3. prepared_editor_flow::run(...)
-//   4. onSuccess closes popup / resumes pause / refreshes list
-
 #include "service/PendingOps.hpp"
 #include "core/Result.hpp"
 #include "GitUiActionRunner.hpp"

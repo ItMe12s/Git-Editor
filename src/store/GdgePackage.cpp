@@ -35,8 +35,8 @@ bool execSql(SqlitePtr db, char const* sql) {
 
 bool bindText(SqliteStmtPtr st, int index, std::string const& value) {
     return sqlite3_bind_text(
-               st, index, value.c_str(), static_cast<int>(value.size()), SQLITE_TRANSIENT
-           ) == SQLITE_OK;
+        st, index, value.c_str(), static_cast<int>(value.size()), SQLITE_TRANSIENT
+    ) == SQLITE_OK;
 }
 
 bool setMeta(SqlitePtr db, std::string const& key, std::string const& value) {
@@ -140,32 +140,32 @@ bool writeGdgePackageSqlite(std::filesystem::path const& outPath,
     }
 
     bool ok = execSql(db, "PRAGMA foreign_keys=OFF;")
-           && execSql(db, "PRAGMA journal_mode=DELETE;")
-           && execSql(db, "BEGIN IMMEDIATE;")
-           && execSql(db, "DROP TABLE IF EXISTS commits;")
-           && execSql(db, "DROP TABLE IF EXISTS meta;")
-           && execSql(
-                  db,
-                  "CREATE TABLE meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);"
-              )
-           && execSql(
-                  db,
-                  "CREATE TABLE commits ("
-                  "commit_index INTEGER PRIMARY KEY, "
-                  "parent_index INTEGER, "
-                  "reverts_index INTEGER, "
-                  "message TEXT NOT NULL, "
-                  "created_at INTEGER NOT NULL, "
-                  "delta_blob BLOB NOT NULL"
-                  ");"
-              );
+            && execSql(db, "PRAGMA journal_mode=DELETE;")
+            && execSql(db, "BEGIN IMMEDIATE;")
+            && execSql(db, "DROP TABLE IF EXISTS commits;")
+            && execSql(db, "DROP TABLE IF EXISTS meta;")
+            && execSql(
+                db,
+                "CREATE TABLE meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);"
+            )
+            && execSql(
+                db,
+                "CREATE TABLE commits ("
+                "commit_index INTEGER PRIMARY KEY, "
+                "parent_index INTEGER, "
+                "reverts_index INTEGER, "
+                "message TEXT NOT NULL, "
+                "created_at INTEGER NOT NULL, "
+                "delta_blob BLOB NOT NULL"
+                ");"
+            );
 
     if (ok) {
         std::int64_t exportedAt = data.metadata.exportedAt > 0 ? data.metadata.exportedAt : gdgePackageNowSeconds();
         ok = setMeta(db, "format_version", data.metadata.formatVersion)
-          && setMeta(db, "root_hash", data.metadata.rootHash)
-          && setMeta(db, "source_level_key", data.metadata.sourceLevelKey)
-          && setMeta(db, "exported_at", std::to_string(exportedAt));
+            && setMeta(db, "root_hash", data.metadata.rootHash)
+            && setMeta(db, "source_level_key", data.metadata.sourceLevelKey)
+            && setMeta(db, "exported_at", std::to_string(exportedAt));
         if (ok && data.metadata.headIndex) {
             ok = setMeta(db, "head_index", std::to_string(*data.metadata.headIndex));
         }
@@ -194,9 +194,9 @@ bool writeGdgePackageSqlite(std::filesystem::path const& outPath,
                     break;
                 }
                 ok = bindText(st, 4, c.message)
-                  && sqlite3_bind_int64(st, 5, c.createdAt) == SQLITE_OK
-                  && sqlite3_bind_blob(st, 6, stored->data(), static_cast<int>(stored->size()), SQLITE_TRANSIENT) == SQLITE_OK
-                  && sqlite3_step(st) == SQLITE_DONE;
+                    && sqlite3_bind_int64(st, 5, c.createdAt) == SQLITE_OK
+                    && sqlite3_bind_blob(st, 6, stored->data(), static_cast<int>(stored->size()), SQLITE_TRANSIENT) == SQLITE_OK
+                    && sqlite3_step(st) == SQLITE_DONE;
                 if (!ok) break;
             }
             sqlite3_finalize(st);

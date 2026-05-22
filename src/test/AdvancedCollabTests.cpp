@@ -12,14 +12,14 @@ namespace {
 
 void deleteAdvancedLevels(CommitStore& st) {
     for (auto const k : {
-             kAdvCollabBase,
-             kAdvCollabIntegrator,
-             kAdvCollabAlice,
-             kAdvCollabBob,
-             kAdvCollabScratch,
-             kAdvCollabCara,
-             kAdvCollabLegacy,
-         }) {
+            kAdvCollabBase,
+            kAdvCollabIntegrator,
+            kAdvCollabAlice,
+            kAdvCollabBob,
+            kAdvCollabScratch,
+            kAdvCollabCara,
+            kAdvCollabLegacy,
+        }) {
         st.deleteLevel(k);
     }
 }

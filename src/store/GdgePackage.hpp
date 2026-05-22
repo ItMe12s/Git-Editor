@@ -13,12 +13,12 @@
 namespace git_editor {
 
 struct GdgePackageCommit {
-    std::int64_t                     commitIndex  = 0;
-    std::optional<std::int64_t>      parentIndex;
-    std::optional<std::int64_t>      revertsIndex;
-    std::string                      message;
-    std::int64_t                     createdAt    = 0;
-    std::string                      deltaBlob;
+    std::int64_t                commitIndex  = 0;
+    std::optional<std::int64_t> parentIndex;
+    std::optional<std::int64_t> revertsIndex;
+    std::string                 message;
+    std::int64_t                createdAt    = 0;
+    std::string                 deltaBlob;
 };
 
 struct GdgePackageMetadata {
@@ -30,7 +30,7 @@ struct GdgePackageMetadata {
 };
 
 struct GdgePackageData {
-    GdgePackageMetadata          metadata;
+    GdgePackageMetadata            metadata;
     std::vector<GdgePackageCommit> commits;
 };
 

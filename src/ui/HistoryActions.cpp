@@ -48,7 +48,7 @@ void showConflictSummary(std::vector<Conflict> const& conflicts) {
     int adds = 0, missing = 0, stale = 0;
     for (auto const& c : conflicts) {
         switch (c.kind) {
-            case Conflict::Kind::AddAlreadyExists: ++adds;   break;
+            case Conflict::Kind::AddAlreadyExists: ++adds;    break;
             case Conflict::Kind::Missing:          ++missing; break;
             case Conflict::Kind::ModifyStale:      ++stale;   break;
         }

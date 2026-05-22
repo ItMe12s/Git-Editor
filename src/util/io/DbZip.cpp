@@ -45,8 +45,8 @@ DbFileForm peekDbFileForm(std::filesystem::path const& path) {
 }
 
 bool writeZipAtomic(std::filesystem::path const& outZip,
-                    std::string const&            entryName,
-                    ByteVector const&             data) {
+                    std::string const&           entryName,
+                    ByteVector const&            data) {
     auto tmpPath = outZip;
     tmpPath += ".tmp";
 
@@ -77,7 +77,7 @@ bool writeZipAtomic(std::filesystem::path const& outZip,
 }
 
 Result<ByteVector> readZipEntry(std::filesystem::path const& inZip,
-                                std::string const&            entryName) {
+                                std::string const&           entryName) {
     Result<ByteVector> out;
 
     auto unzipRes = geode::utils::file::Unzip::create(inZip);
@@ -122,7 +122,7 @@ Result<ByteVector> readZipEntry(std::filesystem::path const& inZip,
 
 Result<void> extractZipToFile(std::filesystem::path const& inZip,
                               std::filesystem::path const& outFile,
-                              std::string const&            entryName) {
+                              std::string const&           entryName) {
     Result<void> out;
     auto res = readZipEntry(inZip, entryName);
     if (!res.ok) {

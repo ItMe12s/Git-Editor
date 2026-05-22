@@ -29,8 +29,8 @@ protected:
     void rebuildList();
     void renderList(std::vector<LevelSummary> levels);
 
-    geode::Ref<LevelEditorLayer>  m_editor;
-    geode::Ref<EditorPauseLayer>  m_pauseLayer;
+    geode::Ref<LevelEditorLayer>    m_editor;
+    geode::Ref<EditorPauseLayer>    m_pauseLayer;
     alpha::ui::AdvancedScrollLayer* m_scroll = nullptr;
     scroll_list_popup::ListState    m_listState{};
     bool                            m_busy = false;
