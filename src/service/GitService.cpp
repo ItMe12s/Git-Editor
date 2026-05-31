@@ -81,12 +81,12 @@ Result<CommitId> GitService::commit(
     auto blob = dumpDelta(delta);
 
     auto id = m_store.insertAndSetHead(levelKey, parent, std::nullopt, message, blob);
-    if (!id) return logAndFail<CommitId>("DB insert/head transaction failed");
+    if (!id.ok) return logAndFail<CommitId>(id.error);
 
-    this->cachePut(*id, std::move(incoming));
+    this->cachePut(id.value, std::move(incoming));
 
     out.ok     = true;
-    out.value  = *id;
+    out.value  = id.value;
     return out;
 }
 
@@ -146,11 +146,11 @@ Result<CommitId> GitService::finalizeCheckout(
     auto id = m_store.insertAndSetHead(
         pending.levelKey, pending.parent, pending.reverts, pending.message, pending.deltaBlob
     );
-    if (!id) return failResult<CommitId>("DB insert/head transaction failed");
-    this->cachePut(*id, applied);
+    if (!id.ok) return failResult<CommitId>(id.error);
+    this->cachePut(id.value, applied);
     Result<CommitId> r;
     r.ok    = true;
-    r.value = *id;
+    r.value = id.value;
     return r;
 }
 
@@ -442,12 +442,12 @@ Result<void> GitService::finalizeImportManyFromGdge(
             parent = p.parent;
         }
         auto id = m_store.insertAndSetHead(p.levelKey, parent, p.reverts, p.message, p.deltaBlob);
-        if (!id) {
-            out.error = "insertAndSetHead failed at entry " + std::to_string(i);
+        if (!id.ok) {
+            out.error = "insertAndSetHead failed at entry " + std::to_string(i) + ": " + id.error;
             return out;
         }
-        minted.push_back(*id);
-        if (p.cacheState) this->cachePut(*id, *p.cacheState);
+        minted.push_back(id.value);
+        if (p.cacheState) this->cachePut(id.value, *p.cacheState);
     }
     out.ok = true;
     return out;

@@ -2,6 +2,7 @@
 
 #include "model/LevelParser.hpp"
 #include "service/CommitSummaryBuilder.hpp"
+#include "util/io/BlobCodec.hpp"
 #include "util/io/PathUtf8.hpp"
 
 #include <fmt/format.h>
@@ -9,6 +10,12 @@
 #include <fstream>
 
 namespace git_editor {
+
+namespace {
+
+constexpr std::size_t kLegacyBlobFootprintBytes = 16u * 1024u * 1024u;
+
+} // namespace
 
 void runEdgeTests(GitService& git, CommitStore& st, std::filesystem::path const& testDir, ReportBuilder& R) {
     if (!st.dbPath().empty()) {
@@ -95,6 +102,48 @@ void runEdgeTests(GitService& git, CommitStore& st, std::filesystem::path const&
         return;
     }
     R.addPass(kSuiteEdge, "list_levels_after_delete", "kHistDst absent from listLevels", listLevelsT.ms());
+
+    R.addAction(kSuiteEdge, "large delta storage roundtrip");
+    ScopedTimer largeDeltaT;
+    st.deleteLevel(kHistDst);
+    std::string largeDelta(kLegacyBlobFootprintBytes + 1024u, 'x');
+    auto largeInsert = st.insertAndSetHead(kHistDst, std::nullopt, std::nullopt, "large_delta", largeDelta);
+    if (!largeInsert.ok) {
+        R.addFail(kSuiteEdge, "large_delta_insert", largeInsert.error, largeDeltaT.ms());
+        return;
+    }
+    auto largeRow = st.get(largeInsert.value);
+    if (!largeRow) {
+        R.addFail(kSuiteEdge, "large_delta_get", "inserted row missing", largeDeltaT.ms());
+        return;
+    }
+    if (largeRow->deltaBlob != largeDelta) {
+        R.addFail(
+            kSuiteEdge,
+            "large_delta_roundtrip",
+            fmt::format("expected {} bytes got {}", largeDelta.size(), largeRow->deltaBlob.size()),
+            largeDeltaT.ms()
+        );
+        return;
+    }
+    R.addPass(
+        kSuiteEdge,
+        "large_delta_roundtrip",
+        fmt::format("stored {} raw bytes", largeDelta.size()),
+        largeDeltaT.ms()
+    );
+
+    R.addAction(kSuiteEdge, "blob cap error message");
+    ScopedTimer capMessageT;
+    auto const tooLarge = static_cast<std::uint64_t>(kMaxBlobFootprintBytes) + 1u;
+    auto const capMessage = blobFootprintLimitMessage(tooLarge);
+    if (!isBlobFootprintTooLarge(tooLarge)
+        || capMessage.find(std::to_string(tooLarge)) == std::string::npos
+        || capMessage.find(std::to_string(kMaxBlobFootprintBytes)) == std::string::npos) {
+        R.addFail(kSuiteEdge, "blob_cap_message", capMessage, capMessageT.ms());
+        return;
+    }
+    R.addPass(kSuiteEdge, "blob_cap_message", capMessage, capMessageT.ms());
 
     R.addAction(kSuiteEdge, "updateMessage roundtrip");
     ScopedTimer updateMsgT;

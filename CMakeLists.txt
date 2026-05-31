@@ -18,6 +18,7 @@ target_include_directories(sqlite3 PUBLIC
 target_compile_definitions(sqlite3 PRIVATE
     SQLITE_THREADSAFE=1
     SQLITE_DEFAULT_MEMSTATUS=0
+    SQLITE_MAX_LENGTH=1000000000
     SQLITE_DQS=0
     SQLITE_OMIT_LOAD_EXTENSION
     SQLITE_OMIT_DEPRECATED
@@ -26,6 +27,9 @@ set_target_properties(sqlite3 PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 add_library(${PROJECT_NAME} SHARED ${SOURCES})
 target_include_directories(${PROJECT_NAME} PRIVATE src)
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+    GIT_EDITOR_SQLITE_MAX_LENGTH=1000000000
+)
 target_link_libraries(${PROJECT_NAME} sqlite3)
 
 set_target_properties(${PROJECT_NAME} PROPERTIES

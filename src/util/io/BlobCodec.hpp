@@ -6,7 +6,18 @@
 
 namespace git_editor {
 
-constexpr std::uint32_t kMaxBlobFootprintBytes = 16u * 1024u * 1024u;
+#ifdef GIT_EDITOR_SQLITE_MAX_LENGTH
+constexpr std::uint64_t kConfiguredBlobFootprintBytes = GIT_EDITOR_SQLITE_MAX_LENGTH;
+#else
+constexpr std::uint64_t kConfiguredBlobFootprintBytes = 1000000000u;
+#endif
+
+static_assert(kConfiguredBlobFootprintBytes <= 0xFFFFFFFFu);
+constexpr std::uint32_t kMaxBlobFootprintBytes =
+    static_cast<std::uint32_t>(kConfiguredBlobFootprintBytes);
+
+bool isBlobFootprintTooLarge(std::uint64_t rawSize);
+std::string blobFootprintLimitMessage(std::uint64_t rawSize);
 
 std::optional<std::string> compressBlob(std::string const& raw);
 

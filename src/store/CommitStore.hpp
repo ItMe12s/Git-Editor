@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+#include "core/Result.hpp"
+
 struct sqlite3;
 struct sqlite3_stmt;
 
@@ -23,14 +25,14 @@ struct LevelSummary {
 };
 
 struct CommitRow {
-    CommitId                 id        = 0;
-    LevelKey                 levelKey;
-    std::optional<CommitId>  parent;
-    std::optional<CommitId>  reverts;
-    std::string              message;
-    std::int64_t             createdAt = 0;
+    CommitId                id        = 0;
+    LevelKey                levelKey;
+    std::optional<CommitId> parent;
+    std::optional<CommitId> reverts;
+    std::string             message;
+    std::int64_t            createdAt = 0;
     // Decompressed delta JSON from get()/list(). Use parseDelta directly.
-    std::string              deltaBlob;
+    std::string             deltaBlob;
 };
 
 struct CommitSummary {
@@ -66,7 +68,7 @@ public:
     std::filesystem::path const& dbPath() const { return m_dbPath; }
 
     // deltaBlob: uncompressed delta JSON, stored compressed in SQLite.
-    std::optional<CommitId> insertAndSetHead(
+    Result<CommitId> insertAndSetHead(
         LevelKey const&         levelKey,
         std::optional<CommitId> parent,
         std::optional<CommitId> reverts,
@@ -99,7 +101,7 @@ public:
 private:
     bool ensureSchema();
 
-    std::optional<CommitId> insertAt(
+    Result<CommitId> insertAt(
         LevelKey const&         levelKey,
         std::optional<CommitId> parent,
         std::optional<CommitId> reverts,

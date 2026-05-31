@@ -193,10 +193,24 @@ bool writeGdgePackageSqlite(std::filesystem::path const& outPath,
                     ok = false;
                     break;
                 }
+                int const bindBlobRc = sqlite3_bind_blob64(
+                    st,
+                    6,
+                    stored->data(),
+                    static_cast<sqlite3_uint64>(stored->size()),
+                    SQLITE_TRANSIENT
+                );
                 ok = bindText(st, 4, c.message)
                     && sqlite3_bind_int64(st, 5, c.createdAt) == SQLITE_OK
-                    && sqlite3_bind_blob(st, 6, stored->data(), static_cast<int>(stored->size()), SQLITE_TRANSIENT) == SQLITE_OK
+                    && bindBlobRc == SQLITE_OK
                     && sqlite3_step(st) == SQLITE_DONE;
+                if (bindBlobRc != SQLITE_OK) {
+                    geode::log::error(
+                        "gdge export: bind delta_blob failed rc={} compressed_size={}",
+                        bindBlobRc,
+                        stored->size()
+                    );
+                }
                 if (!ok) break;
             }
             sqlite3_finalize(st);

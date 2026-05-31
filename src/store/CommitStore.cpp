@@ -51,6 +51,12 @@ CommitRow rowFromStatement(sqlite3_stmt* st, bool includeBlob) {
     return r;
 }
 
+Result<CommitId> failInsert(std::string error) {
+    Result<CommitId> out;
+    out.error = std::move(error);
+    return out;
+}
+
 } // namespace
 
 CommitStore::~CommitStore() {
@@ -98,7 +104,7 @@ bool CommitStore::init(std::filesystem::path const& dbPath) {
     return true;
 }
 
-std::optional<CommitId> CommitStore::insertAndSetHead(
+Result<CommitId> CommitStore::insertAndSetHead(
     LevelKey const&         levelKey,
     std::optional<CommitId> parent,
     std::optional<CommitId> reverts,
@@ -106,21 +112,25 @@ std::optional<CommitId> CommitStore::insertAndSetHead(
     std::string const&      deltaBlob
 ) {
     std::lock_guard<std::recursive_mutex> lk(m_mutex);
-    if (!m_db) return std::nullopt;
+    if (!m_db) return failInsert("commit database is not open");
 
     commit_schema::DeferredFkTransaction tx(m_db);
-    if (!tx.begin()) return std::nullopt;
+    if (!tx.begin()) {
+        return failInsert(std::string("begin commit transaction failed: ") + sqlite3_errmsg(m_db));
+    }
 
     auto const id = this->insertAt(levelKey, parent, reverts, message, commitStoreNowSeconds(), deltaBlob);
-    if (!id) {
+    if (!id.ok) {
         tx.rollback();
-        return std::nullopt;
+        return id;
     }
-    if (!this->setHead(levelKey, *id)) {
+    if (!this->setHead(levelKey, id.value)) {
         tx.rollback();
-        return std::nullopt;
+        return failInsert(std::string("set HEAD failed: ") + sqlite3_errmsg(m_db));
     }
-    if (!tx.commit()) return std::nullopt;
+    if (!tx.commit()) {
+        return failInsert(std::string("commit transaction failed: ") + sqlite3_errmsg(m_db));
+    }
 
     return id;
 }
@@ -233,7 +243,8 @@ std::optional<CommitId> CommitStore::squash(
     auto const newId = this->insertAt(
         levelKey, parentOfOldest, std::nullopt, message, squashCreatedAt, deltaBlob
     );
-    if (!newId) {
+    if (!newId.ok) {
+        geode::log::error("squash insert failed: {}", newId.error);
         tx.rollback();
         return std::nullopt;
     }
@@ -261,7 +272,7 @@ std::optional<CommitId> CommitStore::squash(
 
     if (!runStmt(
         "UPDATE commits SET parent_id = ? WHERE parent_id = ? AND level_key = ? AND id != ?;",
-        {{1, *newId}, {2, newest}, {4, *newId}},
+        {{1, newId.value}, {2, newest}, {4, newId.value}},
         {{3, &levelKey}}
     )) { tx.rollback(); return std::nullopt; }
 
@@ -271,7 +282,7 @@ std::optional<CommitId> CommitStore::squash(
 
     if (!runStmt(
         ("UPDATE refs SET head_id = ? WHERE head_id IN (" + idList + ") AND level_key = ?;").c_str(),
-        {{1, *newId}},
+        {{1, newId.value}},
         {{2, &levelKey}}
     )) { tx.rollback(); return std::nullopt; }
 
@@ -281,7 +292,7 @@ std::optional<CommitId> CommitStore::squash(
     }
     if (!tx.commit()) return std::nullopt;
 
-    return newId;
+    return newId.value;
 }
 
 std::vector<LevelSummary> CommitStore::listLevels() {
@@ -419,12 +430,12 @@ bool CommitStore::replaceLevelHistoryFrom(LevelKey const& dest, LevelKey const& 
         auto const newId = this->insertAt(
             dest, newParent, newReverts, row.message, row.createdAt, row.deltaBlob
         );
-        if (!newId) {
-            geode::log::error("replaceLevelHistoryFrom: insert failed at old id {}", oldId);
+        if (!newId.ok) {
+            geode::log::error("replaceLevelHistoryFrom: insert failed at old id {}: {}", oldId, newId.error);
             tx.rollback();
             return false;
         }
-        idMap[oldId] = *newId;
+        idMap[oldId] = newId.value;
     }
 
     if (auto it = idMap.find(*headOld); it == idMap.end()) {
@@ -480,7 +491,7 @@ bool CommitStore::ensureSchema() {
     return commit_schema::ensureSchema(m_db, kSchemaVersion);
 }
 
-std::optional<CommitId> CommitStore::insertAt(
+Result<CommitId> CommitStore::insertAt(
     LevelKey const&         levelKey,
     std::optional<CommitId> parent,
     std::optional<CommitId> reverts,
@@ -488,37 +499,59 @@ std::optional<CommitId> CommitStore::insertAt(
     std::int64_t            createdAt,
     std::string const&      deltaBlob
 ) {
-    if (!m_db) return std::nullopt;
+    if (!m_db) return failInsert("commit database is not open");
+
+    auto fail = [&](std::string error) {
+        this->resetStatement(m_stmtInsert);
+        return failInsert(std::move(error));
+    };
 
     this->resetStatement(m_stmtInsert);
-    sqlite3_bind_text(
+    int rc = sqlite3_bind_text(
         m_stmtInsert, 1, levelKey.c_str(), static_cast<int>(levelKey.size()), SQLITE_TRANSIENT
     );
-    if (parent)  sqlite3_bind_int64(m_stmtInsert, 2, *parent);   else sqlite3_bind_null(m_stmtInsert, 2);
-    if (reverts) sqlite3_bind_int64(m_stmtInsert, 3, *reverts);  else sqlite3_bind_null(m_stmtInsert, 3);
-    sqlite3_bind_text(
+    if (rc != SQLITE_OK) return fail(std::string("bind level_key failed: ") + sqlite3_errmsg(m_db));
+    rc = parent ? sqlite3_bind_int64(m_stmtInsert, 2, *parent) : sqlite3_bind_null(m_stmtInsert, 2);
+    if (rc != SQLITE_OK) return fail(std::string("bind parent_id failed: ") + sqlite3_errmsg(m_db));
+    rc = reverts ? sqlite3_bind_int64(m_stmtInsert, 3, *reverts) : sqlite3_bind_null(m_stmtInsert, 3);
+    if (rc != SQLITE_OK) return fail(std::string("bind reverts_id failed: ") + sqlite3_errmsg(m_db));
+    rc = sqlite3_bind_text(
         m_stmtInsert, 4, message.c_str(), static_cast<int>(message.size()), SQLITE_TRANSIENT
     );
-    sqlite3_bind_int64(m_stmtInsert, 5, createdAt);
+    if (rc != SQLITE_OK) return fail(std::string("bind message failed: ") + sqlite3_errmsg(m_db));
+    rc = sqlite3_bind_int64(m_stmtInsert, 5, createdAt);
+    if (rc != SQLITE_OK) return fail(std::string("bind created_at failed: ") + sqlite3_errmsg(m_db));
+    if (isBlobFootprintTooLarge(deltaBlob.size())) {
+        return fail(blobFootprintLimitMessage(deltaBlob.size()));
+    }
     auto const stored = compressBlob(deltaBlob);
     if (!stored) {
-        geode::log::error("insertAt: compressBlob refused payload (size={})", deltaBlob.size());
-        this->resetStatement(m_stmtInsert);
-        return std::nullopt;
+        return fail("compress delta payload failed");
     }
-    sqlite3_bind_blob(
-        m_stmtInsert, 6, stored->data(), static_cast<int>(stored->size()), SQLITE_TRANSIENT
+    rc = sqlite3_bind_blob64(
+        m_stmtInsert,
+        6,
+        stored->data(),
+        static_cast<sqlite3_uint64>(stored->size()),
+        SQLITE_TRANSIENT
     );
-
-    std::optional<CommitId> out;
-    if (sqlite3_step(m_stmtInsert) == SQLITE_DONE) {
-        out = sqlite3_last_insert_rowid(m_db);
-
-    } else {
-        geode::log::error("insert step failed: {}", sqlite3_errmsg(m_db));
+    if (rc != SQLITE_OK) {
+        return fail(
+            std::string("bind delta_blob failed: ") + sqlite3_errmsg(m_db)
+            + " (rc=" + std::to_string(rc)
+            + ", compressed_size=" + std::to_string(stored->size()) + ")"
+        );
     }
-    this->resetStatement(m_stmtInsert);
-    return out;
+
+    if (sqlite3_step(m_stmtInsert) == SQLITE_DONE) {
+        Result<CommitId> out;
+        out.ok = true;
+        out.value = sqlite3_last_insert_rowid(m_db);
+        this->resetStatement(m_stmtInsert);
+        return out;
+    }
+
+    return fail(std::string("insert step failed: ") + sqlite3_errmsg(m_db));
 }
 
 bool CommitStore::deleteCommitsAndRefsForKeyNoTransaction(

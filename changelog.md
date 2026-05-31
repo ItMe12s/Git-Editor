@@ -11,6 +11,11 @@ Consider giving it a star and check the commit history for a more technical chan
 
 ---
 
+## 1.0.0-beta.12
+
+- Bigger action/commit size (SQLite max length is now 1,000,000,000), basically uncapped.
+- Improved error feedback.
+
 ## 1.0.0-beta.11 - The "Better for All" Update
 
 This update focuses on the project's codebase, making it much easier for anyone to contribute.
