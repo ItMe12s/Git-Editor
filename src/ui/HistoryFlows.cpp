@@ -178,17 +178,15 @@ void HistoryLayer::startCheckoutFlow(CommitId commitId, std::string const& commi
                     return sharedGitService().finalizeCheckout(pending, applied);
                 },
                 prepared_editor_flow::OutcomeHandlers{
-                    .onSuccess = [self, pauseRef, editorRef, appliedState]() {
+                    .onSuccess = [self, pauseRef]() {
                         Notification::create("Checked out", NotificationIcon::Success)->show();
-                        prepared_editor_flow::deferCloseAndReapply(
+                        prepared_editor_flow::deferCloseAndResume(
                             [self]() {
                                 if (ui_node_lifecycle::isNodeActive(self.data())) {
                                     self->closeOnce(nullptr);
                                 }
                             },
-                            pauseRef,
-                            editorRef,
-                            appliedState
+                            pauseRef
                         );
                     },
                     .onPrepareError = [](std::string const& error) {
@@ -246,18 +244,16 @@ void HistoryLayer::startRevertFlow(CommitId commitId, std::string const& commitM
                     return sharedGitService().finalizeRevert(pending, payload.state);
                 },
                 prepared_editor_flow::OutcomeHandlers{
-                    .onSuccess = [self, pauseRef, editorRef, appliedState, conflicts]() {
+                    .onSuccess = [self, pauseRef, conflicts]() {
                         Notification::create("Reverted", NotificationIcon::Success)->show();
                         history_actions::showConflictSummary(*conflicts);
-                        prepared_editor_flow::deferCloseAndReapply(
+                        prepared_editor_flow::deferCloseAndResume(
                             [self]() {
                                 if (ui_node_lifecycle::isNodeActive(self.data())) {
                                     self->closeOnce(nullptr);
                                 }
                             },
-                            pauseRef,
-                            editorRef,
-                            appliedState
+                            pauseRef
                         );
                     },
                     .onPrepareError = [](std::string const& error) {

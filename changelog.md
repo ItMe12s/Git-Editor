@@ -11,6 +11,18 @@ Consider giving it a star and check the commit history for a more technical chan
 
 ---
 
+## 1.0.0-beta.13
+
+History for levels with 40k+ objects committed before this update may be truncated.
+Delete the level in the Levels (Git Editor) browser, then commit once in the editor.
+
+I'm deeply sorry for any data or history loss.
+
+- Fixed checkout, revert, squash, load, and commit for levels above the normal 40k object cap
+  (Git Editor enables high/unlimited object mode when reading/writing the editor).
+- Fixed crashes when closing the History and Levels menus after checkout, revert, or load.
+- Faster commits on large levels (spatial UUID matching, leaner diffing).
+
 ## 1.0.0-beta.12
 
 - Bigger action/commit size (SQLite max length is now 1,000,000,000), basically uncapped.

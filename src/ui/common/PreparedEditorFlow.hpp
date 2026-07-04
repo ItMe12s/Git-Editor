@@ -2,12 +2,10 @@
 
 #include "service/PendingOps.hpp"
 #include "core/Result.hpp"
-#include "editor/LevelStateIO.hpp"
 #include "GitUiActionRunner.hpp"
 #include "UiAction.hpp"
 
 #include <Geode/binding/EditorPauseLayer.hpp>
-#include <Geode/binding/LevelEditorLayer.hpp>
 #include <Geode/Geode.hpp>
 #include <Geode/ui/Notification.hpp>
 
@@ -41,18 +39,13 @@ inline void resumePauseIfNeeded(
     layer->onResume(nullptr);
 }
 
-inline void deferCloseAndReapply(
+inline void deferCloseAndResume(
     std::function<void()> tryClose,
-    geode::Ref<EditorPauseLayer> pause,
-    geode::Ref<LevelEditorLayer> editor,
-    std::shared_ptr<LevelState> state
+    geode::Ref<EditorPauseLayer> pause
 ) {
-    geode::queueInMainThread([tryClose = std::move(tryClose), pause, editor, state]() {
+    geode::queueInMainThread([tryClose = std::move(tryClose), pause]() {
         tryClose();
         resumePauseIfNeeded(pause, true);
-        if (auto* ed = editor.data()) {
-            applyLevelState(ed, *state);
-        }
     });
 }
 

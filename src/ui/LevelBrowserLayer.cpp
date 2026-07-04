@@ -264,17 +264,15 @@ void LevelBrowserLayer::renderList(std::vector<LevelSummary> levels) {
                                 return sharedGitService().finalizeImportLevelFrom(pending, applied);
                             },
                             prepared_editor_flow::OutcomeHandlers{
-                                .onSuccess = [self, pauseRef, editorRef, appliedState]() {
+                                .onSuccess = [self, pauseRef]() {
                                     Notification::create("Level loaded", NotificationIcon::Success)->show();
-                                    prepared_editor_flow::deferCloseAndReapply(
+                                    prepared_editor_flow::deferCloseAndResume(
                                         [self]() {
                                             if (ui_node_lifecycle::isNodeActive(self.data())) {
                                                 self->closeOnce(nullptr);
                                             }
                                         },
-                                        pauseRef,
-                                        editorRef,
-                                        appliedState
+                                        pauseRef
                                     );
                                 },
                                 .onPrepareError = [](std::string const& error) {
