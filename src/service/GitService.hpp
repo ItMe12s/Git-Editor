@@ -67,7 +67,7 @@ public:
 
     Result<std::string> describeCommitChanges(CommitId id);
 
-    std::optional<LevelState> reconstruct(CommitId commitId);
+    std::shared_ptr<const LevelState> reconstruct(CommitId commitId);
 
     // Test-only helpers. Do not call from UI.
     // They skip the editor-apply gate and can leave DB and editor out of sync.
@@ -91,7 +91,8 @@ private:
     );
 
     void cachePut(CommitId id, LevelState state);
-    std::optional<LevelState> cacheGet(CommitId id);
+    void cachePut(CommitId id, LevelStatePtr state);
+    LevelStatePtr cacheGet(CommitId id);
 
     CommitStore& m_store;
     StateCache m_cache;

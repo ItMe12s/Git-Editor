@@ -8,7 +8,7 @@ void StateCache::clear() {
     m_map.clear();
 }
 
-void StateCache::put(CommitId const& id, LevelState state) {
+void StateCache::put(CommitId const& id, LevelStatePtr state) {
     auto it = m_map.find(id);
     if (it != m_map.end()) {
         it->second = std::move(state);
@@ -20,9 +20,9 @@ void StateCache::put(CommitId const& id, LevelState state) {
     m_map.emplace(id, std::move(state));
 }
 
-std::optional<LevelState> StateCache::get(CommitId const& id) const {
+LevelStatePtr StateCache::get(CommitId const& id) const {
     auto it = m_map.find(id);
-    if (it == m_map.end()) return std::nullopt;
+    if (it == m_map.end()) return {};
     return it->second;
 }
 

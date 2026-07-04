@@ -48,6 +48,7 @@ inline LevelKey const kAdvCollabScratch{"__git_editor_at_adv_collab_scratch"};
 inline LevelKey const kAdvCollabCara{"__git_editor_at_adv_collab_cara"};
 inline LevelKey const kAdvCollabLegacy{"__git_editor_at_adv_collab_legacy"};
 inline LevelKey const kTwoPhase{"__git_editor_at_two_phase"};
+inline LevelKey const kPerf{"__git_editor_at_perf"};
 
 struct ReportBuilder {
     AutomatedTestSummary& out;
@@ -139,6 +140,7 @@ void runCollabPlanTest(GitService& git, CommitStore& st, std::filesystem::path c
 void runAdvancedCollabSimulatorTests(GitService& git, CommitStore& st, std::filesystem::path const& testDir, ReportBuilder& R);
 void runEdgeTests(GitService& git, CommitStore& st, std::filesystem::path const& testDir, ReportBuilder& R);
 void runTwoPhaseTests(GitService& git, CommitStore& st, std::filesystem::path const& testDir, ReportBuilder& R);
+void runCommitPerfTests(GitService& git, CommitStore& st, ReportBuilder& R);
 void appendManualSkips(ReportBuilder& R);
 
 } // namespace git_editor

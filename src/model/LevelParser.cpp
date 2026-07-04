@@ -25,14 +25,23 @@ FieldMap readKvChunk(std::string_view chunk) {
 }
 
 std::string serializeFields(FieldMap const& m) {
+    std::vector<std::pair<std::string_view, std::string_view>> items;
+    items.reserve(m.size());
+    for (auto const& [k, v] : m) {
+        items.emplace_back(k, v);
+    }
+    std::sort(items.begin(), items.end(), [](auto const& a, auto const& b) {
+        return a.first < b.first;
+    });
+
     std::string out;
     std::size_t cap = 0;
-    for (auto const& [k, v] : m) {
+    for (auto const& [k, v] : items) {
         cap += k.size() + v.size() + 2;
     }
     out.reserve(cap);
     bool first = true;
-    for (auto const& [k, v] : m) {
+    for (auto const& [k, v] : items) {
         if (!first) out.push_back(',');
         first = false;
         out.append(k);

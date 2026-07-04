@@ -1,7 +1,7 @@
 #pragma once
 
 #include <cstdint>
-#include <map>
+#include <memory>
 #include <string>
 #include <unordered_map>
 
@@ -11,7 +11,7 @@ using ObjectUuid = std::uint64_t;
 
 // GD key/value pairs. Keys stay as raw strings.
 // Object data uses kA* and kS* string keys alongside numeric keys.
-using FieldMap = std::map<std::string, std::string>;
+using FieldMap = std::unordered_map<std::string, std::string>;
 
 namespace key {
     inline const std::string kType     = "1";
@@ -31,5 +31,7 @@ struct LevelState {
     FieldMap header;
     std::unordered_map<ObjectUuid, Object> objects;
 };
+
+using LevelStatePtr = std::shared_ptr<const LevelState>;
 
 } // namespace git_editor

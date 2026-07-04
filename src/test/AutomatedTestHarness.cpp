@@ -116,7 +116,7 @@ std::vector<LevelKey> allTestKeys() {
         kHistSrc, kHistDst, kCollabBase, kCollabLay, kDecA, kDecB, kOther,
         kAdvCollabBase, kAdvCollabIntegrator, kAdvCollabAlice, kAdvCollabBob,
         kAdvCollabScratch, kAdvCollabCara, kAdvCollabLegacy,
-        kTwoPhase
+        kTwoPhase, kPerf
     };
 }
 

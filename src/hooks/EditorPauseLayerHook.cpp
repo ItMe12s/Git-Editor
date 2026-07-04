@@ -200,7 +200,7 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
                     return;
                 }
                 git_editor::ui_action_runner::runWorkerResult<git_editor::Result<git_editor::CommitId>>(
-                    [levelKey = *levelKey, message, levelStr]() {
+                    [levelKey = *levelKey, message, levelStr = std::move(levelStr)]() {
                         return git_editor::sharedGitService().commit(levelKey, message, levelStr);
                     },
                     [](git_editor::Result<git_editor::CommitId> outcome) {

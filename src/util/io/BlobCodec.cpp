@@ -18,6 +18,10 @@ std::string blobFootprintLimitMessage(std::uint64_t rawSize) {
 }
 
 std::optional<std::string> compressBlob(std::string const& raw) {
+    return compressBlob(raw, Z_BEST_COMPRESSION);
+}
+
+std::optional<std::string> compressBlob(std::string const& raw, int level) {
     if (isBlobFootprintTooLarge(raw.size())) {
         geode::log::error("compressBlob: {}", blobFootprintLimitMessage(raw.size()));
         return std::nullopt;
@@ -29,7 +33,7 @@ std::optional<std::string> compressBlob(std::string const& raw) {
     int rc = compress2(
         reinterpret_cast<Bytef*>(out.data() + 4), &dstLen,
         reinterpret_cast<Bytef const*>(raw.data()), static_cast<uLong>(raw.size()),
-        Z_BEST_COMPRESSION
+        level
     );
     if (rc != Z_OK) {
         geode::log::error("compressBlob: compress2 rc={}", rc);

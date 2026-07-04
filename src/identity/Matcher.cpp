@@ -74,6 +74,26 @@ struct FpHash {
     }
 };
 
+struct SpatialCell {
+    std::string type;
+    int         cx = 0;
+    int         cy = 0;
+
+    bool operator==(SpatialCell const& o) const = default;
+};
+
+struct SpatialCellHash {
+    std::size_t operator()(SpatialCell const& c) const noexcept {
+        std::size_t h = std::hash<std::string>{}(c.type);
+        auto mix = [&](std::size_t v) {
+            h ^= v + 0x9e3779b97f4a7c15ull + (h << 6) + (h >> 2);
+        };
+        mix(std::hash<int>{}(c.cx));
+        mix(std::hash<int>{}(c.cy));
+        return h;
+    }
+};
+
 Fingerprint fingerprintOf(FieldMap const& f) {
     Fingerprint fp;
     fp.type   = fieldOrEmpty(f, key::kType);
@@ -84,6 +104,15 @@ Fingerprint fingerprintOf(FieldMap const& f) {
     return fp;
 }
 
+SpatialCell spatialCellOf(FieldMap const& f) {
+    // Cell size tied to kSpatialThreshold, change both if threshold moves
+    SpatialCell cell;
+    cell.type = fieldOrEmpty(f, key::kType);
+    cell.cx   = static_cast<int>(std::floor(parseDoubleOr(f, key::kX, 0.0) / kSpatialThreshold));
+    cell.cy   = static_cast<int>(std::floor(parseDoubleOr(f, key::kY, 0.0) / kSpatialThreshold));
+    return cell;
+}
+
 double distanceSquared(FieldMap const& a, FieldMap const& b) {
     double dx = parseDoubleOr(a, key::kX, 0.0) - parseDoubleOr(b, key::kX, 0.0);
     double dy = parseDoubleOr(a, key::kY, 0.0) - parseDoubleOr(b, key::kY, 0.0);
@@ -92,14 +121,15 @@ double distanceSquared(FieldMap const& a, FieldMap const& b) {
 
 } // namespace
 
-void assignUuids(LevelState const& previous, LevelState& incoming) {
+void assignUuids(LevelState const& previous, LevelState& incoming, AssignUuidStats* stats) {
     if (previous.objects.empty()) {
         assignFreshUuids(incoming);
+        if (stats) stats->freshUuids = incoming.objects.size();
         return;
     }
 
     std::unordered_map<Fingerprint, std::deque<ObjectUuid>, FpHash> buckets;
-    std::unordered_map<std::string, std::vector<ObjectUuid>> byType;
+    std::unordered_map<SpatialCell, std::vector<ObjectUuid>, SpatialCellHash> spatialGrid;
     std::unordered_set<ObjectUuid> claimed;
 
     {
@@ -111,7 +141,7 @@ void assignUuids(LevelState const& previous, LevelState& incoming) {
         for (auto u : orderedPrev) {
             auto const& obj = previous.objects.at(u);
             buckets[fingerprintOf(obj.fields)].push_back(u);
-            byType[fieldOrEmpty(obj.fields, key::kType)].push_back(u);
+            spatialGrid[spatialCellOf(obj.fields)].push_back(u);
         }
     }
 
@@ -138,24 +168,37 @@ void assignUuids(LevelState const& previous, LevelState& incoming) {
             }
         }
 
-        if (matched == 0) {
-            auto typeIt = byType.find(fieldOrEmpty(obj.fields, key::kType));
-            if (typeIt != byType.end()) {
-                ObjectUuid best    = 0;
-                double     bestD2  = kSpatialThreshold * kSpatialThreshold;
-                for (auto cand : typeIt->second) {
-                    if (claimed.contains(cand)) continue;
-                    double d2 = distanceSquared(previous.objects.at(cand).fields, obj.fields);
-                    if (d2 < bestD2) {
-                        bestD2 = d2;
-                        best   = cand;
-                    }
-                }
-                matched = best;
-            }
+        if (matched != 0) {
+            if (stats) ++stats->fingerprintHits;
         }
 
-        if (matched == 0) matched = freshUuid();
+        if (matched == 0) {
+            auto center = spatialCellOf(obj.fields);
+            ObjectUuid best   = 0;
+            double     bestD2 = kSpatialThreshold * kSpatialThreshold;
+            for (int dx = -1; dx <= 1; ++dx) {
+                for (int dy = -1; dy <= 1; ++dy) {
+                    SpatialCell probe { center.type, center.cx + dx, center.cy + dy };
+                    auto cellIt = spatialGrid.find(probe);
+                    if (cellIt == spatialGrid.end()) continue;
+                    for (auto cand : cellIt->second) {
+                        if (claimed.contains(cand)) continue;
+                        double d2 = distanceSquared(previous.objects.at(cand).fields, obj.fields);
+                        if (d2 < bestD2) {
+                            bestD2 = d2;
+                            best   = cand;
+                        }
+                    }
+                }
+            }
+            matched = best;
+            if (matched != 0 && stats) ++stats->spatialFallbacks;
+        }
+
+        if (matched == 0) {
+            matched = freshUuid();
+            if (stats) ++stats->freshUuids;
+        }
         claimed.insert(matched);
 
         obj.uuid = matched;

@@ -4,7 +4,13 @@
 
 namespace git_editor {
 
-void assignUuids(LevelState const& previous, LevelState& incoming);
+struct AssignUuidStats {
+    std::size_t fingerprintHits  = 0;
+    std::size_t spatialFallbacks = 0;
+    std::size_t freshUuids       = 0;
+};
+
+void assignUuids(LevelState const& previous, LevelState& incoming, AssignUuidStats* stats = nullptr);
 
 void assignFreshUuids(LevelState& state);
 

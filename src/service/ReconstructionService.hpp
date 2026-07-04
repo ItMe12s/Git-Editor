@@ -7,14 +7,13 @@
 
 #include <Geode/loader/Log.hpp>
 
-#include <optional>
 #include <utility>
 #include <vector>
 
 namespace git_editor::reconstruction_service {
 
 template <class CacheGet, class CachePut>
-std::optional<LevelState> reconstructCommitChain(
+LevelStatePtr reconstructCommitChain(
     CommitStore& store,
     CommitId commitId,
     CacheGet&& cacheGet,
@@ -30,13 +29,13 @@ std::optional<LevelState> reconstructCommitChain(
 
     while (true) {
         if (auto hit = cacheGet(cur)) {
-            baseState = std::move(*hit);
+            baseState = LevelState(*hit);
             break;
         }
         auto row = store.get(cur);
         if (!row) {
             geode::log::error("missing commit {} in chain", cur);
-            return std::nullopt;
+            return {};
         }
         chain.push_back(*row);
         if (!row->parent) break;
@@ -47,13 +46,14 @@ std::optional<LevelState> reconstructCommitChain(
         auto delta = parseDelta(it->deltaBlob);
         if (!delta) {
             geode::log::error("delta for commit {} failed to parse; reconstruct aborted", it->id);
-            return std::nullopt;
+            return {};
         }
         baseState = apply(std::move(baseState), *delta, nullptr);
-        cachePut(it->id, baseState);
+        cachePut(it->id, std::make_shared<const LevelState>(std::move(baseState)));
     }
 
-    return baseState;
+    if (auto hit = cacheGet(commitId)) return hit;
+    return std::make_shared<const LevelState>(std::move(baseState));
 }
 
 } // namespace git_editor::reconstruction_service

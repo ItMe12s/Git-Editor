@@ -11,20 +11,17 @@ namespace {
 std::map<std::string, FieldChange> diffFields(FieldMap const& a, FieldMap const& b) {
     std::map<std::string, FieldChange> out;
 
-    auto itA = a.begin();
-    auto itB = b.begin();
-    while (itA != a.end() || itB != b.end()) {
-        if (itA == a.end() || (itB != b.end() && itB->first < itA->first)) {
-            out.emplace(itB->first, FieldChange{ "", itB->second });
-            ++itB;
-        } else if (itB == b.end() || itA->first < itB->first) {
-            out.emplace(itA->first, FieldChange{ itA->second, "" });
-            ++itA;
-        } else {
-            if (itA->second != itB->second) {
-                out.emplace(itA->first, FieldChange{ itA->second, itB->second });
-            }
-            ++itA; ++itB;
+    for (auto const& [key, valA] : a) {
+        auto itB = b.find(key);
+        if (itB == b.end()) {
+            out.emplace(key, FieldChange{ valA, "" });
+        } else if (valA != itB->second) {
+            out.emplace(key, FieldChange{ valA, itB->second });
+        }
+    }
+    for (auto const& [key, valB] : b) {
+        if (!a.contains(key)) {
+            out.emplace(key, FieldChange{ "", valB });
         }
     }
     return out;

@@ -20,6 +20,7 @@ bool isBlobFootprintTooLarge(std::uint64_t rawSize);
 std::string blobFootprintLimitMessage(std::uint64_t rawSize);
 
 std::optional<std::string> compressBlob(std::string const& raw);
+std::optional<std::string> compressBlob(std::string const& raw, int level);
 
 // Returns nullopt on corrupt or oversized payload (errors logged).
 std::optional<std::string> decompressBlob(std::string const& bytes);

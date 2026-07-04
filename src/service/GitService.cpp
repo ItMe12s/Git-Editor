@@ -20,6 +20,7 @@
 #include <fmt/format.h>
 
 #include <algorithm>
+#include <chrono>
 #include <utility>
 
 namespace git_editor {
@@ -31,8 +32,24 @@ std::optional<LevelState> reconstructRoot(CommitStore& store, GitService& svc, L
     if (rows.empty()) return LevelState {};
     auto it = std::find_if(rows.begin(), rows.end(), [](CommitRow const& r) { return !r.parent.has_value(); });
     if (it == rows.end()) return std::nullopt;
-    return svc.reconstruct(it->id);
+    if (auto recon = svc.reconstruct(it->id)) return LevelState(*recon);
+    return std::nullopt;
 }
+
+struct PhaseTimer {
+    std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+    double msSince() const {
+        return std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - t0
+        ).count();
+    }
+    double lapMs() {
+        auto const now = std::chrono::steady_clock::now();
+        double ms = std::chrono::duration<double, std::milli>(now - t0).count();
+        t0 = now;
+        return ms;
+    }
+};
 
 template <typename T>
 Result<T> failResult(std::string msg) {
@@ -58,20 +75,29 @@ Result<CommitId> GitService::commit(
     std::string const& liveLevelStr
 ) {
     Result<CommitId> out;
+    PhaseTimer total;
+    PhaseTimer phase;
 
-    LevelState headState;
+    LevelStatePtr headState;
     std::optional<CommitId> parent = m_store.getHead(levelKey);
     if (parent) {
-        auto recon = this->reconstruct(*parent);
-        if (!recon) return logAndFail<CommitId>("failed to reconstruct HEAD, refusing to commit");
-        headState = std::move(*recon);
+        headState = this->reconstruct(*parent);
+        if (!headState) return logAndFail<CommitId>("failed to reconstruct HEAD, refusing to commit");
     }
+    double const reconMs = phase.lapMs();
 
     auto incoming = parseLevelString(liveLevelStr);
-    if (parent) assignUuids(headState, incoming);
-    else        assignFreshUuids(incoming);
+    double const parseMs = phase.lapMs();
 
-    auto delta = diff(headState, incoming);
+    AssignUuidStats uuidStats;
+    if (parent) assignUuids(*headState, incoming, &uuidStats);
+    else        assignFreshUuids(incoming);
+    double const uuidMs = phase.lapMs();
+
+    LevelState const emptyHead;
+    LevelState const& headRef = headState ? *headState : emptyHead;
+    auto delta = diff(headRef, incoming);
+    double const diffMs = phase.lapMs();
 
     if (delta.adds.empty() && delta.removes.empty()
         && delta.modifies.empty() && delta.headerChanges.empty()) {
@@ -79,11 +105,22 @@ Result<CommitId> GitService::commit(
     }
 
     auto blob = dumpDelta(delta);
+    double const dumpMs = phase.lapMs();
 
     auto id = m_store.insertAndSetHead(levelKey, parent, std::nullopt, message, blob);
+    double const insertMs = phase.lapMs();
     if (!id.ok) return logAndFail<CommitId>(id.error);
 
     this->cachePut(id.value, std::move(incoming));
+
+    geode::log::info(
+        "commit: recon={:.0f}ms parse={:.0f}ms uuid={:.0f}ms fp={} spatial={} fresh={} "
+        "diff={:.0f}ms mod={} adds={} rem={} dump={:.0f}ms blob={}B insert={:.0f}ms total={:.0f}ms",
+        reconMs, parseMs, uuidMs,
+        uuidStats.fingerprintHits, uuidStats.spatialFallbacks, uuidStats.freshUuids,
+        diffMs, delta.modifies.size(), delta.adds.size(), delta.removes.size(),
+        dumpMs, blob.size(), insertMs, total.msSince()
+    );
 
     out.ok     = true;
     out.value  = id.value;
@@ -105,7 +142,7 @@ Prepared<LevelState> GitService::prepareCheckout(LevelKey const& levelKey, Commi
             return out;
         }
         out.result.ok    = true;
-        out.result.value = std::move(*recon);
+        out.result.value = LevelState(*recon);
         return out;
     }
 
@@ -135,7 +172,7 @@ Prepared<LevelState> GitService::prepareCheckout(LevelKey const& levelKey, Commi
     out.pendingHead   = std::move(pending);
 
     out.result.ok    = true;
-    out.result.value = std::move(*targetState);
+    out.result.value = LevelState(*targetState);
     return out;
 }
 
@@ -190,7 +227,8 @@ Prepared<RevertPayload> GitService::prepareRevert(LevelKey const& levelKey, Comm
 
     RevertPayload value;
     LevelState    headCopy = *headState;
-    value.state            = apply(std::move(*headState), undoDelta, &value.conflicts);
+    LevelState    headMut  = *headState;
+    value.state            = apply(std::move(headMut), undoDelta, &value.conflicts);
     auto persistedDelta    = diff(headCopy, value.state);
     auto blob              = dumpDelta(persistedDelta);
 
@@ -254,7 +292,7 @@ Prepared<LevelState> GitService::prepareSquash(
     if (parentOfOldest) {
         auto recon = this->reconstruct(*parentOfOldest);
         if (!recon) { out.result.error = "reconstruct base failed"; return out; }
-        base = std::move(*recon);
+        base = LevelState(*recon);
     }
 
     auto target = this->reconstruct(rows.back().id);
@@ -272,7 +310,7 @@ Prepared<LevelState> GitService::prepareSquash(
     out.pendingSquash      = std::move(pending);
 
     out.result.ok    = true;
-    out.result.value = std::move(*target);
+    out.result.value = LevelState(*target);
     return out;
 }
 
@@ -321,7 +359,7 @@ Prepared<LevelState> GitService::prepareImportLevelFrom(
     out.pendingReplace = std::move(pending);
 
     out.result.ok    = true;
-    out.result.value = std::move(*srcState);
+    out.result.value = LevelState(*srcState);
     return out;
 }
 
@@ -404,13 +442,13 @@ Prepared<ImportManyPayload> GitService::prepareImportManyFromGdge(
             out.result.error = "failed to reconstruct current root";
             return out;
         }
-        rootBefore = std::move(*root);
+        rootBefore = LevelState(*root);
         auto recon = this->reconstruct(*headBefore);
         if (!recon) {
             out.result.error = "failed to reconstruct local state";
             return out;
         }
-        ours = std::move(*recon);
+        ours = LevelState(*recon);
     }
 
     return gdge_import_merge::prepareImportManyFromGdge(
@@ -447,7 +485,9 @@ Result<void> GitService::finalizeImportManyFromGdge(
             return out;
         }
         minted.push_back(id.value);
-        if (p.cacheState) this->cachePut(id.value, *p.cacheState);
+        if (p.cacheState) {
+            this->cachePut(id.value, std::make_shared<const LevelState>(*p.cacheState));
+        }
     }
     out.ok = true;
     return out;
@@ -477,12 +517,12 @@ Result<std::string> GitService::describeCommitChanges(CommitId id) {
     return failResult<std::string>("Could not read this commit's delta.");
 }
 
-std::optional<LevelState> GitService::reconstruct(CommitId commitId) {
+std::shared_ptr<const LevelState> GitService::reconstruct(CommitId commitId) {
     return reconstruction_service::reconstructCommitChain(
         m_store,
         commitId,
         [this](CommitId id) { return this->cacheGet(id); },
-        [this](CommitId id, LevelState const& state) { this->cachePut(id, state); }
+        [this](CommitId id, LevelStatePtr state) { this->cachePut(id, std::move(state)); }
     );
 }
 
@@ -554,10 +594,14 @@ ImportPlan GitService::classifyImports(
 }
 
 void GitService::cachePut(CommitId id, LevelState state) {
+    m_cache.put(id, std::make_shared<const LevelState>(std::move(state)));
+}
+
+void GitService::cachePut(CommitId id, LevelStatePtr state) {
     m_cache.put(id, std::move(state));
 }
 
-std::optional<LevelState> GitService::cacheGet(CommitId id) {
+LevelStatePtr GitService::cacheGet(CommitId id) {
     return m_cache.get(id);
 }
 

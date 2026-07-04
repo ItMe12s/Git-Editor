@@ -80,6 +80,8 @@ AutomatedTestSummary runAutomatedTests(std::filesystem::path const& saveDir, std
         runAdvancedCollabSimulatorTests(git, st, testDir, R);
         R.addAction("Runner", "suite Edge");
         runEdgeTests(git, st, testDir, R);
+        R.addAction("Runner", "suite Perf");
+        runCommitPerfTests(git, st, R);
         R.addAction("Runner", "suite ManualChecklist skips");
         appendManualSkips(R);
     }

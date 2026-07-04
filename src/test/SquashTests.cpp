@@ -3,7 +3,6 @@
 #include "util/format/StateHash.hpp"
 
 #include <fmt/format.h>
-#include <optional>
 
 namespace git_editor {
 
@@ -29,7 +28,8 @@ void runSquashTests(GitService& git, CommitStore& st, ReportBuilder& R) {
     R.addAction(kSuiteSquash, fmt::format("chain {} commits c2={} c3={}", chain.size(), c2, c3));
 
     auto headBefore = st.getHead(kSquash);
-    auto reconHeadBefore = headBefore ? git.reconstruct(*headBefore) : std::nullopt;
+    LevelStatePtr reconHeadBefore;
+    if (headBefore) reconHeadBefore = git.reconstruct(*headBefore);
     if (!reconHeadBefore) {
         R.addFail(kSuiteSquash, "recon_before", "reconstruct HEAD failed", T.ms());
         return;
@@ -69,7 +69,8 @@ void runSquashTests(GitService& git, CommitStore& st, ReportBuilder& R) {
     R.addAction(kSuiteSquash, fmt::format("chain after range len {}", chainAfterRange.size()));
 
     auto headAfterRange = st.getHead(kSquash);
-    auto reconAfterRange = headAfterRange ? git.reconstruct(*headAfterRange) : std::nullopt;
+    LevelStatePtr reconAfterRange;
+    if (headAfterRange) reconAfterRange = git.reconstruct(*headAfterRange);
     if (!reconAfterRange || hashLevelState(*reconAfterRange) != hashBefore) {
         R.addFail(kSuiteSquash, "state_after_range_squash", "HEAD state drift after range squash", T.ms());
         return;
@@ -112,7 +113,8 @@ void runSquashTests(GitService& git, CommitStore& st, ReportBuilder& R) {
     R.addAction(kSuiteSquash, fmt::format("chainB len {}", chainB.size()));
 
     auto headB = st.getHead(kSquash);
-    auto reconB = headB ? git.reconstruct(*headB) : std::nullopt;
+    LevelStatePtr reconB;
+    if (headB) reconB = git.reconstruct(*headB);
     if (!reconB) {
         R.addFail(kSuiteSquash, "recon_b", "reconstruct failed", T.ms());
         return;
@@ -132,7 +134,8 @@ void runSquashTests(GitService& git, CommitStore& st, ReportBuilder& R) {
         return;
     }
     auto headOne = st.getHead(kSquash);
-    auto reconOne = headOne ? git.reconstruct(*headOne) : std::nullopt;
+    LevelStatePtr reconOne;
+    if (headOne) reconOne = git.reconstruct(*headOne);
     if (!reconOne || hashLevelState(*reconOne) != hashB) {
         R.addFail(kSuiteSquash, "full_squash_state", "squashed-all state != HEAD hash before squash-all", T.ms());
         return;

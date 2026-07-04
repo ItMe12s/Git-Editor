@@ -4,6 +4,8 @@
 #include "util/io/BlobCodec.hpp"
 #include "util/io/PathUtf8.hpp"
 
+#include <zlib.h>
+
 #include <Geode/loader/Log.hpp>
 #include <Geode/loader/Mod.hpp>
 #include <Geode/utils/file.hpp>
@@ -524,7 +526,7 @@ Result<CommitId> CommitStore::insertAt(
     if (isBlobFootprintTooLarge(deltaBlob.size())) {
         return fail(blobFootprintLimitMessage(deltaBlob.size()));
     }
-    auto const stored = compressBlob(deltaBlob);
+    auto const stored = compressBlob(deltaBlob, Z_DEFAULT_COMPRESSION);
     if (!stored) {
         return fail("compress delta payload failed");
     }
