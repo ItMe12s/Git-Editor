@@ -24,6 +24,7 @@
 #include <fmt/format.h>
 
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <system_error>
 
@@ -94,6 +95,7 @@ bool LevelBrowserLayer::init(
 
 void LevelBrowserLayer::onClose(CCObject* sender) {
     scroll_list_popup::markClosing(m_listState, m_scroll);
+    if (m_mainLayer) m_mainLayer->setLayout(nullptr);
     Popup::onClose(sender);
 }
 
@@ -229,12 +231,13 @@ void LevelBrowserLayer::renderList(std::vector<LevelSummary> levels) {
                         }
                         Ref<LevelEditorLayer> editorRef(self->m_editor.data());
                         Ref<EditorPauseLayer> pauseRef(self->m_pauseLayer.data());
+                        auto appliedState = std::make_shared<LevelState>();
                         prepared_editor_flow::run<LevelState, PendingHistoryReplace, void>(
                             {self->m_busy, self->m_listState.closing},
                             [levelKey, destKey]() {
                                 return sharedGitService().prepareImportLevelFrom(destKey, levelKey);
                             },
-                            [editorRef](Prepared<LevelState> const& prep) {
+                            [editorRef, appliedState](Prepared<LevelState> const& prep) {
                                 auto* editor = editorRef.data();
                                 if (!history_actions::canApplyEditorResult(editor)) {
                                     Notification::create(
@@ -243,7 +246,8 @@ void LevelBrowserLayer::renderList(std::vector<LevelSummary> levels) {
                                     )->show();
                                     return false;
                                 }
-                                if (!applyLevelState(editor, prep.result.value)) {
+                                *appliedState = prep.result.value;
+                                if (!applyLevelState(editor, *appliedState)) {
                                     Notification::create(
                                         "Editor refused load; aborted before DB write",
                                         NotificationIcon::Warning
@@ -257,12 +261,17 @@ void LevelBrowserLayer::renderList(std::vector<LevelSummary> levels) {
                                 return sharedGitService().finalizeImportLevelFrom(pending, applied);
                             },
                             prepared_editor_flow::OutcomeHandlers{
-                                .onSuccess = [self, pauseRef]() {
+                                .onSuccess = [self, pauseRef, editorRef, appliedState]() {
                                     Notification::create("Level loaded", NotificationIcon::Success)->show();
-                                    bool const closed = self->closeOnce(nullptr);
-                                    prepared_editor_flow::resumePauseIfNeeded(
-                                        pauseRef, closed || self->m_listState.closing
-                                    );
+                                    geode::queueInMainThread([self, pauseRef, editorRef, appliedState]() {
+                                        if (ui_node_lifecycle::isNodeActive(self.data())) {
+                                            self->closeOnce(nullptr);
+                                        }
+                                        prepared_editor_flow::resumePauseIfNeeded(pauseRef, true);
+                                        if (auto* editor = editorRef.data()) {
+                                            applyLevelState(editor, *appliedState);
+                                        }
+                                    });
                                 },
                                 .onPrepareError = [](std::string const& error) {
                                     Notification::create(
