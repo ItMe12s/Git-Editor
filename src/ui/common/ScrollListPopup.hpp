@@ -20,7 +20,7 @@ struct Layout {
 };
 
 struct ListState {
-    bool        closing    = false;
+    bool          closing    = false;
     std::uint64_t loadSerial = 0;
 };
 
@@ -31,6 +31,12 @@ alpha::ui::AdvancedScrollLayer* attachScrollList(
     geode::Popup* popup,
     cocos2d::CCNode* mainLayer,
     char const* scrollId
+);
+
+void preparePopupClose(
+    ListState& state,
+    alpha::ui::AdvancedScrollLayer*& scroll,
+    cocos2d::CCNode* mainLayer
 );
 
 void markClosing(ListState& state, alpha::ui::AdvancedScrollLayer*& scroll);
@@ -45,13 +51,18 @@ bool closeOnce(
 bool isStaleLoad(ListState const& state, std::uint64_t serial);
 
 void showCenteredLabel(
-    cocos2d::CCNode* content,
+    alpha::ui::AdvancedScrollLayer* scroll,
     char const* text,
     char const* labelId,
     float opacity = 160.f
 );
 
 void resetScrollTop(alpha::ui::AdvancedScrollLayer* scroll);
+
+cocos2d::CCNode* beginListRender(
+    alpha::ui::AdvancedScrollLayer* scroll,
+    char const* loadingOverlayId
+);
 
 std::uint64_t beginLoading(
     ListState& state,

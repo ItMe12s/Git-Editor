@@ -66,9 +66,8 @@ bool HistoryLayer::init(
 }
 
 void HistoryLayer::onClose(CCObject* sender) {
-    scroll_list_popup::markClosing(m_listState, m_scroll);
+    scroll_list_popup::preparePopupClose(m_listState, m_scroll, m_mainLayer);
     m_headerMenu = nullptr;
-    if (m_mainLayer) m_mainLayer->setLayout(nullptr);
     Popup::onClose(sender);
 }
 

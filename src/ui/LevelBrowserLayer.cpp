@@ -94,8 +94,7 @@ bool LevelBrowserLayer::init(
 }
 
 void LevelBrowserLayer::onClose(CCObject* sender) {
-    scroll_list_popup::markClosing(m_listState, m_scroll);
-    if (m_mainLayer) m_mainLayer->setLayout(nullptr);
+    scroll_list_popup::preparePopupClose(m_listState, m_scroll, m_mainLayer);
     Popup::onClose(sender);
 }
 
@@ -104,6 +103,8 @@ bool LevelBrowserLayer::closeOnce(CCObject* sender) {
 }
 
 void LevelBrowserLayer::rebuildList() {
+    if (m_listState.closing || !m_scroll) return;
+
     Ref<LevelBrowserLayer> self(this);
     scroll_list_popup::loadAsync<std::vector<LevelSummary>>(
         m_listState,
@@ -123,14 +124,16 @@ void LevelBrowserLayer::rebuildList() {
 void LevelBrowserLayer::renderList(std::vector<LevelSummary> levels) {
     if (m_listState.closing || !m_scroll) return;
 
-    auto* content = m_scroll->getContentLayer();
-    content->removeAllChildren();
+    auto* content = scroll_list_popup::beginListRender(
+        m_scroll, "git-editor-levels-loading"_spr
+    );
+    if (!content) return;
 
     float const rowWidth = content->getContentSize().width;
 
     if (levels.empty()) {
         scroll_list_popup::showCenteredLabel(
-            content, "No levels with commits.", "git-editor-levels-empty"_spr
+            m_scroll, "No levels with commits.", "git-editor-levels-empty"_spr
         );
         scroll_list_popup::resetScrollTop(m_scroll);
         return;
@@ -263,15 +266,16 @@ void LevelBrowserLayer::renderList(std::vector<LevelSummary> levels) {
                             prepared_editor_flow::OutcomeHandlers{
                                 .onSuccess = [self, pauseRef, editorRef, appliedState]() {
                                     Notification::create("Level loaded", NotificationIcon::Success)->show();
-                                    geode::queueInMainThread([self, pauseRef, editorRef, appliedState]() {
-                                        if (ui_node_lifecycle::isNodeActive(self.data())) {
-                                            self->closeOnce(nullptr);
-                                        }
-                                        prepared_editor_flow::resumePauseIfNeeded(pauseRef, true);
-                                        if (auto* editor = editorRef.data()) {
-                                            applyLevelState(editor, *appliedState);
-                                        }
-                                    });
+                                    prepared_editor_flow::deferCloseAndReapply(
+                                        [self]() {
+                                            if (ui_node_lifecycle::isNodeActive(self.data())) {
+                                                self->closeOnce(nullptr);
+                                            }
+                                        },
+                                        pauseRef,
+                                        editorRef,
+                                        appliedState
+                                    );
                                 },
                                 .onPrepareError = [](std::string const& error) {
                                     Notification::create(

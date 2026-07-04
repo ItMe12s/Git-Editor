@@ -5,7 +5,6 @@
 #include "common/PreparedEditorFlow.hpp"
 #include "common/UiAction.hpp"
 #include "common/UiNodeLifecycle.hpp"
-#include "editor/LevelStateIO.hpp"
 #include "service/GitService.hpp"
 #include "util/format/Shorten.hpp"
 
@@ -181,15 +180,16 @@ void HistoryLayer::startCheckoutFlow(CommitId commitId, std::string const& commi
                 prepared_editor_flow::OutcomeHandlers{
                     .onSuccess = [self, pauseRef, editorRef, appliedState]() {
                         Notification::create("Checked out", NotificationIcon::Success)->show();
-                        geode::queueInMainThread([self, pauseRef, editorRef, appliedState]() {
-                            if (ui_node_lifecycle::isNodeActive(self.data())) {
-                                self->closeOnce(nullptr);
-                            }
-                            prepared_editor_flow::resumePauseIfNeeded(pauseRef, true);
-                            if (auto* editor = editorRef.data()) {
-                                applyLevelState(editor, *appliedState);
-                            }
-                        });
+                        prepared_editor_flow::deferCloseAndReapply(
+                            [self]() {
+                                if (ui_node_lifecycle::isNodeActive(self.data())) {
+                                    self->closeOnce(nullptr);
+                                }
+                            },
+                            pauseRef,
+                            editorRef,
+                            appliedState
+                        );
                     },
                     .onPrepareError = [](std::string const& error) {
                         Notification::create(
@@ -249,15 +249,16 @@ void HistoryLayer::startRevertFlow(CommitId commitId, std::string const& commitM
                     .onSuccess = [self, pauseRef, editorRef, appliedState, conflicts]() {
                         Notification::create("Reverted", NotificationIcon::Success)->show();
                         history_actions::showConflictSummary(*conflicts);
-                        geode::queueInMainThread([self, pauseRef, editorRef, appliedState]() {
-                            if (ui_node_lifecycle::isNodeActive(self.data())) {
-                                self->closeOnce(nullptr);
-                            }
-                            prepared_editor_flow::resumePauseIfNeeded(pauseRef, true);
-                            if (auto* editor = editorRef.data()) {
-                                applyLevelState(editor, *appliedState);
-                            }
-                        });
+                        prepared_editor_flow::deferCloseAndReapply(
+                            [self]() {
+                                if (ui_node_lifecycle::isNodeActive(self.data())) {
+                                    self->closeOnce(nullptr);
+                                }
+                            },
+                            pauseRef,
+                            editorRef,
+                            appliedState
+                        );
                     },
                     .onPrepareError = [](std::string const& error) {
                         Notification::create(

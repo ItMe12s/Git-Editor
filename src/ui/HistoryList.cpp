@@ -66,8 +66,11 @@ void HistoryLayer::rebuildList() {
 void HistoryLayer::renderList(std::vector<CommitSummary> loadedCommits) {
     if (m_listState.closing || !m_scroll) return;
 
-    auto* content = m_scroll->getContentLayer();
-    content->removeAllChildren();
+    auto* content = scroll_list_popup::beginListRender(
+        m_scroll, "git-editor-history-loading"_spr
+    );
+    if (!content) return;
+
     m_commits = std::move(loadedCommits);
     auto const& commits = m_commits;
 
@@ -75,7 +78,7 @@ void HistoryLayer::renderList(std::vector<CommitSummary> loadedCommits) {
 
     if (commits.empty()) {
         scroll_list_popup::showCenteredLabel(
-            content, "No commits yet.", "git-editor-history-empty"_spr
+            m_scroll, "No commits yet.", "git-editor-history-empty"_spr
         );
         scroll_list_popup::resetScrollTop(m_scroll);
         return;
