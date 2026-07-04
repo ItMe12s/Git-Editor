@@ -2,20 +2,18 @@
 
 #include "model/LevelParser.hpp"
 
+#include <Geode/binding/GJGameLevel.hpp>
 #include <Geode/loader/Log.hpp>
 
 namespace git_editor {
 
-std::string captureLevelString(LevelEditorLayer* editor) {
-    if (!editor) {
-        geode::log::warn("captureLevelString called with null editor");
-        return {};
-    }
-    auto gdStr = editor->getLevelString();
-    return std::string(gdStr.c_str(), gdStr.size());
-}
-
 namespace {
+
+void ensureUnlimitedObjectCapacity(GJGameLevel* level) {
+    if (!level) return;
+    level->m_highObjectsEnabled = true;
+    level->m_unlimitedObjectsEnabled = true;
+}
 
 void refreshEditorVisualState(LevelEditorLayer* editor) {
     if (!editor) return;
@@ -36,7 +34,11 @@ void refreshEditorVisualState(LevelEditorLayer* editor) {
     }
 }
 
-bool applyLevelString(LevelEditorLayer* editor, std::string const& levelString) {
+bool applyLevelString(
+    LevelEditorLayer* editor,
+    std::string const& levelString,
+    std::size_t expectedObjectCount
+) {
     if (!editor) {
         geode::log::warn("applyLevelString called with null editor");
         return false;
@@ -50,6 +52,8 @@ bool applyLevelString(LevelEditorLayer* editor, std::string const& levelString) 
         geode::log::warn("applyLevelString rejected string without level delimiter");
         return false;
     }
+
+    ensureUnlimitedObjectCapacity(editor->m_level);
 
     editor->removeAllObjects();
 
@@ -67,13 +71,36 @@ bool applyLevelString(LevelEditorLayer* editor, std::string const& levelString) 
         geode::log::warn("applyLevelString failed: editor returned empty level string");
         return false;
     }
+
+    if (expectedObjectCount > 0) {
+        auto* arr = editor->getAllObjects();
+        auto const actual = arr ? static_cast<std::size_t>(arr->count()) : 0;
+        if (actual < expectedObjectCount) {
+            geode::log::warn(
+                "applyLevelString: expected {} objects, editor has {}",
+                expectedObjectCount,
+                actual
+            );
+            return false;
+        }
+    }
     return true;
 }
 
 } // namespace
 
+std::string captureLevelString(LevelEditorLayer* editor) {
+    if (!editor) {
+        geode::log::warn("captureLevelString called with null editor");
+        return {};
+    }
+    ensureUnlimitedObjectCapacity(editor->m_level);
+    auto gdStr = editor->getLevelString();
+    return std::string(gdStr.c_str(), gdStr.size());
+}
+
 bool applyLevelState(LevelEditorLayer* editor, LevelState const& state) {
-    return applyLevelString(editor, serializeLevelString(state));
+    return applyLevelString(editor, serializeLevelString(state), state.objects.size());
 }
 
 } // namespace git_editor
