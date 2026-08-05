@@ -1,22 +1,20 @@
+#include "test/AutomatedTestRunner.hpp"
+#include "util/GitWorker.hpp"
+
 #include <Geode/Geode.hpp>
 #include <Geode/loader/SettingV3.hpp>
 #include <Geode/ui/Notification.hpp>
 #include <Geode/utils/file.hpp>
 #include <Geode/utils/string.hpp>
-
-#include "test/AutomatedTestRunner.hpp"
-#include "util/GitWorker.hpp"
-
-#include <fmt/format.h>
-
 #include <atomic>
+#include <fmt/format.h>
 #include <string>
 
 using namespace geode::prelude;
 
 namespace {
 
-std::atomic_bool s_automatedTestRunning{ false };
+    std::atomic_bool s_automatedTestRunning{false};
 
 } // namespace
 
@@ -28,10 +26,8 @@ $execute {
             }
             if (s_automatedTestRunning.exchange(true)) {
                 queueInMainThread([] {
-                    Notification::create(
-                        "Automated test already running",
-                        NotificationIcon::Warning
-                    )->show();
+                    Notification::create("Automated test already running", NotificationIcon::Warning)
+                        ->show();
                 });
                 return;
             }
@@ -50,14 +46,17 @@ $execute {
 
             git_editor::postToGitWorker([dir, modId]() {
                 struct RunningFlag {
-                    ~RunningFlag() { s_automatedTestRunning = false; }
+                    ~RunningFlag() {
+                        s_automatedTestRunning = false;
+                    }
                 } runningFlag;
 
                 auto summary = git_editor::runAutomatedTests(dir, modId);
                 auto const outPath = dir / "test-result.txt";
                 if (geode::utils::file::writeString(outPath, summary.reportText).isErr()) {
                     ++summary.failCount;
-                    summary.reportText += "\nFAIL | ReportWrite | could not write test-result.txt\n";
+                    summary.reportText +=
+                        "\nFAIL | ReportWrite | could not write test-result.txt\n";
                     static_cast<void>(geode::utils::file::writeString(outPath, summary.reportText));
                 }
 
@@ -69,16 +68,12 @@ $execute {
 
                 queueInMainThread([passC, failC, skipC, pathStr, failed] {
                     auto const msg = fmt::format(
-                        "Automated test: PASS {} FAIL {} SKIP {}. {}",
-                        passC,
-                        failC,
-                        skipC,
-                        pathStr
+                        "Automated test: PASS {} FAIL {} SKIP {}. {}", passC, failC, skipC, pathStr
                     );
                     Notification::create(
-                        msg,
-                        failed ? NotificationIcon::Error : NotificationIcon::Success
-                    )->show();
+                        msg, failed ? NotificationIcon::Error : NotificationIcon::Success
+                    )
+                        ->show();
                 });
             });
         })

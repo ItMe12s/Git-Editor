@@ -4,118 +4,119 @@
 
 namespace git_editor {
 
-namespace {
+    namespace {
 
-// Missing key is modeled as empty string.
-// Absent and empty string merge together.
-std::map<std::string, FieldChange> diffFields(FieldMap const& a, FieldMap const& b) {
-    std::map<std::string, FieldChange> out;
+        // Missing key is modeled as empty string.
+        // Absent and empty string merge together.
+        std::map<std::string, FieldChange> diffFields(FieldMap const& a, FieldMap const& b) {
+            std::map<std::string, FieldChange> out;
 
-    for (auto const& [key, valA] : a) {
-        auto itB = b.find(key);
-        if (itB == b.end()) {
-            out.emplace(key, FieldChange{ valA, "" });
-        } else if (valA != itB->second) {
-            out.emplace(key, FieldChange{ valA, itB->second });
+            for (auto const& [key, valA] : a) {
+                auto itB = b.find(key);
+                if (itB == b.end()) {
+                    out.emplace(key, FieldChange{valA, ""});
+                }
+                else if (valA != itB->second) {
+                    out.emplace(key, FieldChange{valA, itB->second});
+                }
+            }
+            for (auto const& [key, valB] : b) {
+                if (!a.contains(key)) {
+                    out.emplace(key, FieldChange{"", valB});
+                }
+            }
+            return out;
         }
-    }
-    for (auto const& [key, valB] : b) {
-        if (!a.contains(key)) {
-            out.emplace(key, FieldChange{ "", valB });
+
+    } // namespace
+
+    Delta diff(LevelState const& prev, LevelState const& next) {
+        Delta d;
+        d.headerChanges = diffFields(prev.header, next.header);
+        if (prev.rawHeader != next.rawHeader) {
+            d.rawHeaderChange = FieldChange{prev.rawHeader, next.rawHeader};
         }
-    }
-    return out;
-}
 
-} // namespace
-
-Delta diff(LevelState const& prev, LevelState const& next) {
-    Delta d;
-    d.headerChanges = diffFields(prev.header, next.header);
-    if (prev.rawHeader != next.rawHeader) {
-        d.rawHeaderChange = FieldChange{ prev.rawHeader, next.rawHeader };
-    }
-
-    for (auto const& [uuid, prevObj] : prev.objects) {
-        auto it = next.objects.find(uuid);
-        if (it == next.objects.end()) {
-            d.removes.push_back(prevObj);
-            continue;
-        }
-        auto fieldChanges = diffFields(prevObj.fields, it->second.fields);
-        if (!fieldChanges.empty()) {
-            d.modifies.push_back({ uuid, std::move(fieldChanges) });
-        }
-    }
-
-    for (auto const& [uuid, nextObj] : next.objects) {
-        if (!prev.objects.contains(uuid)) {
-            d.adds.push_back(nextObj);
-        }
-    }
-
-    return d;
-}
-
-LevelState apply(LevelState base, Delta const& d, std::vector<Conflict>* out) {
-    auto report = [&](Conflict c) {
-        if (out) out->push_back(std::move(c));
-    };
-
-    // Apply header even when before mismatches. Still report stale.
-    for (auto const& [k, c] : d.headerChanges) {
-        auto it = base.header.find(k);
-        std::string current = (it != base.header.end()) ? it->second : "";
-        if (current != c.before) {
-            report({ Conflict::Kind::ModifyStale });
-        }
-        if (c.after.empty()) base.header.erase(k);
-        else                 base.header[k] = c.after;
-    }
-    if (d.rawHeaderChange.has_value()) {
-        if (base.rawHeader != d.rawHeaderChange->before) {
-            report({ Conflict::Kind::ModifyStale });
-        }
-        base.rawHeader = d.rawHeaderChange->after;
-    }
-
-    for (auto const& o : d.adds) {
-        if (base.objects.contains(o.uuid)) {
-            report({ Conflict::Kind::AddAlreadyExists });
-            continue;
-        }
-        base.objects.emplace(o.uuid, o);
-    }
-
-    for (auto const& o : d.removes) {
-        auto it = base.objects.find(o.uuid);
-        if (it == base.objects.end()) {
-            report({ Conflict::Kind::Missing });
-            continue;
-        }
-        base.objects.erase(it);
-    }
-
-    for (auto const& m : d.modifies) {
-        auto it = base.objects.find(m.uuid);
-        if (it == base.objects.end()) {
-            report({ Conflict::Kind::Missing });
-            continue;
-        }
-        auto& fields = it->second.fields;
-        for (auto const& [k, c] : m.fields) {
-            auto fit = fields.find(k);
-            std::string current = (fit != fields.end()) ? fit->second : "";
-            if (current != c.before) {
-                report({ Conflict::Kind::ModifyStale });
+        for (auto const& [uuid, prevObj] : prev.objects) {
+            auto it = next.objects.find(uuid);
+            if (it == next.objects.end()) {
+                d.removes.push_back(prevObj);
                 continue;
             }
-            if (c.after.empty()) fields.erase(k);
-            else                 fields[k] = c.after;
+            auto fieldChanges = diffFields(prevObj.fields, it->second.fields);
+            if (!fieldChanges.empty()) {
+                d.modifies.push_back({uuid, std::move(fieldChanges)});
+            }
         }
+
+        for (auto const& [uuid, nextObj] : next.objects) {
+            if (!prev.objects.contains(uuid)) {
+                d.adds.push_back(nextObj);
+            }
+        }
+
+        return d;
     }
 
-    return base;
-}
+    LevelState apply(LevelState base, Delta const& d, std::vector<Conflict>* out) {
+        auto report = [&](Conflict c) {
+            if (out) out->push_back(std::move(c));
+        };
+
+        // Apply header even when before mismatches. Still report stale.
+        for (auto const& [k, c] : d.headerChanges) {
+            auto it = base.header.find(k);
+            std::string current = (it != base.header.end()) ? it->second : "";
+            if (current != c.before) {
+                report({Conflict::Kind::ModifyStale});
+            }
+            if (c.after.empty()) base.header.erase(k);
+            else base.header[k] = c.after;
+        }
+        if (d.rawHeaderChange.has_value()) {
+            if (base.rawHeader != d.rawHeaderChange->before) {
+                report({Conflict::Kind::ModifyStale});
+            }
+            base.rawHeader = d.rawHeaderChange->after;
+        }
+
+        for (auto const& o : d.adds) {
+            if (base.objects.contains(o.uuid)) {
+                report({Conflict::Kind::AddAlreadyExists});
+                continue;
+            }
+            base.objects.emplace(o.uuid, o);
+        }
+
+        for (auto const& o : d.removes) {
+            auto it = base.objects.find(o.uuid);
+            if (it == base.objects.end()) {
+                report({Conflict::Kind::Missing});
+                continue;
+            }
+            base.objects.erase(it);
+        }
+
+        for (auto const& m : d.modifies) {
+            auto it = base.objects.find(m.uuid);
+            if (it == base.objects.end()) {
+                report({Conflict::Kind::Missing});
+                continue;
+            }
+            auto& fields = it->second.fields;
+            for (auto const& [k, c] : m.fields) {
+                auto fit = fields.find(k);
+                std::string current = (fit != fields.end()) ? fit->second : "";
+                if (current != c.before) {
+                    report({Conflict::Kind::ModifyStale});
+                    continue;
+                }
+                if (c.after.empty()) fields.erase(k);
+                else fields[k] = c.after;
+            }
+        }
+
+        return base;
+    }
 
 } // namespace git_editor

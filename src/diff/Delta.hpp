@@ -10,27 +10,28 @@
 
 namespace git_editor {
 
-struct FieldChange {
-    std::string before;
-    std::string after;
-};
-
-struct Delta {
-    std::map<std::string, FieldChange> headerChanges;
-    std::optional<FieldChange>         rawHeaderChange;
-
-    std::vector<Object> adds;
-    std::vector<Object> removes;
-
-    struct Modify {
-        ObjectUuid                         uuid = 0;
-        std::map<std::string, FieldChange> fields;
+    struct FieldChange {
+        std::string before;
+        std::string after;
     };
-    std::vector<Modify> modifies;
-};
 
-std::string dumpDelta(Delta const& d);
+    struct Delta {
+        std::map<std::string, FieldChange> headerChanges;
+        std::optional<FieldChange> rawHeaderChange;
 
-std::optional<Delta> parseDelta(std::string const& blob);
+        std::vector<Object> adds;
+        std::vector<Object> removes;
+
+        struct Modify {
+            ObjectUuid uuid = 0;
+            std::map<std::string, FieldChange> fields;
+        };
+
+        std::vector<Modify> modifies;
+    };
+
+    std::string dumpDelta(Delta const& d);
+
+    std::optional<Delta> parseDelta(std::string const& blob);
 
 } // namespace git_editor

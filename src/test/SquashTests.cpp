@@ -1,152 +1,162 @@
 #include "AutomatedTestHarness.hpp"
-
 #include "util/format/StateHash.hpp"
 
 #include <fmt/format.h>
 
 namespace git_editor {
 
-void runSquashTests(GitService& git, CommitStore& st, ReportBuilder& R) {
-    ScopedTimer T;
-    R.addAction(kSuiteSquash, fmt::format("deleteLevel {}", kSquash));
-    st.deleteLevel(kSquash);
-    R.addAction(kSuiteSquash, "commit s1 s2 s3 s4");
-    if (!git.commit(kSquash, "s1", levelAt(0))
-        || !git.commit(kSquash, "s2", levelAt(10))
-        || !git.commit(kSquash, "s3", levelAt(20))
-        || !git.commit(kSquash, "s4", levelAt(30))) {
-        R.addFail(kSuiteSquash, "setup_four", "commit failed", T.ms());
-        return;
-    }
-    auto chain = chainOldestToNewest(st, kSquash);
-    if (chain.size() != 4) {
-        R.addFail(kSuiteSquash, "chain_len", fmt::format("got {}", chain.size()), T.ms());
-        return;
-    }
-    CommitId const c2 = chain[1];
-    CommitId const c3 = chain[2];
-    R.addAction(kSuiteSquash, fmt::format("chain {} commits c2={} c3={}", chain.size(), c2, c3));
-
-    auto headBefore = st.getHead(kSquash);
-    LevelStatePtr reconHeadBefore;
-    if (headBefore) reconHeadBefore = git.reconstruct(*headBefore);
-    if (!reconHeadBefore) {
-        R.addFail(kSuiteSquash, "recon_before", "reconstruct HEAD failed", T.ms());
-        return;
-    }
-    auto const hashBefore = hashLevelState(*reconHeadBefore);
-    R.addAction(kSuiteSquash, fmt::format("HEAD before squash hash {}", hashBefore));
-
-    R.addAction(kSuiteSquash, fmt::format("squash range c2 {} c3 {} msg TEST_SQUASH_RANGE", c2, c3));
-    auto sq = git.squash(kSquash, { c2, c3 }, "TEST_SQUASH_RANGE");
-    if (!sq) {
-        R.addFail(kSuiteSquash, "squash_range", sq.error(), T.ms());
-        return;
-    }
-    bool foundRangeMsg = false;
-    for (auto const& r : st.list(kSquash)) {
-        if (r.message == "TEST_SQUASH_RANGE") {
-            foundRangeMsg = true;
-            break;
+    void runSquashTests(GitService& git, CommitStore& st, ReportBuilder& R) {
+        ScopedTimer T;
+        R.addAction(kSuiteSquash, fmt::format("deleteLevel {}", kSquash));
+        st.deleteLevel(kSquash);
+        R.addAction(kSuiteSquash, "commit s1 s2 s3 s4");
+        if (!git.commit(kSquash, "s1", levelAt(0)) || !git.commit(kSquash, "s2", levelAt(10)) ||
+            !git.commit(kSquash, "s3", levelAt(20)) || !git.commit(kSquash, "s4", levelAt(30))) {
+            R.addFail(kSuiteSquash, "setup_four", "commit failed", T.ms());
+            return;
         }
-    }
-    if (!foundRangeMsg) {
-        R.addFail(kSuiteSquash, "find_squash_row", "squash commit not found", T.ms());
-        return;
-    }
-    R.addAction(kSuiteSquash, "squash commit row TEST_SQUASH_RANGE found");
+        auto chain = chainOldestToNewest(st, kSquash);
+        if (chain.size() != 4) {
+            R.addFail(kSuiteSquash, "chain_len", fmt::format("got {}", chain.size()), T.ms());
+            return;
+        }
+        CommitId const c2 = chain[1];
+        CommitId const c3 = chain[2];
+        R.addAction(kSuiteSquash, fmt::format("chain {} commits c2={} c3={}", chain.size(), c2, c3));
 
-    auto chainAfterRange = chainOldestToNewest(st, kSquash);
-    if (chainAfterRange.size() != 3) {
-        R.addFail(
+        auto headBefore = st.getHead(kSquash);
+        LevelStatePtr reconHeadBefore;
+        if (headBefore) reconHeadBefore = git.reconstruct(*headBefore);
+        if (!reconHeadBefore) {
+            R.addFail(kSuiteSquash, "recon_before", "reconstruct HEAD failed", T.ms());
+            return;
+        }
+        auto const hashBefore = hashLevelState(*reconHeadBefore);
+        R.addAction(kSuiteSquash, fmt::format("HEAD before squash hash {}", hashBefore));
+
+        R.addAction(
+            kSuiteSquash, fmt::format("squash range c2 {} c3 {} msg TEST_SQUASH_RANGE", c2, c3)
+        );
+        auto sq = git.squash(kSquash, {c2, c3}, "TEST_SQUASH_RANGE");
+        if (!sq) {
+            R.addFail(kSuiteSquash, "squash_range", sq.error(), T.ms());
+            return;
+        }
+        bool foundRangeMsg = false;
+        for (auto const& r : st.list(kSquash)) {
+            if (r.message == "TEST_SQUASH_RANGE") {
+                foundRangeMsg = true;
+                break;
+            }
+        }
+        if (!foundRangeMsg) {
+            R.addFail(kSuiteSquash, "find_squash_row", "squash commit not found", T.ms());
+            return;
+        }
+        R.addAction(kSuiteSquash, "squash commit row TEST_SQUASH_RANGE found");
+
+        auto chainAfterRange = chainOldestToNewest(st, kSquash);
+        if (chainAfterRange.size() != 3) {
+            R.addFail(
+                kSuiteSquash,
+                "count_after_range_squash",
+                fmt::format("expected 3 got {}", chainAfterRange.size()),
+                T.ms()
+            );
+            return;
+        }
+        R.addAction(kSuiteSquash, fmt::format("chain after range len {}", chainAfterRange.size()));
+
+        auto headAfterRange = st.getHead(kSquash);
+        LevelStatePtr reconAfterRange;
+        if (headAfterRange) reconAfterRange = git.reconstruct(*headAfterRange);
+        if (!reconAfterRange || hashLevelState(*reconAfterRange) != hashBefore) {
+            R.addFail(
+                kSuiteSquash, "state_after_range_squash", "HEAD state drift after range squash", T.ms()
+            );
+            return;
+        }
+        R.addAction(kSuiteSquash, "HEAD state stable after range squash");
+
+        CommitId squashRangeId = 0;
+        for (auto const& r : st.list(kSquash)) {
+            if (r.message == "TEST_SQUASH_RANGE") {
+                squashRangeId = r.id;
+                break;
+            }
+        }
+        if (squashRangeId == 0) {
+            R.addFail(kSuiteSquash, "squash_range_id", "squash commit id not found", T.ms());
+            return;
+        }
+        R.addAction(kSuiteSquash, fmt::format("revert squash commit {}", squashRangeId));
+        auto revSq = git.revert(kSquash, squashRangeId);
+        if (!revSq) {
+            R.addFail(kSuiteSquash, "revert_range_squash", revSq.error(), T.ms());
+            return;
+        }
+        R.addAction(kSuiteSquash, "revert range squash OK");
+
+        R.addAction(kSuiteSquash, fmt::format("deleteLevel reset {}", kSquash));
+        st.deleteLevel(kSquash);
+        R.addAction(kSuiteSquash, "commit t1 t2 t3 for squash all");
+        if (!git.commit(kSquash, "t1", levelAt(0)) || !git.commit(kSquash, "t2", levelAt(11)) ||
+            !git.commit(kSquash, "t3", levelAt(22))) {
+            R.addFail(kSuiteSquash, "setup_three_full", "commit failed", T.ms());
+            return;
+        }
+        auto chainB = chainOldestToNewest(st, kSquash);
+        if (chainB.size() != 3) {
+            R.addFail(kSuiteSquash, "chain_b_len", fmt::format("got {}", chainB.size()), T.ms());
+            return;
+        }
+        R.addAction(kSuiteSquash, fmt::format("chainB len {}", chainB.size()));
+
+        auto headB = st.getHead(kSquash);
+        LevelStatePtr reconB;
+        if (headB) reconB = git.reconstruct(*headB);
+        if (!reconB) {
+            R.addFail(kSuiteSquash, "recon_b", "reconstruct failed", T.ms());
+            return;
+        }
+        auto const hashB = hashLevelState(*reconB);
+        R.addAction(kSuiteSquash, fmt::format("hash before full squash {}", hashB));
+
+        R.addAction(kSuiteSquash, "squash all chainB msg TEST_SQUASH_ALL");
+        auto sqFull = git.squash(kSquash, chainB, "TEST_SQUASH_ALL");
+        if (!sqFull) {
+            R.addFail(kSuiteSquash, "squash_all", sqFull.error(), T.ms());
+            return;
+        }
+        auto chain3 = chainOldestToNewest(st, kSquash);
+        if (chain3.size() != 1) {
+            R.addFail(
+                kSuiteSquash,
+                "count_after_full_squash",
+                fmt::format("expected 1 got {}", chain3.size()),
+                T.ms()
+            );
+            return;
+        }
+        auto headOne = st.getHead(kSquash);
+        LevelStatePtr reconOne;
+        if (headOne) reconOne = git.reconstruct(*headOne);
+        if (!reconOne || hashLevelState(*reconOne) != hashB) {
+            R.addFail(
+                kSuiteSquash,
+                "full_squash_state",
+                "squashed-all state != HEAD hash before squash-all",
+                T.ms()
+            );
+            return;
+        }
+        R.addAction(kSuiteSquash, fmt::format("full squash single head {} hash match", *headOne));
+        R.addPass(
             kSuiteSquash,
-            "count_after_range_squash",
-            fmt::format("expected 3 got {}", chainAfterRange.size()),
+            "squash_chain",
+            "range squash stable, revert range squash ok, full squash matches HEAD hash",
             T.ms()
         );
-        return;
     }
-    R.addAction(kSuiteSquash, fmt::format("chain after range len {}", chainAfterRange.size()));
-
-    auto headAfterRange = st.getHead(kSquash);
-    LevelStatePtr reconAfterRange;
-    if (headAfterRange) reconAfterRange = git.reconstruct(*headAfterRange);
-    if (!reconAfterRange || hashLevelState(*reconAfterRange) != hashBefore) {
-        R.addFail(kSuiteSquash, "state_after_range_squash", "HEAD state drift after range squash", T.ms());
-        return;
-    }
-    R.addAction(kSuiteSquash, "HEAD state stable after range squash");
-
-    CommitId squashRangeId = 0;
-    for (auto const& r : st.list(kSquash)) {
-        if (r.message == "TEST_SQUASH_RANGE") {
-            squashRangeId = r.id;
-            break;
-        }
-    }
-    if (squashRangeId == 0) {
-        R.addFail(kSuiteSquash, "squash_range_id", "squash commit id not found", T.ms());
-        return;
-    }
-    R.addAction(kSuiteSquash, fmt::format("revert squash commit {}", squashRangeId));
-    auto revSq = git.revert(kSquash, squashRangeId);
-    if (!revSq) {
-        R.addFail(kSuiteSquash, "revert_range_squash", revSq.error(), T.ms());
-        return;
-    }
-    R.addAction(kSuiteSquash, "revert range squash OK");
-
-    R.addAction(kSuiteSquash, fmt::format("deleteLevel reset {}", kSquash));
-    st.deleteLevel(kSquash);
-    R.addAction(kSuiteSquash, "commit t1 t2 t3 for squash all");
-    if (!git.commit(kSquash, "t1", levelAt(0))
-        || !git.commit(kSquash, "t2", levelAt(11))
-        || !git.commit(kSquash, "t3", levelAt(22))) {
-        R.addFail(kSuiteSquash, "setup_three_full", "commit failed", T.ms());
-        return;
-    }
-    auto chainB = chainOldestToNewest(st, kSquash);
-    if (chainB.size() != 3) {
-        R.addFail(kSuiteSquash, "chain_b_len", fmt::format("got {}", chainB.size()), T.ms());
-        return;
-    }
-    R.addAction(kSuiteSquash, fmt::format("chainB len {}", chainB.size()));
-
-    auto headB = st.getHead(kSquash);
-    LevelStatePtr reconB;
-    if (headB) reconB = git.reconstruct(*headB);
-    if (!reconB) {
-        R.addFail(kSuiteSquash, "recon_b", "reconstruct failed", T.ms());
-        return;
-    }
-    auto const hashB = hashLevelState(*reconB);
-    R.addAction(kSuiteSquash, fmt::format("hash before full squash {}", hashB));
-
-    R.addAction(kSuiteSquash, "squash all chainB msg TEST_SQUASH_ALL");
-    auto sqFull = git.squash(kSquash, chainB, "TEST_SQUASH_ALL");
-    if (!sqFull) {
-        R.addFail(kSuiteSquash, "squash_all", sqFull.error(), T.ms());
-        return;
-    }
-    auto chain3 = chainOldestToNewest(st, kSquash);
-    if (chain3.size() != 1) {
-        R.addFail(kSuiteSquash, "count_after_full_squash", fmt::format("expected 1 got {}", chain3.size()), T.ms());
-        return;
-    }
-    auto headOne = st.getHead(kSquash);
-    LevelStatePtr reconOne;
-    if (headOne) reconOne = git.reconstruct(*headOne);
-    if (!reconOne || hashLevelState(*reconOne) != hashB) {
-        R.addFail(kSuiteSquash, "full_squash_state", "squashed-all state != HEAD hash before squash-all", T.ms());
-        return;
-    }
-    R.addAction(kSuiteSquash, fmt::format("full squash single head {} hash match", *headOne));
-    R.addPass(
-        kSuiteSquash,
-        "squash_chain",
-        "range squash stable, revert range squash ok, full squash matches HEAD hash",
-        T.ms()
-    );
-}
 
 } // namespace git_editor

@@ -7,100 +7,96 @@
 
 namespace git_editor {
 
-namespace {
+    namespace {
 
-void ensureUnlimitedObjectCapacity(GJGameLevel* level) {
-    if (!level) return;
-    level->m_highObjectsEnabled = true;
-    level->m_unlimitedObjectsEnabled = true;
-}
-
-void refreshEditorVisualState(LevelEditorLayer* editor) {
-    if (!editor) return;
-
-    editor->loadLevelSettings();
-    editor->updateLevelColors();
-    editor->syncBGTextures();
-
-    editor->levelSettingsUpdated();
-    editor->updateOptions();
-    editor->updateEditorMode();
-    editor->updateGameObjects();
-    editor->updateBlendValues();
-    editor->updateArt(0.f);
-
-    if (auto* objects = editor->getAllObjects()) {
-        editor->updateObjectColors(objects);
-    }
-}
-
-bool applyLevelString(
-    LevelEditorLayer* editor,
-    std::string const& levelString,
-    std::size_t expectedObjectCount
-) {
-    if (!editor) {
-        geode::log::warn("applyLevelString called with null editor");
-        return false;
-    }
-    if (levelString.empty()) {
-        geode::log::warn("applyLevelString rejected empty level string");
-        return false;
-    }
-
-    if (levelString.find(';') == std::string::npos) {
-        geode::log::warn("applyLevelString rejected string without level delimiter");
-        return false;
-    }
-
-    ensureUnlimitedObjectCapacity(editor->m_level);
-
-    editor->removeAllObjects();
-
-    if (editor->m_level) {
-        editor->m_level->m_levelString = levelString;
-        editor->m_level->levelWasAltered();
-    }
-
-    gd::string s(levelString.c_str(), levelString.size());
-    editor->createObjectsFromSetup(s);
-    refreshEditorVisualState(editor);
-
-    auto const applied = captureLevelString(editor);
-    if (applied.empty()) {
-        geode::log::warn("applyLevelString failed: editor returned empty level string");
-        return false;
-    }
-
-    if (expectedObjectCount > 0) {
-        auto* arr = editor->getAllObjects();
-        auto const actual = arr ? static_cast<std::size_t>(arr->count()) : 0;
-        if (actual < expectedObjectCount) {
-            geode::log::warn(
-                "applyLevelString: expected {} objects, editor has {}",
-                expectedObjectCount,
-                actual
-            );
-            return false;
+        void ensureUnlimitedObjectCapacity(GJGameLevel* level) {
+            if (!level) return;
+            level->m_highObjectsEnabled = true;
+            level->m_unlimitedObjectsEnabled = true;
         }
+
+        void refreshEditorVisualState(LevelEditorLayer* editor) {
+            if (!editor) return;
+
+            editor->loadLevelSettings();
+            editor->updateLevelColors();
+            editor->syncBGTextures();
+
+            editor->levelSettingsUpdated();
+            editor->updateOptions();
+            editor->updateEditorMode();
+            editor->updateGameObjects();
+            editor->updateBlendValues();
+            editor->updateArt(0.f);
+
+            if (auto* objects = editor->getAllObjects()) {
+                editor->updateObjectColors(objects);
+            }
+        }
+
+        bool applyLevelString(
+            LevelEditorLayer* editor, std::string const& levelString, std::size_t expectedObjectCount
+        ) {
+            if (!editor) {
+                geode::log::warn("applyLevelString called with null editor");
+                return false;
+            }
+            if (levelString.empty()) {
+                geode::log::warn("applyLevelString rejected empty level string");
+                return false;
+            }
+
+            if (levelString.find(';') == std::string::npos) {
+                geode::log::warn("applyLevelString rejected string without level delimiter");
+                return false;
+            }
+
+            ensureUnlimitedObjectCapacity(editor->m_level);
+
+            editor->removeAllObjects();
+
+            if (editor->m_level) {
+                editor->m_level->m_levelString = levelString;
+                editor->m_level->levelWasAltered();
+            }
+
+            gd::string s(levelString.c_str(), levelString.size());
+            editor->createObjectsFromSetup(s);
+            refreshEditorVisualState(editor);
+
+            auto const applied = captureLevelString(editor);
+            if (applied.empty()) {
+                geode::log::warn("applyLevelString failed: editor returned empty level string");
+                return false;
+            }
+
+            if (expectedObjectCount > 0) {
+                auto* arr = editor->getAllObjects();
+                auto const actual = arr ? static_cast<std::size_t>(arr->count()) : 0;
+                if (actual < expectedObjectCount) {
+                    geode::log::warn(
+                        "applyLevelString: expected {} objects, editor has {}", expectedObjectCount, actual
+                    );
+                    return false;
+                }
+            }
+            return true;
+        }
+
+    } // namespace
+
+    std::string captureLevelString(LevelEditorLayer* editor) {
+        if (!editor) {
+            geode::log::warn("captureLevelString called with null editor");
+            return {};
+        }
+        ensureUnlimitedObjectCapacity(editor->m_level);
+        auto gdStr = editor->getLevelString();
+        return std::string(gdStr.c_str(), gdStr.size());
     }
-    return true;
-}
 
-} // namespace
-
-std::string captureLevelString(LevelEditorLayer* editor) {
-    if (!editor) {
-        geode::log::warn("captureLevelString called with null editor");
-        return {};
+    bool applyLevelState(LevelEditorLayer* editor, LevelState const& state) {
+        return applyLevelString(editor, serializeLevelString(state), state.objects.size());
     }
-    ensureUnlimitedObjectCapacity(editor->m_level);
-    auto gdStr = editor->getLevelString();
-    return std::string(gdStr.c_str(), gdStr.size());
-}
-
-bool applyLevelState(LevelEditorLayer* editor, LevelState const& state) {
-    return applyLevelString(editor, serializeLevelString(state), state.objects.size());
-}
 
 } // namespace git_editor

@@ -7,6 +7,6 @@
 
 namespace git_editor {
 
-std::optional<LevelState> reconstructPackageHead(GdgePackageData const& pkg);
+    std::optional<LevelState> reconstructPackageHead(GdgePackageData const& pkg);
 
 } // namespace git_editor

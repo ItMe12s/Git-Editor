@@ -4,23 +4,23 @@
 
 namespace git_editor {
 
-inline bool tryBeginBusyAction(bool& busyFlag) {
-    if (busyFlag) {
-        geode::Notification::create("Action already running", geode::NotificationIcon::Info)->show();
-        return false;
+    inline bool tryBeginBusyAction(bool& busyFlag) {
+        if (busyFlag) {
+            geode::Notification::create("Action already running", geode::NotificationIcon::Info)->show();
+            return false;
+        }
+        busyFlag = true;
+        return true;
     }
-    busyFlag = true;
-    return true;
-}
 
-inline void finishBusyAction(bool& busyFlag) {
-    busyFlag = false;
-}
+    inline void finishBusyAction(bool& busyFlag) {
+        busyFlag = false;
+    }
 
-inline bool exitBusyIfClosing(bool& busy, bool closing) {
-    if (!closing) return false;
-    finishBusyAction(busy);
-    return true;
-}
+    inline bool exitBusyIfClosing(bool& busy, bool closing) {
+        if (!closing) return false;
+        finishBusyAction(busy);
+        return true;
+    }
 
 } // namespace git_editor

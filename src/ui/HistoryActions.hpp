@@ -8,13 +8,10 @@
 
 namespace git_editor::history_actions {
 
-bool applyStateToEditorOrNotify(
-    char const*       operation,
-    LevelEditorLayer* editor,
-    LevelState const& state,
-    bool              hasConflicts
-);
+    bool applyStateToEditorOrNotify(
+        char const* operation, LevelEditorLayer* editor, LevelState const& state, bool hasConflicts
+    );
 
-void showConflictSummary(std::vector<Conflict> const& conflicts);
+    void showConflictSummary(std::vector<Conflict> const& conflicts);
 
 } // namespace git_editor::history_actions

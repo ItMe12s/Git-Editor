@@ -7,19 +7,16 @@
 
 namespace git_editor {
 
-class HistoryLayer;
+    class HistoryLayer;
 
-namespace history_rows {
+    namespace history_rows {
 
-constexpr float kRowHeight = 46.f;
+        constexpr float kRowHeight = 46.f;
 
-cocos2d::CCNode* createCommitRow(
-    CommitSummary const& commit,
-    float rowWidth,
-    bool squashMode,
-    bool selected,
-    HistoryLayer* layer
-);
+        cocos2d::CCNode* createCommitRow(
+            CommitSummary const& commit, float rowWidth, bool squashMode, bool selected,
+            HistoryLayer* layer
+        );
 
-} // namespace git_editor::history_rows
+    } // namespace history_rows
 } // namespace git_editor

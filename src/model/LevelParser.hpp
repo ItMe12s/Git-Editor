@@ -7,8 +7,8 @@
 
 namespace git_editor {
 
-LevelState parseLevelString(std::string_view raw);
+    LevelState parseLevelString(std::string_view raw);
 
-std::string serializeLevelString(LevelState const& state);
+    std::string serializeLevelString(LevelState const& state);
 
 } // namespace git_editor

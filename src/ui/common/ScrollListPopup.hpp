@@ -6,91 +6,73 @@
 #include <Geode/ui/Popup.hpp>
 #include <Geode/utils/async.hpp>
 #include <alphalaneous.alphas-ui-pack/include/API.hpp>
-
 #include <cstdint>
 #include <functional>
 
 namespace git_editor::scroll_list_popup {
 
-struct Layout {
-    static constexpr float kWidth     = 420.f;
-    static constexpr float kHeight    = 280.f;
-    static constexpr float kPadX      = 20.f;
-    static constexpr float kPadTop    = 36.f;
-    static constexpr float kPadBottom = 16.f;
-};
+    struct Layout {
+        static constexpr float kWidth = 420.f;
+        static constexpr float kHeight = 280.f;
+        static constexpr float kPadX = 20.f;
+        static constexpr float kPadTop = 36.f;
+        static constexpr float kPadBottom = 16.f;
+    };
 
-struct ListState {
-    bool          closing    = false;
-    std::uint64_t loadSerial = 0;
-};
+    struct ListState {
+        bool closing = false;
+        std::uint64_t loadSerial = 0;
+    };
 
-float innerWidth();
-float innerHeight();
+    float innerWidth();
+    float innerHeight();
 
-alpha::ui::AdvancedScrollLayer* attachScrollList(
-    geode::Popup* popup,
-    cocos2d::CCNode* mainLayer,
-    char const* scrollId
-);
-
-void preparePopupClose(
-    ListState& state,
-    alpha::ui::AdvancedScrollLayer*& scroll,
-    cocos2d::CCNode* mainLayer
-);
-
-bool closeOnce(
-    geode::Popup* popup,
-    ListState const& state,
-    cocos2d::CCObject* sender,
-    std::function<void(cocos2d::CCObject*)> onClose
-);
-
-bool isStaleLoad(ListState const& state, std::uint64_t serial);
-
-void showCenteredLabel(
-    alpha::ui::AdvancedScrollLayer* scroll,
-    char const* text,
-    char const* labelId,
-    float opacity = 160.f
-);
-
-void resetScrollTop(alpha::ui::AdvancedScrollLayer* scroll);
-
-cocos2d::CCNode* beginListRender(
-    alpha::ui::AdvancedScrollLayer* scroll,
-    char const* loadingOverlayId
-);
-
-std::uint64_t beginLoading(
-    ListState& state,
-    alpha::ui::AdvancedScrollLayer* scroll,
-    char const* loadingText,
-    char const* loadingId
-);
-
-template <class TResult, class Loader, class OnLoaded>
-void loadAsync(
-    ListState& state,
-    geode::async::TaskHolder<TResult>& loadTask,
-    alpha::ui::AdvancedScrollLayer* scroll,
-    char const* loadingText,
-    char const* loadingId,
-    Loader&& loader,
-    OnLoaded&& onLoaded
-) {
-    if (state.closing || !scroll) return;
-
-    auto const serial = beginLoading(state, scroll, loadingText, loadingId);
-    loadTask.spawn(
-        loadingText,
-        spawnOnGitWorker<TResult>(std::forward<Loader>(loader)),
-        [&state, serial, onLoaded = std::forward<OnLoaded>(onLoaded)](TResult result) mutable {
-            if (isStaleLoad(state, serial)) return;
-            onLoaded(std::move(result));
-        }
+    alpha::ui::AdvancedScrollLayer* attachScrollList(
+        geode::Popup* popup, cocos2d::CCNode* mainLayer, char const* scrollId
     );
-}
+
+    void preparePopupClose(
+        ListState& state, alpha::ui::AdvancedScrollLayer*& scroll, cocos2d::CCNode* mainLayer
+    );
+
+    bool closeOnce(
+        geode::Popup* popup, ListState const& state, cocos2d::CCObject* sender,
+        std::function<void(cocos2d::CCObject*)> onClose
+    );
+
+    bool isStaleLoad(ListState const& state, std::uint64_t serial);
+
+    void showCenteredLabel(
+        alpha::ui::AdvancedScrollLayer* scroll, char const* text, char const* labelId,
+        float opacity = 160.f
+    );
+
+    void resetScrollTop(alpha::ui::AdvancedScrollLayer* scroll);
+
+    cocos2d::CCNode* beginListRender(alpha::ui::AdvancedScrollLayer* scroll, char const* loadingOverlayId);
+
+    std::uint64_t beginLoading(
+        ListState& state, alpha::ui::AdvancedScrollLayer* scroll, char const* loadingText,
+        char const* loadingId
+    );
+
+    template <class TResult, class Loader, class OnLoaded>
+    void loadAsync(
+        ListState& state, geode::async::TaskHolder<TResult>& loadTask,
+        alpha::ui::AdvancedScrollLayer* scroll, char const* loadingText, char const* loadingId,
+        Loader&& loader, OnLoaded&& onLoaded
+    ) {
+        if (state.closing || !scroll) return;
+
+        auto const serial = beginLoading(state, scroll, loadingText, loadingId);
+        loadTask.spawn(
+            loadingText,
+            spawnOnGitWorker<TResult>(std::forward<Loader>(loader)),
+            [&state, serial, onLoaded = std::forward<OnLoaded>(onLoaded)](TResult result) mutable {
+                if (isStaleLoad(state, serial)) return;
+                onLoaded(std::move(result));
+            }
+        );
+    }
 
 } // namespace git_editor::scroll_list_popup

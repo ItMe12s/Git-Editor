@@ -9,33 +9,29 @@
 #include <Geode/ui/Popup.hpp>
 #include <Geode/utils/async.hpp>
 #include <alphalaneous.alphas-ui-pack/include/API.hpp>
-
 #include <cstdint>
 #include <vector>
 
 namespace git_editor {
 
-class LevelBrowserLayer : public geode::Popup {
-public:
-    static LevelBrowserLayer* create(
-        LevelEditorLayer*  editor,
-        EditorPauseLayer*  pauseLayer
-    );
+    class LevelBrowserLayer : public geode::Popup {
+    public:
+        static LevelBrowserLayer* create(LevelEditorLayer* editor, EditorPauseLayer* pauseLayer);
 
-protected:
-    bool init(LevelEditorLayer* editor, EditorPauseLayer* pauseLayer);
+    protected:
+        bool init(LevelEditorLayer* editor, EditorPauseLayer* pauseLayer);
 
-    void onClose(cocos2d::CCObject* sender) override;
-    bool closeOnce(cocos2d::CCObject* sender = nullptr);
-    void rebuildList();
-    void renderList(std::vector<LevelSummary> levels);
+        void onClose(cocos2d::CCObject* sender) override;
+        bool closeOnce(cocos2d::CCObject* sender = nullptr);
+        void rebuildList();
+        void renderList(std::vector<LevelSummary> levels);
 
-    geode::Ref<LevelEditorLayer>    m_editor;
-    geode::Ref<EditorPauseLayer>    m_pauseLayer;
-    alpha::ui::AdvancedScrollLayer* m_scroll = nullptr;
-    scroll_list_popup::ListState    m_listState{};
-    bool m_busy = false;
-    geode::async::TaskHolder<std::vector<LevelSummary>> m_loadTask;
-};
+        geode::Ref<LevelEditorLayer> m_editor;
+        geode::Ref<EditorPauseLayer> m_pauseLayer;
+        alpha::ui::AdvancedScrollLayer* m_scroll = nullptr;
+        scroll_list_popup::ListState m_listState{};
+        bool m_busy = false;
+        geode::async::TaskHolder<std::vector<LevelSummary>> m_loadTask;
+    };
 
 } // namespace git_editor

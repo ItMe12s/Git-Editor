@@ -1,4 +1,5 @@
 #include "LevelParser.hpp"
+
 #include "util/format/Parsing.hpp"
 
 #include <algorithm>
@@ -8,99 +9,102 @@
 
 namespace git_editor {
 
-namespace {
+    namespace {
 
-FieldMap readKvChunk(std::string_view chunk) {
-    FieldMap out;
-    if (chunk.empty()) return out;
+        FieldMap readKvChunk(std::string_view chunk) {
+            FieldMap out;
+            if (chunk.empty()) return out;
 
-    auto tokens = parsing::splitView(chunk, ',');
-    if (!tokens.empty() && tokens.back().empty()) tokens.pop_back();
+            auto tokens = parsing::splitView(chunk, ',');
+            if (!tokens.empty() && tokens.back().empty()) tokens.pop_back();
 
-    for (std::size_t i = 0; i + 1 < tokens.size(); i += 2) {
-        if (tokens[i].empty()) continue;
-        out.emplace(std::string(tokens[i]), std::string(tokens[i + 1]));
+            for (std::size_t i = 0; i + 1 < tokens.size(); i += 2) {
+                if (tokens[i].empty()) continue;
+                out.emplace(std::string(tokens[i]), std::string(tokens[i + 1]));
+            }
+            return out;
+        }
+
+        std::string serializeFields(FieldMap const& m) {
+            std::vector<std::pair<std::string_view, std::string_view>> items;
+            items.reserve(m.size());
+            for (auto const& [k, v] : m) {
+                items.emplace_back(k, v);
+            }
+            std::sort(items.begin(), items.end(), [](auto const& a, auto const& b) {
+                return a.first < b.first;
+            });
+
+            std::string out;
+            std::size_t cap = 0;
+            for (auto const& [k, v] : items) {
+                cap += k.size() + v.size() + 2;
+            }
+            out.reserve(cap);
+            bool first = true;
+            for (auto const& [k, v] : items) {
+                if (!first) out.push_back(',');
+                first = false;
+                out.append(k);
+                out.push_back(',');
+                out.append(v);
+            }
+            return out;
+        }
+
+    } // namespace
+
+    LevelState parseLevelString(std::string_view raw) {
+        LevelState state;
+
+        auto chunks = parsing::splitView(raw, ';');
+        if (chunks.empty()) return state;
+
+        state.header = readKvChunk(chunks.front());
+        if (serializeFields(state.header) == chunks.front()) {
+            state.rawHeader.clear();
+        }
+        else {
+            state.rawHeader = std::string(chunks.front());
+        }
+
+        for (std::size_t i = 1; i < chunks.size(); ++i) {
+            if (chunks[i].empty()) continue;
+            Object obj;
+            obj.fields = readKvChunk(chunks[i]);
+            if (obj.fields.empty()) continue;
+            obj.uuid = static_cast<ObjectUuid>(i);
+            state.objects.emplace(obj.uuid, std::move(obj));
+        }
+
+        return state;
     }
-    return out;
-}
 
-std::string serializeFields(FieldMap const& m) {
-    std::vector<std::pair<std::string_view, std::string_view>> items;
-    items.reserve(m.size());
-    for (auto const& [k, v] : m) {
-        items.emplace_back(k, v);
-    }
-    std::sort(items.begin(), items.end(), [](auto const& a, auto const& b) {
-        return a.first < b.first;
-    });
+    std::string serializeLevelString(LevelState const& state) {
+        std::string out;
+        out.reserve(256 + state.objects.size() * 96);
 
-    std::string out;
-    std::size_t cap = 0;
-    for (auto const& [k, v] : items) {
-        cap += k.size() + v.size() + 2;
-    }
-    out.reserve(cap);
-    bool first = true;
-    for (auto const& [k, v] : items) {
-        if (!first) out.push_back(',');
-        first = false;
-        out.append(k);
-        out.push_back(',');
-        out.append(v);
-    }
-    return out;
-}
-
-} // namespace
-
-LevelState parseLevelString(std::string_view raw) {
-    LevelState state;
-
-    auto chunks = parsing::splitView(raw, ';');
-    if (chunks.empty()) return state;
-
-    state.header = readKvChunk(chunks.front());
-    if (serializeFields(state.header) == chunks.front()) {
-        state.rawHeader.clear();
-    } else {
-        state.rawHeader = std::string(chunks.front());
-    }
-
-    for (std::size_t i = 1; i < chunks.size(); ++i) {
-        if (chunks[i].empty()) continue;
-        Object obj;
-        obj.fields = readKvChunk(chunks[i]);
-        if (obj.fields.empty()) continue;
-        obj.uuid = static_cast<ObjectUuid>(i);
-        state.objects.emplace(obj.uuid, std::move(obj));
-    }
-
-    return state;
-}
-
-std::string serializeLevelString(LevelState const& state) {
-    std::string out;
-    out.reserve(256 + state.objects.size() * 96);
-
-    if (!state.rawHeader.empty()) {
-        out.append(state.rawHeader);
-    } else {
-        out.append(serializeFields(state.header));
-    }
-    out.push_back(';');
-
-    std::vector<ObjectUuid> ids;
-    ids.reserve(state.objects.size());
-    for (auto const& [id, _] : state.objects) ids.push_back(id);
-    std::sort(ids.begin(), ids.end());
-
-    for (auto id : ids) {
-        auto const& obj = state.objects.at(id);
-        out.append(serializeFields(obj.fields));
+        if (!state.rawHeader.empty()) {
+            out.append(state.rawHeader);
+        }
+        else {
+            out.append(serializeFields(state.header));
+        }
         out.push_back(';');
-    }
 
-    return out;
-}
+        std::vector<ObjectUuid> ids;
+        ids.reserve(state.objects.size());
+        for (auto const& [id, _] : state.objects)
+            ids.push_back(id);
+        std::sort(ids.begin(), ids.end());
+
+        for (auto id : ids) {
+            auto const& obj = state.objects.at(id);
+            out.append(serializeFields(obj.fields));
+            out.push_back(';');
+        }
+
+        return out;
+    }
 
 } // namespace git_editor

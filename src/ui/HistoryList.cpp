@@ -1,6 +1,5 @@
-#include "HistoryLayer.hpp"
-
 #include "HistoryCommitRow.hpp"
+#include "HistoryLayer.hpp"
 #include "common/ScrollListPopup.hpp"
 #include "editor/LevelKey.hpp"
 #include "service/GitService.hpp"
@@ -9,7 +8,6 @@
 #include <Geode/binding/CCMenuItemSpriteExtra.hpp>
 #include <Geode/ui/Layout.hpp>
 #include <Geode/utils/cocos.hpp>
-
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -18,109 +16,103 @@ using namespace geode::prelude;
 
 namespace git_editor {
 
-HistoryLayer::HistoryLoadResult HistoryLayer::loadHistory(
-    LevelKey levelKey,
-    LevelKey const& activeEditorLevelKey
-) {
-    auto commits = sharedGitService().listSummaries(levelKey);
-    if (commits.empty() && !activeEditorLevelKey.empty() && activeEditorLevelKey != levelKey) {
-        auto activeCommits = sharedGitService().listSummaries(activeEditorLevelKey);
-        if (!activeCommits.empty()) {
-            levelKey = activeEditorLevelKey;
-            commits  = std::move(activeCommits);
+    HistoryLayer::HistoryLoadResult HistoryLayer::loadHistory(
+        LevelKey levelKey, LevelKey const& activeEditorLevelKey
+    ) {
+        auto commits = sharedGitService().listSummaries(levelKey);
+        if (commits.empty() && !activeEditorLevelKey.empty() && activeEditorLevelKey != levelKey) {
+            auto activeCommits = sharedGitService().listSummaries(activeEditorLevelKey);
+            if (!activeCommits.empty()) {
+                levelKey = activeEditorLevelKey;
+                commits = std::move(activeCommits);
+            }
         }
+        return {std::move(levelKey), std::move(commits)};
     }
-    return { std::move(levelKey), std::move(commits) };
-}
 
-void HistoryLayer::rebuildList() {
-    if (m_listState.closing || !m_scroll) return;
+    void HistoryLayer::rebuildList() {
+        if (m_listState.closing || !m_scroll) return;
 
-    auto* editor = m_editor.data();
-    auto const activeKey = (editor && editor->m_level) ? levelKeyFor(editor->m_level) : "";
-    std::string levelKey = m_levelKey;
+        auto* editor = m_editor.data();
+        auto const activeKey = (editor && editor->m_level) ? levelKeyFor(editor->m_level) : "";
+        std::string levelKey = m_levelKey;
 
-    scroll_list_popup::loadAsync<HistoryLoadResult>(
-        m_listState,
-        m_loadTask,
-        m_scroll,
-        "Loading commits...",
-        "git-editor-history-loading"_spr,
-        [levelKey, activeKey]() { return loadHistory(levelKey, activeKey); },
-        [this](HistoryLoadResult loaded) mutable {
-            m_levelKey = std::move(loaded.levelKey);
-            renderList(std::move(loaded.commits));
-        }
-    );
-}
-
-void HistoryLayer::renderList(std::vector<CommitSummary> loadedCommits) {
-    if (m_listState.closing || !m_scroll) return;
-
-    auto* content = scroll_list_popup::beginListRender(
-        m_scroll, "git-editor-history-loading"_spr
-    );
-    if (!content) return;
-
-    m_commits = std::move(loadedCommits);
-    auto const& commits = m_commits;
-
-    float const rowWidth = content->getContentSize().width;
-
-    if (commits.empty()) {
-        scroll_list_popup::showCenteredLabel(
-            m_scroll, "No commits yet.", "git-editor-history-empty"_spr
+        scroll_list_popup::loadAsync<HistoryLoadResult>(
+            m_listState,
+            m_loadTask,
+            m_scroll,
+            "Loading commits...",
+            "git-editor-history-loading"_spr,
+            [levelKey, activeKey]() {
+                return loadHistory(levelKey, activeKey);
+            },
+            [this](HistoryLoadResult loaded) mutable {
+                m_levelKey = std::move(loaded.levelKey);
+                renderList(std::move(loaded.commits));
+            }
         );
+    }
+
+    void HistoryLayer::renderList(std::vector<CommitSummary> loadedCommits) {
+        if (m_listState.closing || !m_scroll) return;
+
+        auto* content =
+            scroll_list_popup::beginListRender(m_scroll, "git-editor-history-loading"_spr);
+        if (!content) return;
+
+        m_commits = std::move(loadedCommits);
+        auto const& commits = m_commits;
+
+        float const rowWidth = content->getContentSize().width;
+
+        if (commits.empty()) {
+            scroll_list_popup::showCenteredLabel(
+                m_scroll, "No commits yet.", "git-editor-history-empty"_spr
+            );
+            scroll_list_popup::resetScrollTop(m_scroll);
+            return;
+        }
+
+        for (auto const& c : commits) {
+            bool const selected = m_squashMode && m_selected.count(c.id) > 0;
+            content->addChild(history_rows::createCommitRow(c, rowWidth, m_squashMode, selected, this));
+        }
+
+        content->updateLayout();
         scroll_list_popup::resetScrollTop(m_scroll);
-        return;
     }
 
-    for (auto const& c : commits) {
-        bool const selected = m_squashMode && m_selected.count(c.id) > 0;
-        content->addChild(history_rows::createCommitRow(
-            c, rowWidth, m_squashMode, selected, this
-        ));
-    }
+    void HistoryLayer::rebuildHeader() {
+        if (m_listState.closing || !m_headerMenu) return;
+        m_headerMenu->removeAllChildren();
 
-    content->updateLayout();
-    scroll_list_popup::resetScrollTop(m_scroll);
-}
-
-void HistoryLayer::rebuildHeader() {
-    if (m_listState.closing || !m_headerMenu) return;
-    m_headerMenu->removeAllChildren();
-
-    auto modeLabel = m_squashMode ? "Exit Squash" : "Squash Mode";
-    auto modeTex   = m_squashMode ? "GJ_button_06.png" : "GJ_button_04.png";
-    auto modeSpr   = ButtonSprite::create(modeLabel, "bigFont.fnt", modeTex, .8f);
-    modeSpr->setScale(.45f);
-    auto modeBtn = CCMenuItemExt::createSpriteExtra(modeSpr,
-        [this](CCMenuItemSpriteExtra*) {
+        auto modeLabel = m_squashMode ? "Exit Squash" : "Squash Mode";
+        auto modeTex = m_squashMode ? "GJ_button_06.png" : "GJ_button_04.png";
+        auto modeSpr = ButtonSprite::create(modeLabel, "bigFont.fnt", modeTex, .8f);
+        modeSpr->setScale(.45f);
+        auto modeBtn = CCMenuItemExt::createSpriteExtra(modeSpr, [this](CCMenuItemSpriteExtra*) {
             if (m_listState.closing) return;
             m_squashMode = !m_squashMode;
             m_selected.clear();
             rebuildHeader();
             if (m_commits.empty()) rebuildList();
-            else                   renderList(m_commits);
-        }
-    );
-    modeBtn->setID("git-editor-history-mode-btn"_spr);
-    m_headerMenu->addChild(modeBtn);
+            else renderList(m_commits);
+        });
+        modeBtn->setID("git-editor-history-mode-btn"_spr);
+        m_headerMenu->addChild(modeBtn);
 
-    if (m_squashMode && m_selected.size() >= 2) {
-        auto label = std::string("Squash ") + std::to_string(m_selected.size());
-        auto spr   = ButtonSprite::create(label.c_str(), "bigFont.fnt", "GJ_button_01.png", .8f);
-        spr->setScale(.45f);
-        auto squashBtn = CCMenuItemExt::createSpriteExtra(spr,
-            [this](CCMenuItemSpriteExtra*) {
+        if (m_squashMode && m_selected.size() >= 2) {
+            auto label = std::string("Squash ") + std::to_string(m_selected.size());
+            auto spr = ButtonSprite::create(label.c_str(), "bigFont.fnt", "GJ_button_01.png", .8f);
+            spr->setScale(.45f);
+            auto squashBtn = CCMenuItemExt::createSpriteExtra(spr, [this](CCMenuItemSpriteExtra*) {
                 if (!m_listState.closing) onSquashPressed();
-            }
-        );
-        squashBtn->setID("git-editor-history-squash-btn"_spr);
-        m_headerMenu->addChild(squashBtn);
-    }
+            });
+            squashBtn->setID("git-editor-history-squash-btn"_spr);
+            m_headerMenu->addChild(squashBtn);
+        }
 
-    m_headerMenu->updateLayout();
-}
+        m_headerMenu->updateLayout();
+    }
 
 } // namespace git_editor

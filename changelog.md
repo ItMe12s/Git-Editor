@@ -14,6 +14,7 @@ Consider giving it a star and check the commit history for a more technical chan
 ## 1.0.0-beta.14
 
 - Fixed History/Levels popup leaking/retaining the editor pause menu.
+- Many internal cleanup.
 
 ## 1.0.0-beta.13
 

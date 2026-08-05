@@ -5,6 +5,6 @@
 
 namespace git_editor {
 
-std::string levelKeyFor(GJGameLevel* level);
+    std::string levelKeyFor(GJGameLevel* level);
 
 } // namespace git_editor

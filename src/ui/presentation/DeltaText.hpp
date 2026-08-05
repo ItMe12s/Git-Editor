@@ -6,6 +6,6 @@
 
 namespace git_editor {
 
-std::string describeDeltaText(Delta const& d);
+    std::string describeDeltaText(Delta const& d);
 
 } // namespace git_editor

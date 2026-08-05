@@ -17,12 +17,11 @@
 #include <Geode/loader/Loader.hpp>
 #include <Geode/loader/Mod.hpp>
 #include <Geode/modify/EditorPauseLayer.hpp>
-#include <Geode/utils/async.hpp>
-#include <Geode/utils/file.hpp>
 #include <Geode/ui/Layout.hpp>
 #include <Geode/ui/Notification.hpp>
+#include <Geode/utils/async.hpp>
 #include <Geode/utils/cocos.hpp>
-
+#include <Geode/utils/file.hpp>
 #include <algorithm>
 #include <optional>
 
@@ -30,43 +29,40 @@ using namespace geode::prelude;
 
 namespace {
 
-constexpr auto kTopMenuID = "top-menu"_spr;
+    constexpr auto kTopMenuID = "top-menu"_spr;
 
-bool requireActiveEditor(LevelEditorLayer* editor) {
-    if (editor) return true;
-    Notification::create("No active editor", NotificationIcon::Error)->show();
-    return false;
-}
-
-std::optional<std::string> requireValidLevelKey(LevelEditorLayer* editor) {
-    if (!requireActiveEditor(editor)) return std::nullopt;
-    auto levelKey = git_editor::levelKeyFor(editor->m_level);
-    if (levelKey.rfind("invalid:", 0) != 0) return levelKey;
-    Notification::create("No valid level context", NotificationIcon::Error)->show();
-    return std::nullopt;
-}
-
-void notifyCommitOutcome(git_editor::Result<git_editor::CommitId> const& outcome) {
-    if (outcome) {
-        Notification::create("Committed", NotificationIcon::Success)->show();
-    } else {
-        Notification::create(
-            ("Commit failed: " + outcome.error()).c_str(),
-            NotificationIcon::Error
-        )->show();
+    bool requireActiveEditor(LevelEditorLayer* editor) {
+        if (editor) return true;
+        Notification::create("No active editor", NotificationIcon::Error)->show();
+        return false;
     }
-}
 
-void notifyExportOutcome(git_editor::Result<void> const& outcome) {
-    if (!outcome) {
-        Notification::create(
-            ("Export failed: " + outcome.error()).c_str(),
-            NotificationIcon::Error
-        )->show();
-        return;
+    std::optional<std::string> requireValidLevelKey(LevelEditorLayer* editor) {
+        if (!requireActiveEditor(editor)) return std::nullopt;
+        auto levelKey = git_editor::levelKeyFor(editor->m_level);
+        if (levelKey.rfind("invalid:", 0) != 0) return levelKey;
+        Notification::create("No valid level context", NotificationIcon::Error)->show();
+        return std::nullopt;
     }
-    Notification::create("Exported .gdge", NotificationIcon::Success)->show();
-}
+
+    void notifyCommitOutcome(git_editor::Result<git_editor::CommitId> const& outcome) {
+        if (outcome) {
+            Notification::create("Committed", NotificationIcon::Success)->show();
+        }
+        else {
+            Notification::create(("Commit failed: " + outcome.error()).c_str(), NotificationIcon::Error)
+                ->show();
+        }
+    }
+
+    void notifyExportOutcome(git_editor::Result<void> const& outcome) {
+        if (!outcome) {
+            Notification::create(("Export failed: " + outcome.error()).c_str(), NotificationIcon::Error)
+                ->show();
+            return;
+        }
+        Notification::create("Exported .gdge", NotificationIcon::Success)->show();
+    }
 
 } // namespace
 
@@ -91,15 +87,13 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
 
         auto winSize = CCDirector::sharedDirector()->getWinSize();
         auto const sizeMultiplier = std::clamp(
-            static_cast<float>(Mod::get()->getSettingValue<double>("size-multiplier")),
-            0.2f,
-            2.0f
+            static_cast<float>(Mod::get()->getSettingValue<double>("size-multiplier")), 0.2f, 2.0f
         );
 
         auto menu = CCMenu::create();
         menu->setID(kTopMenuID);
         menu->setContentSize({360.f, 56.f});
-        menu->setPosition({ winSize.width / 2.f, winSize.height - 45.f });
+        menu->setPosition({winSize.width / 2.f, winSize.height - 45.f});
         menu->setLayout(
             ColumnLayout::create()
                 ->setAxisReverse(true)
@@ -136,9 +130,10 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
 
         auto historySpr = ButtonSprite::create("History", "bigFont.fnt", "GJ_button_04.png", .8f);
         historySpr->setScale(.5f * sizeMultiplier);
-        auto historyBtn = CCMenuItemExt::createSpriteExtra(historySpr, [this](CCMenuItemSpriteExtra*) {
-            this->onGitHistory();
-        });
+        auto historyBtn =
+            CCMenuItemExt::createSpriteExtra(historySpr, [this](CCMenuItemSpriteExtra*) {
+                this->onGitHistory();
+            });
         historyBtn->setID("history-button"_spr);
         rowTop->addChild(historyBtn);
 
@@ -179,28 +174,24 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
         if (!requireActiveEditor(editor)) return;
         Ref<LevelEditorLayer> editorRef(editor);
 
-        auto popup = git_editor::CommitMessageLayer::create(
-            [editorRef](std::string const& message) {
-                auto* editorPtr = editorRef.data();
-                auto levelKey = requireValidLevelKey(editorPtr);
-                if (!levelKey) return;
-                auto levelStr = git_editor::captureLevelString(editorPtr);
-                if (levelStr.empty()) {
-                    Notification::create(
-                        "Level is empty", NotificationIcon::Warning
-                    )->show();
-                    return;
-                }
-                git_editor::ui_action_runner::runWorkerResult<git_editor::Result<git_editor::CommitId>>(
-                    [levelKey = *levelKey, message, levelStr = std::move(levelStr)]() {
-                        return git_editor::sharedGitService().commit(levelKey, message, levelStr);
-                    },
-                    [](git_editor::Result<git_editor::CommitId> outcome) {
-                        notifyCommitOutcome(outcome);
-                    }
-                );
+        auto popup = git_editor::CommitMessageLayer::create([editorRef](std::string const& message) {
+            auto* editorPtr = editorRef.data();
+            auto levelKey = requireValidLevelKey(editorPtr);
+            if (!levelKey) return;
+            auto levelStr = git_editor::captureLevelString(editorPtr);
+            if (levelStr.empty()) {
+                Notification::create("Level is empty", NotificationIcon::Warning)->show();
+                return;
             }
-        );
+            git_editor::ui_action_runner::runWorkerResult<git_editor::Result<git_editor::CommitId>>(
+                [levelKey = *levelKey, message, levelStr = std::move(levelStr)]() {
+                    return git_editor::sharedGitService().commit(levelKey, message, levelStr);
+                },
+                [](git_editor::Result<git_editor::CommitId> outcome) {
+                    notifyCommitOutcome(outcome);
+                }
+            );
+        });
         if (popup) popup->show();
     }
 
@@ -210,7 +201,8 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
         if (!levelKey) return;
         Ref<LevelEditorLayer> editorRef(editor);
         Ref<EditorPauseLayer> pauseRef(this);
-        if (auto popup = git_editor::HistoryLayer::create(*levelKey, editorRef.data(), pauseRef.data())) {
+        if (auto popup =
+                git_editor::HistoryLayer::create(*levelKey, editorRef.data(), pauseRef.data())) {
             popup->show();
         }
     }
@@ -232,7 +224,7 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
 
         geode::utils::file::FilePickOptions options;
         options.defaultPath = geode::Mod::get()->getSaveDir() / "level-export.gdge";
-        options.filters.push_back({ "Git Editor Level Package", { "*.gdge" } });
+        options.filters.push_back({"Git Editor Level Package", {"*.gdge"}});
         geode::async::spawn(
             geode::utils::file::pick(geode::utils::file::PickMode::SaveFile, options),
             [levelKey = *levelKey](geode::utils::file::PickResult picked) {
@@ -262,7 +254,7 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
 
         geode::utils::file::FilePickOptions options;
         options.defaultPath = geode::Mod::get()->getSaveDir();
-        options.filters.push_back({ "Git Editor Level Package", { "*.gdge" } });
+        options.filters.push_back({"Git Editor Level Package", {"*.gdge"}});
         Ref<EditorPauseLayer> alive(this);
         Ref<LevelEditorLayer> editorRef(editor);
 
@@ -278,7 +270,8 @@ class $modify(GitEditorPauseHook, EditorPauseLayer) {
                 if (picks.empty()) return;
                 std::vector<std::filesystem::path> paths;
                 paths.reserve(picks.size());
-                for (auto const& p : picks) paths.push_back(p);
+                for (auto const& p : picks)
+                    paths.push_back(p);
                 git_editor::import_gdge_flow::startImportGdgeFlow(
                     alive, editorRef, levelKey, std::move(paths)
                 );

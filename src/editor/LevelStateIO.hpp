@@ -7,8 +7,8 @@
 
 namespace git_editor {
 
-std::string captureLevelString(LevelEditorLayer* editor);
+    std::string captureLevelString(LevelEditorLayer* editor);
 
-bool applyLevelState(LevelEditorLayer* editor, LevelState const& state);
+    bool applyLevelState(LevelEditorLayer* editor, LevelState const& state);
 
 } // namespace git_editor

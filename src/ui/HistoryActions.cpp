@@ -8,57 +8,55 @@
 
 namespace git_editor::history_actions {
 
-bool applyStateToEditorOrNotify(
-    char const*       operation,
-    LevelEditorLayer* editor,
-    LevelState const& state,
-    bool              hasConflicts
-) {
-    if (!editor || !editor->getParent()) {
-        geode::Notification::create(
-            (std::string(operation) + " ready but editor is no longer active, aborted before DB write").c_str(),
-            geode::NotificationIcon::Warning
-        )->show();
-        return false;
-    }
-    if (!applyLevelState(editor, state)) {
-        geode::Notification::create(
-            (std::string(operation) + " ready but editor refused, aborted before DB write").c_str(),
-            geode::NotificationIcon::Warning
-        )->show();
-        return false;
-    }
-    if (hasConflicts) {
-        geode::Notification::create(
-            (std::string(operation) + ": conflicts merged into editor state").c_str(),
-            geode::NotificationIcon::Warning
-        )->show();
-    }
-    return true;
-}
-
-void showConflictSummary(std::vector<Conflict> const& conflicts) {
-    if (conflicts.empty()) return;
-
-    int adds = 0, missing = 0, stale = 0;
-    for (auto const& c : conflicts) {
-        switch (c.kind) {
-            case Conflict::Kind::AddAlreadyExists: ++adds;    break;
-            case Conflict::Kind::Missing:          ++missing; break;
-            case Conflict::Kind::ModifyStale:      ++stale;   break;
+    bool applyStateToEditorOrNotify(
+        char const* operation, LevelEditorLayer* editor, LevelState const& state, bool hasConflicts
+    ) {
+        if (!editor || !editor->getParent()) {
+            geode::Notification::create(
+                (std::string(operation) +
+                 " ready but editor is no longer active, aborted before DB write")
+                    .c_str(),
+                geode::NotificationIcon::Warning
+            )
+                ->show();
+            return false;
         }
+        if (!applyLevelState(editor, state)) {
+            geode::Notification::create(
+                (std::string(operation) + " ready but editor refused, aborted before DB write").c_str(),
+                geode::NotificationIcon::Warning
+            )
+                ->show();
+            return false;
+        }
+        if (hasConflicts) {
+            geode::Notification::create(
+                (std::string(operation) + ": conflicts merged into editor state").c_str(),
+                geode::NotificationIcon::Warning
+            )
+                ->show();
+        }
+        return true;
     }
 
-    std::string body = "Some ops could not be applied cleanly:\n";
-    if (adds)    body += fmt::format("- {} add(s) already present\n", adds);
-    if (missing) body += fmt::format("- {} missing\n", missing);
-    if (stale)   body += fmt::format("- {} stale field(s) skipped", stale);
+    void showConflictSummary(std::vector<Conflict> const& conflicts) {
+        if (conflicts.empty()) return;
 
-    FLAlertLayer::create(
-        "Revert - partial",
-        body.c_str(),
-        "OK"
-    )->show();
-}
+        int adds = 0, missing = 0, stale = 0;
+        for (auto const& c : conflicts) {
+            switch (c.kind) {
+                case Conflict::Kind::AddAlreadyExists: ++adds; break;
+                case Conflict::Kind::Missing: ++missing; break;
+                case Conflict::Kind::ModifyStale: ++stale; break;
+            }
+        }
+
+        std::string body = "Some ops could not be applied cleanly:\n";
+        if (adds) body += fmt::format("- {} add(s) already present\n", adds);
+        if (missing) body += fmt::format("- {} missing\n", missing);
+        if (stale) body += fmt::format("- {} stale field(s) skipped", stale);
+
+        FLAlertLayer::create("Revert - partial", body.c_str(), "OK")->show();
+    }
 
 } // namespace git_editor::history_actions

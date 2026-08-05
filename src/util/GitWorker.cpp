@@ -2,17 +2,17 @@
 
 namespace git_editor {
 
-namespace detail {
+    namespace detail {
 
-std::mutex& gitWorkerMutex() {
-    static std::mutex mutex;
-    return mutex;
-}
+        std::mutex& gitWorkerMutex() {
+            static std::mutex mutex;
+            return mutex;
+        }
 
-} // namespace detail
+    } // namespace detail
 
-void postToGitWorker(std::function<void()> job) {
-    spawnOnGitWorker<void>(std::move(job));
-}
+    void postToGitWorker(std::function<void()> job) {
+        spawnOnGitWorker<void>(std::move(job));
+    }
 
 } // namespace git_editor

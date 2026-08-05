@@ -4,14 +4,14 @@
 
 namespace git_editor {
 
-struct AssignUuidStats {
-    std::size_t fingerprintHits  = 0;
-    std::size_t spatialFallbacks = 0;
-    std::size_t freshUuids       = 0;
-};
+    struct AssignUuidStats {
+        std::size_t fingerprintHits = 0;
+        std::size_t spatialFallbacks = 0;
+        std::size_t freshUuids = 0;
+    };
 
-void assignUuids(LevelState const& previous, LevelState& incoming, AssignUuidStats* stats = nullptr);
+    void assignUuids(LevelState const& previous, LevelState& incoming, AssignUuidStats* stats = nullptr);
 
-void assignFreshUuids(LevelState& state);
+    void assignFreshUuids(LevelState& state);
 
 } // namespace git_editor

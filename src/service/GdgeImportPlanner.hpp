@@ -9,9 +9,8 @@
 
 namespace git_editor::gdge_import_planner {
 
-ImportPlan classifyImports(
-    std::optional<LevelState> const& rootState,
-    std::vector<std::filesystem::path> const& inPaths
-);
+    ImportPlan classifyImports(
+        std::optional<LevelState> const& rootState, std::vector<std::filesystem::path> const& inPaths
+    );
 
 } // namespace git_editor::gdge_import_planner

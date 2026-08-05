@@ -8,6 +8,6 @@
 
 namespace git_editor {
 
-std::string hashLevelState(LevelState const& state);
+    std::string hashLevelState(LevelState const& state);
 
 } // namespace git_editor
