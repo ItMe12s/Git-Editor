@@ -11,10 +11,10 @@ void runRevertTests(GitService& git, CommitStore& st, ReportBuilder& R) {
     R.addAction(kSuiteRevert, fmt::format("deleteLevel {}", kRevert));
     st.deleteLevel(kRevert);
     R.addAction(kSuiteRevert, "commit r1 r2 r3 r4");
-    if (!git.commit(kRevert, "r1", levelAt(0)).ok
-        || !git.commit(kRevert, "r2", levelAt(10)).ok
-        || !git.commit(kRevert, "r3", levelAtFixedX(20)).ok
-        || !git.commit(kRevert, "r4", levelAtFixedX(30)).ok) {
+    if (!git.commit(kRevert, "r1", levelAt(0))
+        || !git.commit(kRevert, "r2", levelAt(10))
+        || !git.commit(kRevert, "r3", levelAtFixedX(20))
+        || !git.commit(kRevert, "r4", levelAtFixedX(30))) {
         R.addFail(kSuiteRevert, "setup_four", "commit failed", T.ms());
         return;
     }
@@ -31,20 +31,20 @@ void runRevertTests(GitService& git, CommitStore& st, ReportBuilder& R) {
 
     R.addAction(kSuiteRevert, fmt::format("revert target c2 {}", c2));
     auto rev1 = git.revert(kRevert, c2);
-    if (!rev1.ok) {
-        R.addFail(kSuiteRevert, "revert_middle", rev1.error, T.ms());
+    if (!rev1) {
+        R.addFail(kSuiteRevert, "revert_middle", rev1.error(), T.ms());
         return;
     }
-    if (!rev1.value.conflicts.empty()) {
+    if (!rev1->conflicts.empty()) {
         R.addFail(
             kSuiteRevert,
             "revert_no_conflict_expected",
-            fmt::format("unexpected conflicts {}", rev1.value.conflicts.size()),
+            fmt::format("unexpected conflicts {}", rev1->conflicts.size()),
             T.ms()
         );
         return;
     }
-    R.addAction(kSuiteRevert, fmt::format("revert revertCommit ok conflicts {}", rev1.value.conflicts.size()));
+    R.addAction(kSuiteRevert, fmt::format("revert revertCommit ok conflicts {}", rev1->conflicts.size()));
 
     auto rowsAfter = st.list(kRevert);
     bool hasC3 = false;
@@ -68,8 +68,8 @@ void runRevertTests(GitService& git, CommitStore& st, ReportBuilder& R) {
 
     R.addAction(kSuiteRevert, fmt::format("revert HEAD {}", *headAfterRev));
     auto rev2 = git.revert(kRevert, *headAfterRev);
-    if (!rev2.ok) {
-        R.addFail(kSuiteRevert, "revert_revert", rev2.error, T.ms());
+    if (!rev2) {
+        R.addFail(kSuiteRevert, "revert_revert", rev2.error(), T.ms());
         return;
     }
     R.addAction(kSuiteRevert, "double revert OK");
@@ -78,8 +78,8 @@ void runRevertTests(GitService& git, CommitStore& st, ReportBuilder& R) {
     R.addAction(kSuiteRevert, "revert with conflicts branch");
     ScopedTimer conflictT;
     st.deleteLevel(kRevert);
-    if (!git.commit(kRevert, "cf1", levelAt(0)).ok
-        || !git.commit(kRevert, "cf2", levelAt(10)).ok) {
+    if (!git.commit(kRevert, "cf1", levelAt(0))
+        || !git.commit(kRevert, "cf2", levelAt(10))) {
         R.addFail(kSuiteRevert, "conflict_setup_12", "commit failed", conflictT.ms());
         return;
     }
@@ -91,8 +91,8 @@ void runRevertTests(GitService& git, CommitStore& st, ReportBuilder& R) {
         }
         cf3Level = serializeLevelString(parsed);
     }
-    if (!git.commit(kRevert, "cf3", cf3Level).ok
-        || !git.commit(kRevert, "cf4", levelAtFixedX(30)).ok) {
+    if (!git.commit(kRevert, "cf3", cf3Level)
+        || !git.commit(kRevert, "cf4", levelAtFixedX(30))) {
         R.addFail(kSuiteRevert, "conflict_setup_34", "commit failed", conflictT.ms());
         return;
     }
@@ -104,11 +104,11 @@ void runRevertTests(GitService& git, CommitStore& st, ReportBuilder& R) {
     CommitId const cf2 = cfChain[1];
     R.addAction(kSuiteRevert, fmt::format("revert cf2 {} expecting conflicts", cf2));
     auto revCf = git.revert(kRevert, cf2);
-    if (!revCf.ok) {
-        R.addFail(kSuiteRevert, "revert_with_conflicts", revCf.error, conflictT.ms());
+    if (!revCf) {
+        R.addFail(kSuiteRevert, "revert_with_conflicts", revCf.error(), conflictT.ms());
         return;
     }
-    if (revCf.value.conflicts.empty()) {
+    if (revCf->conflicts.empty()) {
         R.addFail(
             kSuiteRevert,
             "revert_with_conflicts",
@@ -120,7 +120,7 @@ void runRevertTests(GitService& git, CommitStore& st, ReportBuilder& R) {
     R.addPass(
         kSuiteRevert,
         "revert_conflicts",
-        fmt::format("{} conflicts", revCf.value.conflicts.size()),
+        fmt::format("{} conflicts", revCf->conflicts.size()),
         conflictT.ms()
     );
 }

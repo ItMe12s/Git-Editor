@@ -78,12 +78,9 @@ bool writeZipAtomic(std::filesystem::path const& outZip,
 
 Result<ByteVector> readZipEntry(std::filesystem::path const& inZip,
                                 std::string const&           entryName) {
-    Result<ByteVector> out;
-
     auto unzipRes = geode::utils::file::Unzip::create(inZip);
     if (unzipRes.isErr()) {
-        out.error = "readZipEntry: Unzip::create failed: " + unzipRes.unwrapErr();
-        return out;
+        return std::unexpected("readZipEntry: Unzip::create failed: " + unzipRes.unwrapErr());
     }
     auto unzip = std::move(unzipRes).unwrap();
 
@@ -91,12 +88,10 @@ Result<ByteVector> readZipEntry(std::filesystem::path const& inZip,
     if (entryName.empty()) {
         auto entries = unzip.getEntries();
         if (entries.empty()) {
-            out.error = "readZipEntry: zip has no entries";
-            return out;
+            return std::unexpected("readZipEntry: zip has no entries");
         }
         if (entries.size() != 1) {
-            out.error = "readZipEntry: zip must contain exactly one entry when no name given";
-            return out;
+            return std::unexpected("readZipEntry: zip must contain exactly one entry when no name given");
         }
         target = entries[0];
     } else {
@@ -104,41 +99,34 @@ Result<ByteVector> readZipEntry(std::filesystem::path const& inZip,
     }
 
     if (!unzip.hasEntry(target)) {
-        out.error = "readZipEntry: entry '"
-            + geode::utils::string::pathToString(target) + "' not found";
-        return out;
+        return std::unexpected(
+            "readZipEntry: entry '" + geode::utils::string::pathToString(target) + "' not found"
+        );
     }
 
     auto bytesRes = unzip.extract(target);
     if (bytesRes.isErr()) {
-        out.error = "readZipEntry: extract failed: " + bytesRes.unwrapErr();
-        return out;
+        return std::unexpected("readZipEntry: extract failed: " + bytesRes.unwrapErr());
     }
-
-    out.value = std::move(bytesRes).unwrap();
-    out.ok = true;
-    return out;
+    return std::move(bytesRes).unwrap();
 }
 
 Result<void> extractZipToFile(std::filesystem::path const& inZip,
                               std::filesystem::path const& outFile,
                               std::string const&           entryName) {
-    Result<void> out;
     auto res = readZipEntry(inZip, entryName);
-    if (!res.ok) {
-        geode::log::error("extractZipToFile: {}", res.error);
-        out.error = res.error;
-        return out;
+    if (!res) {
+        geode::log::error("extractZipToFile: {}", res.error());
+        return std::unexpected(res.error());
     }
 
-    auto writeRes = geode::utils::file::writeBinary(outFile, res.value);
+    auto writeRes = geode::utils::file::writeBinary(outFile, *res);
     if (writeRes.isErr()) {
-        out.error = "writeBinary failed: " + writeRes.unwrapErr();
-        geode::log::error("extractZipToFile: {}", out.error);
-        return out;
+        auto error = "writeBinary failed: " + writeRes.unwrapErr();
+        geode::log::error("extractZipToFile: {}", error);
+        return std::unexpected(std::move(error));
     }
-    out.ok = true;
-    return out;
+    return {};
 }
 
 } // namespace git_editor

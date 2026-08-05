@@ -32,7 +32,6 @@ struct ImportPlan {
     std::vector<std::filesystem::path> smart;
     std::vector<std::filesystem::path> sequential;
     std::vector<InvalidImport>         invalid;
-    std::string localRootHash;
     bool noLocalCommits = false;
 };
 

@@ -23,8 +23,6 @@ public:
 protected:
     bool init(std::string title, std::string body);
 
-    void onClose(cocos2d::CCObject* sender) override;
-
     void showLoading();
     void clearOverlay();
     void applyBody(std::string body);

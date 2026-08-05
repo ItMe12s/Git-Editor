@@ -32,14 +32,6 @@ namespace {
 
 constexpr auto kTopMenuID = "top-menu"_spr;
 
-std::string currentLevelKey(LevelEditorLayer* editor) {
-    return editor ? git_editor::levelKeyFor(editor->m_level) : "invalid:no-editor";
-}
-
-bool isInvalidLevelKey(std::string const& levelKey) {
-    return levelKey.rfind("invalid:", 0) == 0;
-}
-
 bool requireActiveEditor(LevelEditorLayer* editor) {
     if (editor) return true;
     Notification::create("No active editor", NotificationIcon::Error)->show();
@@ -48,27 +40,27 @@ bool requireActiveEditor(LevelEditorLayer* editor) {
 
 std::optional<std::string> requireValidLevelKey(LevelEditorLayer* editor) {
     if (!requireActiveEditor(editor)) return std::nullopt;
-    auto levelKey = currentLevelKey(editor);
-    if (!isInvalidLevelKey(levelKey)) return levelKey;
+    auto levelKey = git_editor::levelKeyFor(editor->m_level);
+    if (levelKey.rfind("invalid:", 0) != 0) return levelKey;
     Notification::create("No valid level context", NotificationIcon::Error)->show();
     return std::nullopt;
 }
 
 void notifyCommitOutcome(git_editor::Result<git_editor::CommitId> const& outcome) {
-    if (outcome.ok) {
+    if (outcome) {
         Notification::create("Committed", NotificationIcon::Success)->show();
     } else {
         Notification::create(
-            ("Commit failed: " + outcome.error).c_str(),
+            ("Commit failed: " + outcome.error()).c_str(),
             NotificationIcon::Error
         )->show();
     }
 }
 
 void notifyExportOutcome(git_editor::Result<void> const& outcome) {
-    if (!outcome.ok) {
+    if (!outcome) {
         Notification::create(
-            ("Export failed: " + outcome.error).c_str(),
+            ("Export failed: " + outcome.error()).c_str(),
             NotificationIcon::Error
         )->show();
         return;

@@ -16,13 +16,13 @@ void runCheckoutTests(GitService& git, CommitStore& st, ReportBuilder& R) {
     auto b = git.commit(kCheckout, "at_m2", levelAt(10));
     R.addAction(kSuiteCheckout, "commit at_m3 x=20");
     auto c = git.commit(kCheckout, "at_m3", levelAt(20));
-    if (!a.ok || !b.ok || !c.ok) {
+    if (!a || !b || !c) {
         R.addFail(kSuiteCheckout, "setup_three_commits", "commit chain failed", T.ms());
         return;
     }
-    CommitId const c1 = a.value;
-    CommitId const c2 = b.value;
-    CommitId const c3 = c.value;
+    CommitId const c1 = *a;
+    CommitId const c2 = *b;
+    CommitId const c3 = *c;
     R.addAction(kSuiteCheckout, fmt::format("commits c1={} c2={} c3={}", c1, c2, c3));
 
     auto head0 = st.getHead(kCheckout);
@@ -43,8 +43,8 @@ void runCheckoutTests(GitService& git, CommitStore& st, ReportBuilder& R) {
 
     R.addAction(kSuiteCheckout, fmt::format("checkout to c1 {}", c1));
     auto co1 = git.checkout(kCheckout, c1);
-    if (!co1.ok) {
-        R.addFail(kSuiteCheckout, "checkout_to_c1", co1.error, T.ms());
+    if (!co1) {
+        R.addFail(kSuiteCheckout, "checkout_to_c1", co1.error(), T.ms());
         return;
     }
     auto head1 = st.getHead(kCheckout);
@@ -63,8 +63,8 @@ void runCheckoutTests(GitService& git, CommitStore& st, ReportBuilder& R) {
 
     R.addAction(kSuiteCheckout, fmt::format("checkout back c3 {}", c3));
     auto co2 = git.checkout(kCheckout, c3);
-    if (!co2.ok) {
-        R.addFail(kSuiteCheckout, "checkout_back_c3", co2.error, T.ms());
+    if (!co2) {
+        R.addFail(kSuiteCheckout, "checkout_back_c3", co2.error(), T.ms());
         return;
     }
     auto head2 = st.getHead(kCheckout);

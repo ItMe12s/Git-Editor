@@ -24,8 +24,8 @@ void runHistoryCopyTest(GitService& git, CommitStore& st, ReportBuilder& R) {
 
     R.addAction(kSuiteHistory, "importLevelFrom dst <- src");
     auto imp = git.importLevelFrom(kHistDst, kHistSrc);
-    if (!imp.ok) {
-        R.addFail(kSuiteHistory, "import_level_from", imp.error, T.ms());
+    if (!imp) {
+        R.addFail(kSuiteHistory, "import_level_from", imp.error(), T.ms());
         return;
     }
     auto srcS = buildCommitSummaries(st.listSummaryRows(kHistSrc));

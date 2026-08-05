@@ -5,12 +5,12 @@
 #include "model/LevelState.hpp"
 #include "store/CommitStore.hpp"
 #include "PendingOps.hpp"
-#include "StateCache.hpp"
 
 #include <cstddef>
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace git_editor {
@@ -29,7 +29,6 @@ public:
     Result<CommitId> finalizeCheckout(PendingHeadUpdate const& pending, LevelState const& applied);
 
     Prepared<RevertPayload> prepareRevert(LevelKey const& levelKey, CommitId target);
-    Result<CommitId> finalizeRevert(PendingHeadUpdate const& pending, LevelState const& applied);
 
     Prepared<LevelState> prepareSquash(
         LevelKey const& levelKey,
@@ -54,10 +53,7 @@ public:
         LevelKey const& dest,
         std::vector<std::filesystem::path> const& inPaths
     );
-    Result<void> finalizeImportManyFromGdge(
-        PendingMergeImport const& pending,
-        LevelState const& applied
-    );
+    Result<void> finalizeImportManyFromGdge(PendingMergeImport const& pending);
 
     void clearReconstructCache();
 
@@ -92,10 +88,11 @@ private:
 
     void cachePut(CommitId id, LevelState state);
     void cachePut(CommitId id, LevelStatePtr state);
-    LevelStatePtr cacheGet(CommitId id);
+    LevelStatePtr cacheGet(CommitId id) const;
 
     CommitStore& m_store;
-    StateCache m_cache;
+    std::size_t m_cacheCapacity;
+    std::unordered_map<CommitId, LevelStatePtr> m_cache;
 };
 
 GitService& sharedGitService();

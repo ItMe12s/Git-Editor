@@ -11,10 +11,10 @@ void runSquashTests(GitService& git, CommitStore& st, ReportBuilder& R) {
     R.addAction(kSuiteSquash, fmt::format("deleteLevel {}", kSquash));
     st.deleteLevel(kSquash);
     R.addAction(kSuiteSquash, "commit s1 s2 s3 s4");
-    if (!git.commit(kSquash, "s1", levelAt(0)).ok
-        || !git.commit(kSquash, "s2", levelAt(10)).ok
-        || !git.commit(kSquash, "s3", levelAt(20)).ok
-        || !git.commit(kSquash, "s4", levelAt(30)).ok) {
+    if (!git.commit(kSquash, "s1", levelAt(0))
+        || !git.commit(kSquash, "s2", levelAt(10))
+        || !git.commit(kSquash, "s3", levelAt(20))
+        || !git.commit(kSquash, "s4", levelAt(30))) {
         R.addFail(kSuiteSquash, "setup_four", "commit failed", T.ms());
         return;
     }
@@ -39,8 +39,8 @@ void runSquashTests(GitService& git, CommitStore& st, ReportBuilder& R) {
 
     R.addAction(kSuiteSquash, fmt::format("squash range c2 {} c3 {} msg TEST_SQUASH_RANGE", c2, c3));
     auto sq = git.squash(kSquash, { c2, c3 }, "TEST_SQUASH_RANGE");
-    if (!sq.ok) {
-        R.addFail(kSuiteSquash, "squash_range", sq.error, T.ms());
+    if (!sq) {
+        R.addFail(kSuiteSquash, "squash_range", sq.error(), T.ms());
         return;
     }
     bool foundRangeMsg = false;
@@ -90,8 +90,8 @@ void runSquashTests(GitService& git, CommitStore& st, ReportBuilder& R) {
     }
     R.addAction(kSuiteSquash, fmt::format("revert squash commit {}", squashRangeId));
     auto revSq = git.revert(kSquash, squashRangeId);
-    if (!revSq.ok) {
-        R.addFail(kSuiteSquash, "revert_range_squash", revSq.error, T.ms());
+    if (!revSq) {
+        R.addFail(kSuiteSquash, "revert_range_squash", revSq.error(), T.ms());
         return;
     }
     R.addAction(kSuiteSquash, "revert range squash OK");
@@ -99,9 +99,9 @@ void runSquashTests(GitService& git, CommitStore& st, ReportBuilder& R) {
     R.addAction(kSuiteSquash, fmt::format("deleteLevel reset {}", kSquash));
     st.deleteLevel(kSquash);
     R.addAction(kSuiteSquash, "commit t1 t2 t3 for squash all");
-    if (!git.commit(kSquash, "t1", levelAt(0)).ok
-        || !git.commit(kSquash, "t2", levelAt(11)).ok
-        || !git.commit(kSquash, "t3", levelAt(22)).ok) {
+    if (!git.commit(kSquash, "t1", levelAt(0))
+        || !git.commit(kSquash, "t2", levelAt(11))
+        || !git.commit(kSquash, "t3", levelAt(22))) {
         R.addFail(kSuiteSquash, "setup_three_full", "commit failed", T.ms());
         return;
     }
@@ -124,8 +124,8 @@ void runSquashTests(GitService& git, CommitStore& st, ReportBuilder& R) {
 
     R.addAction(kSuiteSquash, "squash all chainB msg TEST_SQUASH_ALL");
     auto sqFull = git.squash(kSquash, chainB, "TEST_SQUASH_ALL");
-    if (!sqFull.ok) {
-        R.addFail(kSuiteSquash, "squash_all", sqFull.error, T.ms());
+    if (!sqFull) {
+        R.addFail(kSuiteSquash, "squash_all", sqFull.error(), T.ms());
         return;
     }
     auto chain3 = chainOldestToNewest(st, kSquash);

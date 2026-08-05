@@ -2,7 +2,6 @@
 
 #include "HistoryActions.hpp"
 #include "editor/LevelKey.hpp"
-#include "editor/LevelStateIO.hpp"
 #include "service/GitService.hpp"
 #include "store/CommitStore.hpp"
 #include "common/GitUiActionRunner.hpp"
@@ -24,7 +23,6 @@
 #include <fmt/format.h>
 
 #include <filesystem>
-#include <memory>
 #include <string>
 #include <system_error>
 
@@ -141,16 +139,10 @@ void LevelBrowserLayer::renderList(std::vector<LevelSummary> levels) {
     if (!editor) return;
     std::string const destKey = levelKeyFor(editor->m_level);
 
-    auto makeDeleteBtn = [](geode::Function<void(CCMenuItemSpriteExtra*)> cb)
+    auto makeRowBtn = [](char const* label, char const* texture,
+                         geode::Function<void(CCMenuItemSpriteExtra*)> cb)
         -> CCMenuItemSpriteExtra* {
-        auto spr = ButtonSprite::create("Delete", "bigFont.fnt", "GJ_button_06.png", .8f);
-        spr->setScale(.4f);
-        return CCMenuItemExt::createSpriteExtra(spr, std::move(cb));
-    };
-
-    auto makeLoadBtn = [](geode::Function<void(CCMenuItemSpriteExtra*)> cb)
-        -> CCMenuItemSpriteExtra* {
-        auto spr = ButtonSprite::create("Load", "bigFont.fnt", "GJ_button_02.png", .8f);
+        auto spr = ButtonSprite::create(label, "bigFont.fnt", texture, .8f);
         spr->setScale(.4f);
         return CCMenuItemExt::createSpriteExtra(spr, std::move(cb));
     };
@@ -198,7 +190,7 @@ void LevelBrowserLayer::renderList(std::vector<LevelSummary> levels) {
         auto const levelKey = lv.levelKey;
         auto const count    = lv.commitCount;
 
-        auto loadBtn = makeLoadBtn(
+        auto loadBtn = makeRowBtn("Load", "GJ_button_02.png",
             [this, levelKey, destKey, count](CCMenuItemSpriteExtra*) {
                 Ref<LevelBrowserLayer> self(this);
                 if (!tryBeginBusyAction(self->m_busy)) return;
@@ -232,30 +224,15 @@ void LevelBrowserLayer::renderList(std::vector<LevelSummary> levels) {
                         }
                         Ref<LevelEditorLayer> editorRef(self->m_editor.data());
                         Ref<EditorPauseLayer> pauseRef(self->m_pauseLayer.data());
-                        auto appliedState = std::make_shared<LevelState>();
                         prepared_editor_flow::run<LevelState, PendingHistoryReplace, void>(
                             {self->m_busy, self->m_listState.closing},
                             [levelKey, destKey]() {
                                 return sharedGitService().prepareImportLevelFrom(destKey, levelKey);
                             },
-                            [editorRef, appliedState](Prepared<LevelState> const& prep) {
-                                auto* editor = editorRef.data();
-                                if (!history_actions::canApplyEditorResult(editor)) {
-                                    Notification::create(
-                                        "Load ready but editor is no longer active; aborted before DB write",
-                                        NotificationIcon::Warning
-                                    )->show();
-                                    return false;
-                                }
-                                *appliedState = prep.result.value;
-                                if (!applyLevelState(editor, *appliedState)) {
-                                    Notification::create(
-                                        "Editor refused load; aborted before DB write",
-                                        NotificationIcon::Warning
-                                    )->show();
-                                    return false;
-                                }
-                                return true;
+                            [editorRef](Prepared<LevelState> const& prep) {
+                                return history_actions::applyStateToEditorOrNotify(
+                                    "Load", editorRef.data(), *prep.result, false
+                                );
                             },
                             [](Prepared<LevelState> const& prep) { return prep.pendingReplace; },
                             [](PendingHistoryReplace pending, LevelState const& applied) {
@@ -293,47 +270,50 @@ void LevelBrowserLayer::renderList(std::vector<LevelSummary> levels) {
         );
         menu->addChild(loadBtn);
 
-        auto delBtn = makeDeleteBtn([this, levelKey, count](CCMenuItemSpriteExtra*) {
-            Ref<LevelBrowserLayer> self(this);
-            if (!tryBeginBusyAction(self->m_busy)) return;
-            createQuickPopup(
-                "ARE YOU SURE?",
-                ("PERMANENTLY DELETE all " + std::to_string(count) + " commits for \"" + shorten(levelKey, 48)
-                 + "\"?\nThis CANNOT be undone.")
-                    .c_str(),
-                "Cancel", "Delete",
-                [self, levelKey](FLAlertLayer*, bool yes) {
-                    if (!yes) {
-                        if (self) finishBusyAction(self->m_busy);
-                        return;
-                    }
-                    if (!self) return;
-                    Ref<LevelBrowserLayer> alive(self.data());
-                    ui_action_runner::runWorkerResult<bool>(
-                        [levelKey]() {
-                            bool ok = sharedCommitStore().deleteLevel(levelKey);
-                            if (ok) sharedGitService().clearReconstructCache();
-                            return ok;
-                        },
-                        [alive](bool ok) {
-                            if (!alive) return;
-                            finishBusyAction(alive->m_busy);
-                            if (alive->m_listState.closing) return;
-                            if (!ok) {
-                                Notification::create("Delete failed", NotificationIcon::Error)->show();
-                                return;
-                            }
-                            Notification::create("Level history removed", NotificationIcon::Success)
-                                ->show();
-                            if (ui_node_lifecycle::isNodeActive(alive.data())) {
-                                alive->rebuildList();
-                            }
+        auto deleteBtn = makeRowBtn(
+            "Delete", "GJ_button_06.png",
+            [this, levelKey, count](CCMenuItemSpriteExtra*) {
+                Ref<LevelBrowserLayer> self(this);
+                if (!tryBeginBusyAction(self->m_busy)) return;
+                createQuickPopup(
+                    "ARE YOU SURE?",
+                    ("PERMANENTLY DELETE all " + std::to_string(count) + " commits for \"" + shorten(levelKey, 48)
+                     + "\"?\nThis CANNOT be undone.")
+                        .c_str(),
+                    "Cancel", "Delete",
+                    [self, levelKey](FLAlertLayer*, bool yes) {
+                        if (!yes) {
+                            if (self) finishBusyAction(self->m_busy);
+                            return;
                         }
-                    );
-                }
-            );
-        });
-        menu->addChild(delBtn);
+                        if (!self) return;
+                        Ref<LevelBrowserLayer> alive(self.data());
+                        ui_action_runner::runWorkerResult<bool>(
+                            [levelKey]() {
+                                bool ok = sharedCommitStore().deleteLevel(levelKey);
+                                if (ok) sharedGitService().clearReconstructCache();
+                                return ok;
+                            },
+                            [alive](bool ok) {
+                                if (!alive) return;
+                                finishBusyAction(alive->m_busy);
+                                if (alive->m_listState.closing) return;
+                                if (!ok) {
+                                    Notification::create("Delete failed", NotificationIcon::Error)->show();
+                                    return;
+                                }
+                                Notification::create("Level history removed", NotificationIcon::Success)
+                                    ->show();
+                                if (ui_node_lifecycle::isNodeActive(alive.data())) {
+                                    alive->rebuildList();
+                                }
+                            }
+                        );
+                    }
+                );
+            }
+        );
+        menu->addChild(deleteBtn);
         menu->updateLayout();
         row->addChildAtPosition(menu, Anchor::Right, {-6.f, 0.f});
 

@@ -1,7 +1,7 @@
 #include "AutomatedTestHarness.hpp"
 
 #include "model/LevelParser.hpp"
-#include "util/io/PathUtf8.hpp"
+#include <Geode/utils/string.hpp>
 
 #include <fmt/format.h>
 #include <Geode/utils/file.hpp>
@@ -77,7 +77,7 @@ void runAdvancedCollabSimulatorTests(
             T.ms(),
             kAdvCollabBase,
             basePath,
-            fmt::format("export base {}", pathUtf8(basePath))
+            fmt::format("export base {}", geode::utils::string::pathToString(basePath))
         )) {
         return;
     }
@@ -139,7 +139,7 @@ void runAdvancedCollabSimulatorTests(
             T.ms(),
             kAdvCollabLegacy,
             legacyPath,
-            fmt::format("export legacy {}", pathUtf8(legacyPath))
+            fmt::format("export legacy {}", geode::utils::string::pathToString(legacyPath))
         )) {
         return;
     }
@@ -175,42 +175,42 @@ void runAdvancedCollabSimulatorTests(
 
     R.addAction(kSuiteAdvancedCollab, "importMany bogus+triple smart");
     auto batch = git.importManyFromGdge(kAdvCollabIntegrator, { bogusPath, alicePath, bobPath, scratchPath });
-    if (!batch.ok) {
-        R.addFail(kSuiteAdvancedCollab, "triple_import", batch.error, T.ms());
+    if (!batch) {
+        R.addFail(kSuiteAdvancedCollab, "triple_import", batch.error(), T.ms());
         return;
     }
-    if (batch.value.skippedCount < 1) {
-        R.addFail(kSuiteAdvancedCollab, "invalid_skip_count", fmt::format("skipped {}", batch.value.skippedCount), T.ms());
+    if (batch->skippedCount < 1) {
+        R.addFail(kSuiteAdvancedCollab, "invalid_skip_count", fmt::format("skipped {}", batch->skippedCount), T.ms());
         return;
     }
-    if (batch.value.smartCount != 3) {
-        R.addFail(kSuiteAdvancedCollab, "triple_merge_shape", fmt::format("smart {}", batch.value.smartCount), T.ms());
+    if (batch->smartCount != 3) {
+        R.addFail(kSuiteAdvancedCollab, "triple_merge_shape", fmt::format("smart {}", batch->smartCount), T.ms());
         return;
     }
-    R.addPass(kSuiteAdvancedCollab, "advanced_invalid_skip", fmt::format("skipped {}", batch.value.skippedCount), T.ms());
+    R.addPass(kSuiteAdvancedCollab, "advanced_invalid_skip", fmt::format("skipped {}", batch->skippedCount), T.ms());
     R.addPass(
         kSuiteAdvancedCollab,
         "advanced_batch_merge",
         fmt::format(
             "merged {} smart {} conflicts {}",
-            batch.value.mergedCount,
-            batch.value.smartCount,
-            batch.value.conflictCount
+            batch->mergedCount,
+            batch->smartCount,
+            batch->conflictCount
         ),
         T.ms()
     );
 
     R.addAction(kSuiteAdvancedCollab, "importMany legacy sequential");
     auto seq = git.importManyFromGdge(kAdvCollabIntegrator, { legacyPath });
-    if (!seq.ok) {
-        R.addFail(kSuiteAdvancedCollab, "legacy_import", seq.error, T.ms());
+    if (!seq) {
+        R.addFail(kSuiteAdvancedCollab, "legacy_import", seq.error(), T.ms());
         return;
     }
-    if (seq.value.sequentialCount != 1 || seq.value.smartCount != 0) {
+    if (seq->sequentialCount != 1 || seq->smartCount != 0) {
         R.addFail(
             kSuiteAdvancedCollab,
             "sequential_shape",
-            fmt::format("smart {} seq {}", seq.value.smartCount, seq.value.sequentialCount),
+            fmt::format("smart {} seq {}", seq->smartCount, seq->sequentialCount),
             T.ms()
         );
         return;
@@ -218,7 +218,7 @@ void runAdvancedCollabSimulatorTests(
     R.addPass(
         kSuiteAdvancedCollab,
         "advanced_sequential_foreign",
-        fmt::format("seq {} merged {}", seq.value.sequentialCount, seq.value.mergedCount),
+        fmt::format("seq {} merged {}", seq->sequentialCount, seq->mergedCount),
         T.ms()
     );
 
@@ -258,15 +258,15 @@ void runAdvancedCollabSimulatorTests(
 
     R.addAction(kSuiteAdvancedCollab, "importMany overlapping conflicts");
     auto mergeCf = git.importManyFromGdge(kAdvCollabIntegrator, { conflictBobExport, conflictCaraExport });
-    if (!mergeCf.ok) {
-        R.addFail(kSuiteAdvancedCollab, "merge_cf_import", mergeCf.error, T.ms());
+    if (!mergeCf) {
+        R.addFail(kSuiteAdvancedCollab, "merge_cf_import", mergeCf.error(), T.ms());
         return;
     }
-    if (mergeCf.value.conflictCount <= 0) {
-        R.addFail(kSuiteAdvancedCollab, "merge_cf_count", fmt::format("conflictCount {}", mergeCf.value.conflictCount), T.ms());
+    if (mergeCf->conflictCount <= 0) {
+        R.addFail(kSuiteAdvancedCollab, "merge_cf_count", fmt::format("conflictCount {}", mergeCf->conflictCount), T.ms());
         return;
     }
-    R.addPass(kSuiteAdvancedCollab, "advanced_conflict_merge", fmt::format("conflictCount {}", mergeCf.value.conflictCount), T.ms());
+    R.addPass(kSuiteAdvancedCollab, "advanced_conflict_merge", fmt::format("conflictCount {}", mergeCf->conflictCount), T.ms());
 
     auto chain = chainOldestToNewest(st, kAdvCollabIntegrator);
     if (chain.size() < 2) {

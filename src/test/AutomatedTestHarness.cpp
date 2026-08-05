@@ -1,6 +1,6 @@
 #include "AutomatedTestHarness.hpp"
 
-#include "util/io/PathUtf8.hpp"
+#include <Geode/utils/string.hpp>
 
 #include <fmt/format.h>
 
@@ -198,11 +198,11 @@ std::optional<CommitId> requireCommit(
 ) {
     addActionIf(R, suite, actionText);
     auto r = git.commit(key, std::string(message), levelData);
-    if (!r.ok) {
-        R.addFail(std::string(suite), std::string(failName), failDetail(r.error), elapsedMs);
+    if (!r) {
+        R.addFail(std::string(suite), std::string(failName), failDetail(r.error()), elapsedMs);
         return std::nullopt;
     }
-    return r.value;
+    return *r;
 }
 
 bool requireExport(
@@ -217,8 +217,8 @@ bool requireExport(
 ) {
     addActionIf(R, suite, actionText);
     auto ex = git.exportLevelToGdge(key, outPath);
-    if (!ex.ok) {
-        R.addFail(std::string(suite), std::string(failName), ex.error, elapsedMs);
+    if (!ex) {
+        R.addFail(std::string(suite), std::string(failName), ex.error(), elapsedMs);
         return false;
     }
     return true;
@@ -236,11 +236,11 @@ std::optional<ImportManyPayload> requireImportMany(
 ) {
     addActionIf(R, suite, actionText);
     auto imp = git.importManyFromGdge(dest, paths);
-    if (!imp.ok) {
-        R.addFail(std::string(suite), std::string(failName), imp.error, elapsedMs);
+    if (!imp) {
+        R.addFail(std::string(suite), std::string(failName), imp.error(), elapsedMs);
         return std::nullopt;
     }
-    return imp.value;
+    return *imp;
 }
 
 bool forkExport(
@@ -262,7 +262,7 @@ bool forkExport(
             elapsedMs,
             key,
             { basePath },
-            fmt::format("importMany {}<-base {}", label, pathUtf8(basePath))
+            fmt::format("importMany {}<-base {}", label, geode::utils::string::pathToString(basePath))
         )) {
         return false;
     }
@@ -286,7 +286,7 @@ bool forkExport(
         elapsedMs,
         key,
         outPath,
-        fmt::format("export {} {}", label, pathUtf8(outPath))
+        fmt::format("export {} {}", label, geode::utils::string::pathToString(outPath))
     );
 }
 
@@ -297,7 +297,7 @@ void formatReport(AutomatedTestSummary& s, std::filesystem::path const& saveDir,
         std::chrono::system_clock::now().time_since_epoch()
     ).count();
     os << "timestamp_unix: " << unixTs << "\n";
-    os << "save_dir: " << pathUtf8(saveDir) << "\n";
+    os << "save_dir: " << geode::utils::string::pathToString(saveDir) << "\n";
     if (!modId.empty()) {
         os << "mod_id: " << modId << "\n";
     }

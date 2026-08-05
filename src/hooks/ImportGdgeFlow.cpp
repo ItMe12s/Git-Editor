@@ -1,14 +1,14 @@
 #include "ImportGdgeFlow.hpp"
 
-#include "editor/LevelStateIO.hpp"
 #include "service/GitService.hpp"
+#include "ui/HistoryActions.hpp"
 #include "ui/common/GitUiActionRunner.hpp"
 #include "util/format/Shorten.hpp"
-#include "util/io/PathUtf8.hpp"
 
 #include <Geode/Geode.hpp>
 #include <Geode/binding/FLAlertLayer.hpp>
 #include <Geode/ui/Notification.hpp>
+#include <Geode/utils/string.hpp>
 
 #include <fmt/format.h>
 
@@ -45,7 +45,7 @@ std::string planBody(ImportPlan const& plan) {
         body += title;
         body += ":\n";
         for (auto const& p : paths) {
-            auto name = escapePopupText(shorten(pathUtf8(p.filename()), 48));
+            auto name = escapePopupText(shorten(geode::utils::string::pathToString(p.filename()), 48));
             body += "- ";
             body += name;
             body += "\n";
@@ -57,7 +57,7 @@ std::string planBody(ImportPlan const& plan) {
         if (!body.empty()) body += "\n\n";
         body += "Skipped (unreadable):\n";
         for (auto const& inv : plan.invalid) {
-            auto name = escapePopupText(shorten(pathUtf8(inv.path.filename()), 40));
+            auto name = escapePopupText(shorten(geode::utils::string::pathToString(inv.path.filename()), 40));
             auto reason = escapePopupText(shorten(inv.reason, 60));
             body += "- ";
             body += name;
@@ -71,9 +71,9 @@ std::string planBody(ImportPlan const& plan) {
 }
 
 void notifyImportMergeOutcome(Result<void> const& fin, ImportManyPayload const& payload) {
-    if (!fin.ok) {
+    if (!fin) {
         geode::Notification::create(
-            ("Editor merged but DB write failed: " + fin.error).c_str(),
+            ("Editor merged but DB write failed: " + fin.error()).c_str(),
             geode::NotificationIcon::Error
         )->show();
         return;
@@ -90,30 +90,12 @@ void notifyImportMergeOutcome(Result<void> const& fin, ImportManyPayload const& 
     )->show();
 }
 
-bool tryApplyImportMerge(LevelEditorLayer* editor, LevelState const& state) {
-    if (!editor->getParent()) {
-        geode::Notification::create(
-            "Merge ready but editor is no longer active, aborted before DB write",
-            geode::NotificationIcon::Warning
-        )->show();
-        return false;
-    }
-    if (!applyLevelState(editor, state)) {
-        geode::Notification::create(
-            "Editor refused merge, aborted before DB write",
-            geode::NotificationIcon::Warning
-        )->show();
-        return false;
-    }
-    return true;
-}
-
 void runImportMergeFinalize(PendingMergeImport pending, ImportManyPayload payload) {
     ui_action_runner::runWorkerResult<Result<void>>(
-        [pending = std::move(pending), payload]() mutable {
-            return sharedGitService().finalizeImportManyFromGdge(pending, payload.state);
+        [pending = std::move(pending)]() mutable {
+            return sharedGitService().finalizeImportManyFromGdge(pending);
         },
-        [payload](Result<void> fin) {
+        [payload = std::move(payload)](Result<void> fin) {
             notifyImportMergeOutcome(fin, payload);
         }
     );
@@ -132,20 +114,22 @@ void runImportMergePrepare(
         [alive, editorRef](Prepared<ImportManyPayload> prep) mutable {
             auto* editorPtr = editorRef.data();
             if (!alive || !editorPtr) return;
-            if (!prep.result.ok) {
+            if (!prep.result) {
                 geode::Notification::create(
-                    ("Multi-merge failed: " + prep.result.error).c_str(),
+                    ("Multi-merge failed: " + prep.result.error()).c_str(),
                     geode::NotificationIcon::Error
                 )->show();
                 return;
             }
-            if (!tryApplyImportMerge(editorPtr, prep.result.value.state)) return;
+            if (!history_actions::applyStateToEditorOrNotify(
+                    "Merge", editorPtr, prep.result->state, prep.result->conflictCount > 0
+                )) return;
             if (!prep.pendingMergeImport || prep.pendingMergeImport->commits.empty()) {
                 return;
             }
-            auto payload = prep.result.value;
+            auto payload = std::move(*prep.result);
             auto pending = std::move(*prep.pendingMergeImport);
-            runImportMergeFinalize(std::move(pending), payload);
+            runImportMergeFinalize(std::move(pending), std::move(payload));
         }
     );
 }
@@ -163,7 +147,7 @@ void showImportPlanPopup(
         std::string msg = "No valid .gdge files selected";
         if (!plan.invalid.empty()) {
             auto const& first = plan.invalid.front();
-            auto name = shorten(pathUtf8(first.path.filename()), 32);
+            auto name = shorten(geode::utils::string::pathToString(first.path.filename()), 32);
             auto reason = shorten(first.reason, 80);
             msg = "Invalid .gdge: " + name + ": " + reason;
             if (plan.invalid.size() > 1) {

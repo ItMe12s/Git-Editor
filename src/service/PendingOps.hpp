@@ -42,7 +42,7 @@ struct PendingMergeImport {
 
 template <class T>
 struct Prepared {
-    Result<T>                            result;
+    Result<T>                            result = std::unexpected(std::string {});
     std::optional<PendingHeadUpdate>     pendingHead;
     std::optional<PendingSquash>         pendingSquash;
     std::optional<PendingHistoryReplace> pendingReplace;

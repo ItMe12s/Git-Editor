@@ -29,23 +29,16 @@ struct OutcomeHandlers {
     std::function<void()> onAppliedOnly;
 };
 
-inline void resumePauseIfNeeded(
-    geode::Ref<EditorPauseLayer> pause,
-    bool closedOrClosing
-) {
-    if (!closedOrClosing || !pause) return;
-    auto* layer = pause.data();
-    if (!layer || !layer->getParent() || !layer->isRunning()) return;
-    layer->onResume(nullptr);
-}
-
 inline void deferCloseAndResume(
     std::function<void()> tryClose,
     geode::Ref<EditorPauseLayer> pause
 ) {
     geode::queueInMainThread([tryClose = std::move(tryClose), pause]() {
         tryClose();
-        resumePauseIfNeeded(pause, true);
+        if (!pause) return;
+        auto* layer = pause.data();
+        if (!layer || !layer->getParent() || !layer->isRunning()) return;
+        layer->onResume(nullptr);
     });
 }
 
@@ -66,9 +59,9 @@ void run(
          finalizeWorker = std::move(finalizeWorker),
          handlers = std::move(handlers)](Prepared<TPayload> prep) mutable {
             if (exitBusyIfClosing(guards.busy, guards.closing)) return;
-            if (!prep.result.ok) {
+            if (!prep.result) {
                 finishBusyAction(guards.busy);
-                if (handlers.onPrepareError) handlers.onPrepareError(prep.result.error);
+                if (handlers.onPrepareError) handlers.onPrepareError(prep.result.error());
                 return;
             }
             if (!applyEditor(prep)) {
@@ -84,7 +77,7 @@ void run(
                 return;
             }
             TPending pending = std::move(*pendingOpt);
-            TPayload payload = prep.result.value;
+            TPayload payload = std::move(*prep.result);
             ui_action_runner::runWorkerResult<Result<TFinalizeResult>>(
                 [pending = std::move(pending),
                  payload = std::move(payload),
@@ -94,8 +87,8 @@ void run(
                 [guards, handlers = std::move(handlers)](Result<TFinalizeResult> fin) mutable {
                     finishBusyAction(guards.busy);
                     if (guards.closing) return;
-                    if (!fin.ok) {
-                        if (handlers.onFinalizeError) handlers.onFinalizeError(fin.error);
+                    if (!fin) {
+                        if (handlers.onFinalizeError) handlers.onFinalizeError(fin.error());
                         return;
                     }
                     if (handlers.onSuccess) handlers.onSuccess();

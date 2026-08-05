@@ -70,19 +70,16 @@ alpha::ui::AdvancedScrollLayer* attachScrollList(
     return scroll;
 }
 
-void markClosing(ListState& state, alpha::ui::AdvancedScrollLayer*& scroll) {
-    if (state.closing) return;
-    state.closing = true;
-    ++state.loadSerial;
-    scroll = nullptr;
-}
-
 void preparePopupClose(
     ListState& state,
     alpha::ui::AdvancedScrollLayer*& scroll,
     cocos2d::CCNode* mainLayer
 ) {
-    markClosing(state, scroll);
+    if (!state.closing) {
+        state.closing = true;
+        ++state.loadSerial;
+        scroll = nullptr;
+    }
     if (mainLayer) mainLayer->setLayout(nullptr);
 }
 

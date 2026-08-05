@@ -1,6 +1,5 @@
 #include "GdgeExport.hpp"
 
-#include <algorithm>
 #include <unordered_map>
 #include <utility>
 
@@ -12,34 +11,29 @@ Result<GdgePackageData> buildGdgePackageFromCommits(
     std::string const&            rootHash,
     std::vector<CommitRow> const& commitsNewestFirst
 ) {
-    Result<GdgePackageData> out;
-    auto rows = commitsNewestFirst;
-    std::reverse(rows.begin(), rows.end());
-
     std::unordered_map<CommitId, std::int64_t> indexById;
-    indexById.reserve(rows.size());
+    indexById.reserve(commitsNewestFirst.size());
     GdgePackageData pkg;
-    pkg.commits.reserve(rows.size());
-    for (std::size_t i = 0; i < rows.size(); ++i) {
-        indexById[rows[i].id] = static_cast<std::int64_t>(i);
+    pkg.commits.reserve(commitsNewestFirst.size());
+    for (std::size_t i = 0; i < commitsNewestFirst.size(); ++i) {
+        auto const& row = commitsNewestFirst[commitsNewestFirst.size() - 1 - i];
+        indexById[row.id] = static_cast<std::int64_t>(i);
     }
-    for (std::size_t i = 0; i < rows.size(); ++i) {
-        auto const& r = rows[i];
+    for (std::size_t i = 0; i < commitsNewestFirst.size(); ++i) {
+        auto const& r = commitsNewestFirst[commitsNewestFirst.size() - 1 - i];
         GdgePackageCommit c;
         c.commitIndex = static_cast<std::int64_t>(i);
         if (r.parent) {
             auto it = indexById.find(*r.parent);
             if (it == indexById.end()) {
-                out.error = "parent reference missing during export";
-                return out;
+                return std::unexpected("parent reference missing during export");
             }
             c.parentIndex = it->second;
         }
         if (r.reverts) {
             auto it = indexById.find(*r.reverts);
             if (it == indexById.end()) {
-                out.error = "reverts reference missing during export";
-                return out;
+                return std::unexpected("reverts reference missing during export");
             }
             c.revertsIndex = it->second;
         }
@@ -52,9 +46,7 @@ Result<GdgePackageData> buildGdgePackageFromCommits(
     pkg.metadata.headIndex      = indexById.at(head);
     pkg.metadata.rootHash       = rootHash;
 
-    out.ok    = true;
-    out.value = std::move(pkg);
-    return out;
+    return pkg;
 }
 
 } // namespace git_editor

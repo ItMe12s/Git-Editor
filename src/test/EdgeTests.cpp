@@ -3,7 +3,7 @@
 #include "model/LevelParser.hpp"
 #include "service/CommitSummaryBuilder.hpp"
 #include "util/io/BlobCodec.hpp"
-#include "util/io/PathUtf8.hpp"
+#include <Geode/utils/string.hpp>
 
 #include <fmt/format.h>
 
@@ -21,12 +21,12 @@ void runEdgeTests(GitService& git, CommitStore& st, std::filesystem::path const&
     if (!st.dbPath().empty()) {
         ScopedTimer dbCheck;
         auto p = st.dbPath();
-        R.addAction(kSuiteEdge, fmt::format("dbPath {}", pathUtf8(p)));
+        R.addAction(kSuiteEdge, fmt::format("dbPath {}", geode::utils::string::pathToString(p)));
         if (!std::filesystem::exists(p)) {
-            R.addFail(kSuiteEdge, "db_exists", fmt::format("missing {}", pathUtf8(p)), dbCheck.ms());
+            R.addFail(kSuiteEdge, "db_exists", fmt::format("missing {}", geode::utils::string::pathToString(p)), dbCheck.ms());
         } else {
             R.addAction(kSuiteEdge, "db file exists");
-            R.addPass(kSuiteEdge, "db_under_save", pathUtf8(p), dbCheck.ms());
+            R.addPass(kSuiteEdge, "db_under_save", geode::utils::string::pathToString(p), dbCheck.ms());
         }
     } else {
         ScopedTimer dbEmpty;
@@ -51,16 +51,16 @@ void runEdgeTests(GitService& git, CommitStore& st, std::filesystem::path const&
         return;
     }
     std::filesystem::path unicodeFile = testDir / std::filesystem::path(std::u8string(u8"at_\u0442\u0435\u0441\u0442.gdge"));
-    R.addAction(kSuiteEdge, fmt::format("unicode export {}", pathUtf8(unicodeFile)));
-    if (auto ex = git.exportLevelToGdge(kZipEx, unicodeFile); !ex.ok) {
-        R.addSkip(kSuiteEdge, "unicode_export", ex.error, unicodeRoundtrip.ms());
+    R.addAction(kSuiteEdge, fmt::format("unicode export {}", geode::utils::string::pathToString(unicodeFile)));
+    if (auto ex = git.exportLevelToGdge(kZipEx, unicodeFile); !ex) {
+        R.addSkip(kSuiteEdge, "unicode_export", ex.error(), unicodeRoundtrip.ms());
     } else {
         R.addAction(kSuiteEdge, "unicode importMany kMix");
         auto imp = git.importManyFromGdge(kMix, { unicodeFile });
-        if (!imp.ok) {
-            R.addFail(kSuiteEdge, "unicode_import", imp.error, unicodeRoundtrip.ms());
+        if (!imp) {
+            R.addFail(kSuiteEdge, "unicode_import", imp.error(), unicodeRoundtrip.ms());
         } else {
-            R.addPass(kSuiteEdge, "unicode_roundtrip", pathUtf8(unicodeFile), unicodeRoundtrip.ms());
+            R.addPass(kSuiteEdge, "unicode_roundtrip", geode::utils::string::pathToString(unicodeFile), unicodeRoundtrip.ms());
         }
     }
 
@@ -69,14 +69,14 @@ void runEdgeTests(GitService& git, CommitStore& st, std::filesystem::path const&
     st.deleteLevel(kHistDst);
     R.addAction(kSuiteEdge, "commit root_only kHistDst");
     auto firstCommit = git.commit(kHistDst, "root_only", levelAt(0));
-    if (!firstCommit.ok) {
-        R.addFail(kSuiteEdge, "first_commit", firstCommit.error, firstCommitOnly.ms());
+    if (!firstCommit) {
+        R.addFail(kSuiteEdge, "first_commit", firstCommit.error(), firstCommitOnly.ms());
         return;
     }
-    R.addAction(kSuiteEdge, fmt::format("commit id {}", firstCommit.value));
+    R.addAction(kSuiteEdge, fmt::format("commit id {}", *firstCommit));
 
     ScopedTimer reconstructRoot;
-    auto reconstructed = git.reconstruct(firstCommit.value);
+    auto reconstructed = git.reconstruct(*firstCommit);
     if (!reconstructed) {
         R.addFail(kSuiteEdge, "reconstruct_first", "failed", reconstructRoot.ms());
         return;
@@ -108,11 +108,11 @@ void runEdgeTests(GitService& git, CommitStore& st, std::filesystem::path const&
     st.deleteLevel(kHistDst);
     std::string largeDelta(kLegacyBlobFootprintBytes + 1024u, 'x');
     auto largeInsert = st.insertAndSetHead(kHistDst, std::nullopt, std::nullopt, "large_delta", largeDelta);
-    if (!largeInsert.ok) {
-        R.addFail(kSuiteEdge, "large_delta_insert", largeInsert.error, largeDeltaT.ms());
+    if (!largeInsert) {
+        R.addFail(kSuiteEdge, "large_delta_insert", largeInsert.error(), largeDeltaT.ms());
         return;
     }
-    auto largeRow = st.get(largeInsert.value);
+    auto largeRow = st.get(*largeInsert);
     if (!largeRow) {
         R.addFail(kSuiteEdge, "large_delta_get", "inserted row missing", largeDeltaT.ms());
         return;
@@ -149,18 +149,18 @@ void runEdgeTests(GitService& git, CommitStore& st, std::filesystem::path const&
     ScopedTimer updateMsgT;
     st.deleteLevel(kHistSrc);
     auto msgCommit = git.commit(kHistSrc, "original_msg", levelAt(1));
-    if (!msgCommit.ok) {
-        R.addFail(kSuiteEdge, "update_message_setup", msgCommit.error, updateMsgT.ms());
+    if (!msgCommit) {
+        R.addFail(kSuiteEdge, "update_message_setup", msgCommit.error(), updateMsgT.ms());
         return;
     }
-    if (!st.updateMessage(msgCommit.value, "renamed_msg")) {
+    if (!st.updateMessage(*msgCommit, "renamed_msg")) {
         R.addFail(kSuiteEdge, "update_message", "updateMessage returned false", updateMsgT.ms());
         return;
     }
     auto sums = buildCommitSummaries(st.listSummaryRows(kHistSrc));
     bool foundRenamed = false;
     for (auto const& s : sums) {
-        if (s.id == msgCommit.value && s.message == "renamed_msg") {
+        if (s.id == *msgCommit && s.message == "renamed_msg") {
             foundRenamed = true;
             break;
         }
@@ -274,7 +274,7 @@ void runEdgeTests(GitService& git, CommitStore& st, std::filesystem::path const&
         R.addFail(
             kSuiteEdge,
             "mixed_bag_path",
-            fmt::format("invalid bucket holds wrong path: {}", pathUtf8(mixedPlan.invalid[0].path)),
+            fmt::format("invalid bucket holds wrong path: {}", geode::utils::string::pathToString(mixedPlan.invalid[0].path)),
             mixedBagT.ms()
         );
     } else if (mixedPlan.invalid[0].reason.empty()) {

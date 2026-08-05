@@ -111,8 +111,10 @@ void HistoryLayer::runSquash(std::vector<CommitId> idsOldestFirst, std::string m
         [levelKey, idsOldestFirst, message]() {
             return sharedGitService().prepareSquash(levelKey, idsOldestFirst, message);
         },
-        [self, editorRef](Prepared<LevelState> const& prep) {
-            return self->tryApplyToEditor("Squash", editorRef.data(), prep.result.value, false);
+        [editorRef](Prepared<LevelState> const& prep) {
+            return history_actions::applyStateToEditorOrNotify(
+                "Squash", editorRef.data(), *prep.result, false
+            );
         },
         [](Prepared<LevelState> const& prep) { return prep.pendingSquash; },
         [](PendingSquash pending, LevelState const& applied) {
@@ -161,16 +163,14 @@ void HistoryLayer::startCheckoutFlow(CommitId commitId, std::string const& commi
                 return;
             }
             if (!self) return;
-            auto appliedState = std::make_shared<LevelState>();
             prepared_editor_flow::run<LevelState, PendingHeadUpdate, CommitId>(
                 {self->m_busy, self->m_listState.closing},
                 [levelKey, commitId]() {
                     return sharedGitService().prepareCheckout(levelKey, commitId);
                 },
-                [self, editorRef, appliedState](Prepared<LevelState> const& prep) {
-                    *appliedState = prep.result.value;
-                    return self->tryApplyToEditor(
-                        "Checkout", editorRef.data(), prep.result.value, false
+                [editorRef](Prepared<LevelState> const& prep) {
+                    return history_actions::applyStateToEditorOrNotify(
+                        "Checkout", editorRef.data(), *prep.result, false
                     );
                 },
                 [](Prepared<LevelState> const& prep) { return prep.pendingHead; },
@@ -225,23 +225,21 @@ void HistoryLayer::startRevertFlow(CommitId commitId, std::string const& commitM
             }
             if (!self) return;
             auto conflicts = std::make_shared<std::vector<Conflict>>();
-            auto appliedState = std::make_shared<LevelState>();
             prepared_editor_flow::run<RevertPayload, PendingHeadUpdate, CommitId>(
                 {self->m_busy, self->m_listState.closing},
                 [levelKey, commitId]() {
                     return sharedGitService().prepareRevert(levelKey, commitId);
                 },
-                [self, editorRef, conflicts, appliedState](Prepared<RevertPayload> const& prep) {
-                    *conflicts = prep.result.value.conflicts;
-                    *appliedState = prep.result.value.state;
+                [editorRef, conflicts](Prepared<RevertPayload> const& prep) {
+                    *conflicts = prep.result->conflicts;
                     bool const hasConflicts = !conflicts->empty();
-                    return self->tryApplyToEditor(
-                        "Revert", editorRef.data(), prep.result.value.state, hasConflicts
+                    return history_actions::applyStateToEditorOrNotify(
+                        "Revert", editorRef.data(), prep.result->state, hasConflicts
                     );
                 },
                 [](Prepared<RevertPayload> const& prep) { return prep.pendingHead; },
                 [](PendingHeadUpdate pending, RevertPayload const& payload) {
-                    return sharedGitService().finalizeRevert(pending, payload.state);
+                    return sharedGitService().finalizeCheckout(pending, payload.state);
                 },
                 prepared_editor_flow::OutcomeHandlers{
                     .onSuccess = [self, pauseRef, conflicts]() {

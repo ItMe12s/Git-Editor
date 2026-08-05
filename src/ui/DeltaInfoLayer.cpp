@@ -79,11 +79,11 @@ DeltaInfoLayer* DeltaInfoLayer::createAndLoad(
         [loadFnHolder]() { return (*loadFnHolder)(); },
         [self](Result<std::string> res) mutable {
             if (!self || !ui_node_lifecycle::isNodeActive(self.data())) return;
-            if (!res.ok) {
-                self->showLoadError(res.error);
+            if (!res) {
+                self->showLoadError(res.error());
                 return;
             }
-            self->applyBody(std::move(res.value));
+            self->applyBody(std::move(*res));
         }
     );
 
@@ -163,10 +163,6 @@ bool DeltaInfoLayer::init(std::string title, std::string body) {
         showBlock(0);
     }
     return true;
-}
-
-void DeltaInfoLayer::onClose(CCObject* sender) {
-    Popup::onClose(sender);
 }
 
 void DeltaInfoLayer::showLoading() {

@@ -40,8 +40,6 @@ void preparePopupClose(
     cocos2d::CCNode* mainLayer
 );
 
-void markClosing(ListState& state, alpha::ui::AdvancedScrollLayer*& scroll);
-
 bool closeOnce(
     geode::Popup* popup,
     ListState const& state,

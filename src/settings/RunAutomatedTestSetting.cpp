@@ -1,11 +1,11 @@
 #include <Geode/Geode.hpp>
 #include <Geode/loader/SettingV3.hpp>
 #include <Geode/ui/Notification.hpp>
+#include <Geode/utils/file.hpp>
+#include <Geode/utils/string.hpp>
 
 #include "test/AutomatedTestRunner.hpp"
 #include "util/GitWorker.hpp"
-#include "util/io/PathUtf8.hpp"
-#include "util/io/TextFileUtf8.hpp"
 
 #include <fmt/format.h>
 
@@ -55,16 +55,16 @@ $execute {
 
                 auto summary = git_editor::runAutomatedTests(dir, modId);
                 auto const outPath = dir / "test-result.txt";
-                if (!git_editor::writeTextFileUtf8(outPath, summary.reportText)) {
+                if (geode::utils::file::writeString(outPath, summary.reportText).isErr()) {
                     ++summary.failCount;
                     summary.reportText += "\nFAIL | ReportWrite | could not write test-result.txt\n";
-                    static_cast<void>(git_editor::writeTextFileUtf8(outPath, summary.reportText));
+                    static_cast<void>(geode::utils::file::writeString(outPath, summary.reportText));
                 }
 
                 int const passC = summary.passCount;
                 int const failC = summary.failCount;
                 int const skipC = summary.skipCount;
-                std::string const pathStr = git_editor::pathUtf8(outPath);
+                std::string const pathStr = geode::utils::string::pathToString(outPath);
                 bool const failed = failC > 0;
 
                 queueInMainThread([passC, failC, skipC, pathStr, failed] {

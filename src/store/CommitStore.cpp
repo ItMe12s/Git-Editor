@@ -2,13 +2,13 @@
 #include "CommitSchema.hpp"
 
 #include "util/io/BlobCodec.hpp"
-#include "util/io/PathUtf8.hpp"
 
 #include <zlib.h>
 
 #include <Geode/loader/Log.hpp>
 #include <Geode/loader/Mod.hpp>
 #include <Geode/utils/file.hpp>
+#include <Geode/utils/string.hpp>
 
 #include <sqlite3.h>
 
@@ -54,9 +54,7 @@ CommitRow rowFromStatement(sqlite3_stmt* st, bool includeBlob) {
 }
 
 Result<CommitId> failInsert(std::string error) {
-    Result<CommitId> out;
-    out.error = std::move(error);
-    return out;
+    return std::unexpected(std::move(error));
 }
 
 } // namespace
@@ -74,7 +72,7 @@ bool CommitStore::init(std::filesystem::path const& dbPath) {
     if (m_db) return true;
 
     m_dbPath = dbPath;
-    auto const utf8 = pathUtf8(dbPath);
+    auto const utf8 = geode::utils::string::pathToString(dbPath);
 
     int rc = sqlite3_open_v2(
         utf8.c_str(), &m_db,
@@ -122,11 +120,11 @@ Result<CommitId> CommitStore::insertAndSetHead(
     }
 
     auto const id = this->insertAt(levelKey, parent, reverts, message, commitStoreNowSeconds(), deltaBlob);
-    if (!id.ok) {
+    if (!id) {
         tx.rollback();
         return id;
     }
-    if (!this->setHead(levelKey, id.value)) {
+    if (!this->setHead(levelKey, *id)) {
         tx.rollback();
         return failInsert(std::string("set HEAD failed: ") + sqlite3_errmsg(m_db));
     }
@@ -245,8 +243,8 @@ std::optional<CommitId> CommitStore::squash(
     auto const newId = this->insertAt(
         levelKey, parentOfOldest, std::nullopt, message, squashCreatedAt, deltaBlob
     );
-    if (!newId.ok) {
-        geode::log::error("squash insert failed: {}", newId.error);
+    if (!newId) {
+        geode::log::error("squash insert failed: {}", newId.error());
         tx.rollback();
         return std::nullopt;
     }
@@ -274,7 +272,7 @@ std::optional<CommitId> CommitStore::squash(
 
     if (!runStmt(
         "UPDATE commits SET parent_id = ? WHERE parent_id = ? AND level_key = ? AND id != ?;",
-        {{1, newId.value}, {2, newest}, {4, newId.value}},
+        {{1, *newId}, {2, newest}, {4, *newId}},
         {{3, &levelKey}}
     )) { tx.rollback(); return std::nullopt; }
 
@@ -284,7 +282,7 @@ std::optional<CommitId> CommitStore::squash(
 
     if (!runStmt(
         ("UPDATE refs SET head_id = ? WHERE head_id IN (" + idList + ") AND level_key = ?;").c_str(),
-        {{1, newId.value}},
+        {{1, *newId}},
         {{2, &levelKey}}
     )) { tx.rollback(); return std::nullopt; }
 
@@ -294,7 +292,7 @@ std::optional<CommitId> CommitStore::squash(
     }
     if (!tx.commit()) return std::nullopt;
 
-    return newId.value;
+    return *newId;
 }
 
 std::vector<LevelSummary> CommitStore::listLevels() {
@@ -353,20 +351,18 @@ bool CommitStore::replaceLevelHistoryFrom(LevelKey const& dest, LevelKey const& 
         return false;
     }
 
-    std::unordered_map<CommitId, CommitRow> byId;
-    std::unordered_set<CommitId>            idSet;
+    std::unordered_map<CommitId, CommitRow const*> byId;
     byId.reserve(rows.size());
     for (auto const& r : rows) {
-        byId[r.id] = r;
-        idSet.insert(r.id);
+        byId.emplace(r.id, &r);
     }
 
     for (auto const& r : rows) {
-        if (r.parent && !idSet.count(*r.parent)) {
+        if (r.parent && !byId.contains(*r.parent)) {
             geode::log::error("replaceLevelHistoryFrom: parent {} not in level set", *r.parent);
             return false;
         }
-        if (r.reverts && !idSet.count(*r.reverts)) {
+        if (r.reverts && !byId.contains(*r.reverts)) {
             geode::log::error("replaceLevelHistoryFrom: reverts {} not in level set", *r.reverts);
             return false;
         }
@@ -374,11 +370,11 @@ bool CommitStore::replaceLevelHistoryFrom(LevelKey const& dest, LevelKey const& 
 
     std::unordered_map<CommitId, int>                    inDeg;
     std::unordered_map<CommitId, std::vector<CommitId>> afterDone;
-    for (CommitId v : idSet) {
+    for (auto const& [v, rowPtr] : byId) {
         std::unordered_set<CommitId> deps;
-        auto const&                  row = byId[v];
-        if (row.parent && idSet.count(*row.parent)) deps.insert(*row.parent);
-        if (row.reverts && idSet.count(*row.reverts)) deps.insert(*row.reverts);
+        auto const&                  row = *rowPtr;
+        if (row.parent && byId.contains(*row.parent)) deps.insert(*row.parent);
+        if (row.reverts && byId.contains(*row.reverts)) deps.insert(*row.reverts);
         inDeg[v] = static_cast<int>(deps.size());
         for (CommitId d : deps) {
             afterDone[d].push_back(v);
@@ -386,9 +382,9 @@ bool CommitStore::replaceLevelHistoryFrom(LevelKey const& dest, LevelKey const& 
     }
 
     std::vector<CommitId> order;
-    order.reserve(idSet.size());
+    order.reserve(byId.size());
     std::queue<CommitId> q;
-    for (CommitId id : idSet) {
+    for (auto const& [id, row] : byId) {
         if (inDeg[id] == 0) {
             q.push(id);
         }
@@ -405,7 +401,7 @@ bool CommitStore::replaceLevelHistoryFrom(LevelKey const& dest, LevelKey const& 
         }
     }
 
-    if (order.size() != idSet.size()) {
+    if (order.size() != byId.size()) {
         geode::log::error("replaceLevelHistoryFrom: topological sort failed (cycle?)");
         return false;
     }
@@ -420,7 +416,7 @@ bool CommitStore::replaceLevelHistoryFrom(LevelKey const& dest, LevelKey const& 
 
     std::unordered_map<CommitId, CommitId> idMap;
     for (CommitId const oldId : order) {
-        auto const& row = byId[oldId];
+        auto const& row = *byId.at(oldId);
         std::optional<CommitId> newParent;
         if (row.parent) {
             newParent = idMap.at(*row.parent);
@@ -432,12 +428,12 @@ bool CommitStore::replaceLevelHistoryFrom(LevelKey const& dest, LevelKey const& 
         auto const newId = this->insertAt(
             dest, newParent, newReverts, row.message, row.createdAt, row.deltaBlob
         );
-        if (!newId.ok) {
-            geode::log::error("replaceLevelHistoryFrom: insert failed at old id {}: {}", oldId, newId.error);
+        if (!newId) {
+            geode::log::error("replaceLevelHistoryFrom: insert failed at old id {}: {}", oldId, newId.error());
             tx.rollback();
             return false;
         }
-        idMap[oldId] = newId.value;
+        idMap[oldId] = *newId;
     }
 
     if (auto it = idMap.find(*headOld); it == idMap.end()) {
@@ -546,11 +542,9 @@ Result<CommitId> CommitStore::insertAt(
     }
 
     if (sqlite3_step(m_stmtInsert) == SQLITE_DONE) {
-        Result<CommitId> out;
-        out.ok = true;
-        out.value = sqlite3_last_insert_rowid(m_db);
+        auto const id = sqlite3_last_insert_rowid(m_db);
         this->resetStatement(m_stmtInsert);
-        return out;
+        return id;
     }
 
     return fail(std::string("insert step failed: ") + sqlite3_errmsg(m_db));
@@ -683,7 +677,7 @@ CommitStore& sharedCommitStore() {
         } else {
             auto const raw = dir / "git-editor.db";
             if (!store.init(raw)) {
-                geode::log::error("failed to open db at {}", pathUtf8(raw));
+                geode::log::error("failed to open db at {}", geode::utils::string::pathToString(raw));
             }
         }
     }

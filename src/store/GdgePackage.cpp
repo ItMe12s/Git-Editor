@@ -4,10 +4,10 @@
 #include "util/io/BlobCodec.hpp"
 #include "util/io/DbZip.hpp"
 #include "util/io/FileAtomic.hpp"
-#include "util/io/PathUtf8.hpp"
 
 #include <Geode/loader/Log.hpp>
 #include <Geode/loader/Mod.hpp>
+#include <Geode/utils/string.hpp>
 
 #include <sqlite3.h>
 
@@ -118,12 +118,12 @@ namespace {
 bool writeGdgePackageSqlite(std::filesystem::path const& outPath,
                             GdgePackageData const&       data) {
     if (!validateData(data)) {
-        geode::log::error("writeGdgePackageSqlite: validateData failed at {}", pathUtf8(outPath));
+        geode::log::error("writeGdgePackageSqlite: validateData failed at {}", geode::utils::string::pathToString(outPath));
         return false;
     }
 
     SqlitePtr db = nullptr;
-    auto const utf8 = pathUtf8(outPath);
+    auto const utf8 = geode::utils::string::pathToString(outPath);
     if (sqlite3_open_v2(
             utf8.c_str(),
             &db,
@@ -132,7 +132,7 @@ bool writeGdgePackageSqlite(std::filesystem::path const& outPath,
         ) != SQLITE_OK) {
         geode::log::error(
             "writeGdgePackageSqlite: sqlite3_open_v2 failed for {}: {}",
-            pathUtf8(outPath),
+            geode::utils::string::pathToString(outPath),
             db ? sqlite3_errmsg(db) : "db handle null"
         );
         if (db) sqlite3_close(db);
@@ -238,7 +238,6 @@ bool writeGdgePackageSqlite(std::filesystem::path const& outPath,
 } // namespace
 
 Result<void> writeGdgePackage(std::filesystem::path const& outPath, GdgePackageData const& data) {
-    Result<void> result;
     bool const compressExports =
         geode::Mod::get()->getSettingValue<bool>("compress-export-files");
 
@@ -248,17 +247,14 @@ Result<void> writeGdgePackage(std::filesystem::path const& outPath, GdgePackageD
         if (!writeGdgePackageSqlite(tmpPath, data)) {
             std::error_code ec;
             std::filesystem::remove(tmpPath, ec);
-            result.error = "failed to write sqlite package";
-            return result;
+            return std::unexpected("failed to write sqlite package");
         }
         if (!replaceFileAtomic(tmpPath, outPath)) {
             std::error_code ec;
             std::filesystem::remove(tmpPath, ec);
-            result.error = "failed to replace package file atomically";
-            return result;
+            return std::unexpected("failed to replace package file atomically");
         }
-        result.ok = true;
-        return result;
+        return {};
     }
 
     // Use a path distinct from writeZipAtomic tmp suffix.
@@ -267,21 +263,19 @@ Result<void> writeGdgePackage(std::filesystem::path const& outPath, GdgePackageD
     sqlitePath += ".sqlite-tmp";
 
     if (!writeGdgePackageSqlite(sqlitePath, data)) {
-        result.error = "failed to write sqlite package for zip export";
-        return result;
+        return std::unexpected("failed to write sqlite package for zip export");
     }
 
     auto readRes = geode::utils::file::readBinary(sqlitePath);
     if (readRes.isErr()) {
         geode::log::error(
             "writeGdgePackage: readBinary failed after sqlite ({}): {}",
-            pathUtf8(sqlitePath),
+            geode::utils::string::pathToString(sqlitePath),
             readRes.unwrapErr()
         );
         std::error_code ec2;
         std::filesystem::remove(sqlitePath, ec2);
-        result.error = "failed to read intermediate sqlite for zip export";
-        return result;
+        return std::unexpected("failed to read intermediate sqlite for zip export");
     }
 
     bool const wroteZip = writeZipAtomic(outPath, "package.gdge", readRes.unwrap());
@@ -291,18 +285,16 @@ Result<void> writeGdgePackage(std::filesystem::path const& outPath, GdgePackageD
         if (ec) {
             geode::log::warn(
                 "writeGdgePackage: could not remove intermediate sqlite at {}: {}",
-                pathUtf8(sqlitePath),
+                geode::utils::string::pathToString(sqlitePath),
                 ec.message()
             );
         }
     }
     if (!wroteZip) {
-        geode::log::error("writeGdgePackage: writeZipAtomic failed for {}", pathUtf8(outPath));
-        result.error = "failed to write zip package";
-        return result;
+        geode::log::error("writeGdgePackage: writeZipAtomic failed for {}", geode::utils::string::pathToString(outPath));
+        return std::unexpected("failed to write zip package");
     }
-    result.ok = true;
-    return result;
+    return {};
 }
 
 namespace {
@@ -311,7 +303,6 @@ Result<GdgePackageData> readGdgePackageFromSqlitePath(
     std::filesystem::path const& sqlitePath,
     std::filesystem::path const& cleanupPath
 ) {
-    Result<GdgePackageData> result;
     auto const doCleanup = [&]() {
         if (!cleanupPath.empty()) {
             std::error_code ec;
@@ -320,18 +311,18 @@ Result<GdgePackageData> readGdgePackageFromSqlitePath(
     };
 
     SqlitePtr db = nullptr;
-    auto const utf8 = pathUtf8(sqlitePath);
+    auto const utf8 = geode::utils::string::pathToString(sqlitePath);
     if (sqlite3_open_v2(
             utf8.c_str(),
             &db,
             SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX,
             nullptr
         ) != SQLITE_OK) {
-        result.error = std::string("sqlite3_open_v2 failed: ")
+        auto error = std::string("sqlite3_open_v2 failed: ")
             + (db ? sqlite3_errmsg(db) : "db handle null");
         if (db) sqlite3_close(db);
         doCleanup();
-        return result;
+        return std::unexpected(std::move(error));
     }
 
     auto closeDb = [&]() {
@@ -339,11 +330,9 @@ Result<GdgePackageData> readGdgePackageFromSqlitePath(
         db = nullptr;
     };
     auto fail = [&](std::string reason) -> Result<GdgePackageData> {
-        Result<GdgePackageData> r;
-        r.error = std::move(reason);
         closeDb();
         doCleanup();
-        return r;
+        return std::unexpected(std::move(reason));
     };
 
     GdgePackageData out;
@@ -408,23 +397,17 @@ Result<GdgePackageData> readGdgePackageFromSqlitePath(
     closeDb();
     doCleanup();
     if (auto reason = validateDataReason(out); !reason.empty()) {
-        result.error = "validateData failed: " + reason;
-        return result;
+        return std::unexpected("validateData failed: " + reason);
     }
-    result.value = std::move(out);
-    result.ok = true;
-    return result;
+    return out;
 }
 
 } // namespace
 
 Result<GdgePackageData> readGdgePackage(std::filesystem::path const& path) {
-    Result<GdgePackageData> result;
-
     std::error_code existsEc;
     if (!std::filesystem::exists(path, existsEc)) {
-        result.error = "file does not exist";
-        return result;
+        return std::unexpected("file does not exist");
     }
 
     auto const form = peekDbFileForm(path);
@@ -435,18 +418,16 @@ Result<GdgePackageData> readGdgePackage(std::filesystem::path const& path) {
 
     if (form == DbFileForm::Zip) {
         auto tmpPath = geode::Mod::get()->getTempDir()
-            / (pathUtf8(path.stem()) + ".gdge.tmp");
+            / (geode::utils::string::pathToString(path.stem()) + ".gdge.tmp");
 
         auto extractRes = extractZipToFile(path, tmpPath, "package.gdge");
-        if (!extractRes.ok) {
-            result.error = "zip extract failed: " + extractRes.error;
-            return result;
+        if (!extractRes) {
+            return std::unexpected("zip extract failed: " + extractRes.error());
         }
         return readGdgePackageFromSqlitePath(tmpPath, tmpPath);
     }
 
-    result.error = "unknown file form (not zip or sqlite)";
-    return result;
+    return std::unexpected("unknown file form (not zip or sqlite)");
 }
 
 } // namespace git_editor

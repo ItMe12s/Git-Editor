@@ -33,8 +33,8 @@ void runCommitPerfTests(GitService& git, CommitStore& st, ReportBuilder& R) {
     R.addAction("Perf", "initial commit (seed HEAD)");
     ScopedTimer seedTimer;
     auto seed = git.commit(kPerf, "perf seed", seedLevel);
-    if (!seed.ok) {
-        R.addFail("Perf", "seed_commit", seed.error, total.ms());
+    if (!seed) {
+        R.addFail("Perf", "seed_commit", seed.error(), total.ms());
         return;
     }
     R.addAction("Perf", fmt::format("seed commit {} ms", seedTimer.ms()));
@@ -57,8 +57,8 @@ void runCommitPerfTests(GitService& git, CommitStore& st, ReportBuilder& R) {
     ScopedTimer hotTimer;
     auto hot = git.commit(kPerf, "perf hot", modified);
     double const hotMs = hotTimer.ms();
-    if (!hot.ok) {
-        R.addFail("Perf", "hot_commit", hot.error, total.ms());
+    if (!hot) {
+        R.addFail("Perf", "hot_commit", hot.error(), total.ms());
         return;
     }
 

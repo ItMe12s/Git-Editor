@@ -1,7 +1,7 @@
 #include "AutomatedTestHarness.hpp"
 
 #include "model/LevelParser.hpp"
-#include "util/io/PathUtf8.hpp"
+#include <Geode/utils/string.hpp>
 
 #include <fmt/format.h>
 
@@ -22,7 +22,7 @@ void runCollabPlanTest(GitService& git, CommitStore& st, std::filesystem::path c
     if (!requireCommit(git, R, kSuiteCollab, "base_commit", T.ms(), kCollabBase, "base", levelAt(0), "commit kCollabBase base")) {
         return;
     }
-    if (!requireExport(git, R, kSuiteCollab, "export_base", T.ms(), kCollabBase, basePath, fmt::format("export base {}", pathUtf8(basePath)))) {
+    if (!requireExport(git, R, kSuiteCollab, "export_base", T.ms(), kCollabBase, basePath, fmt::format("export base {}", geode::utils::string::pathToString(basePath)))) {
         return;
     }
     if (!requireImportMany(git, R, kSuiteCollab, "layout_import_base", T.ms(), kCollabLay, { basePath }, "importMany kCollabLay <- base")) {
@@ -43,7 +43,7 @@ void runCollabPlanTest(GitService& git, CommitStore& st, std::filesystem::path c
     if (!requireCommit(git, R, kSuiteCollab, "other_commit", T.ms(), kOther, "other_root", levelAt(9999), "commit kOther other_root")) {
         return;
     }
-    if (!requireExport(git, R, kSuiteCollab, "export_other", T.ms(), kOther, otherPath, fmt::format("export other {}", pathUtf8(otherPath)))) {
+    if (!requireExport(git, R, kSuiteCollab, "export_other", T.ms(), kOther, otherPath, fmt::format("export other {}", geode::utils::string::pathToString(otherPath)))) {
         return;
     }
 
@@ -68,15 +68,15 @@ void runCollabPlanTest(GitService& git, CommitStore& st, std::filesystem::path c
     R.addAction(kSuiteCollab, fmt::format("plan A+Other smart {} seq {}", planMix.smart.size(), planMix.sequential.size()));
     R.addAction(kSuiteCollab, "importMany merge two decorators");
     auto mergeTwo = git.importManyFromGdge(kCollabLay, { decAPath, decBPath });
-    if (!mergeTwo.ok) {
-        R.addFail(kSuiteCollab, "merge_two_decorators", mergeTwo.error, T.ms());
+    if (!mergeTwo) {
+        R.addFail(kSuiteCollab, "merge_two_decorators", mergeTwo.error(), T.ms());
         return;
     }
-    if (mergeTwo.value.smartCount < 2) {
-        R.addFail(kSuiteCollab, "merge_smart_count", fmt::format("smartCount {}", mergeTwo.value.smartCount), T.ms());
+    if (mergeTwo->smartCount < 2) {
+        R.addFail(kSuiteCollab, "merge_smart_count", fmt::format("smartCount {}", mergeTwo->smartCount), T.ms());
         return;
     }
-    R.addAction(kSuiteCollab, fmt::format("merge_two smartCount {}", mergeTwo.value.smartCount));
+    R.addAction(kSuiteCollab, fmt::format("merge_two smartCount {}", mergeTwo->smartCount));
 
     R.addAction(kSuiteCollab, "reset kCollabLay for conflict branch");
     st.deleteLevel(kCollabLay);
@@ -112,7 +112,7 @@ void runCollabPlanTest(GitService& git, CommitStore& st, std::filesystem::path c
     if (!requireCommit(git, R, kSuiteCollab, "a_conflict_commit", T.ms(), kDecA, "a_conflict", conflictDec, "commit kDecA a_conflict")) {
         return;
     }
-    if (!requireExport(git, R, kSuiteCollab, "export_a_conflict", T.ms(), kDecA, decAPath, fmt::format("export a_conflict {}", pathUtf8(decAPath)))) {
+    if (!requireExport(git, R, kSuiteCollab, "export_a_conflict", T.ms(), kDecA, decAPath, fmt::format("export a_conflict {}", geode::utils::string::pathToString(decAPath)))) {
         return;
     }
     if (!requireImportMany(git, R, kSuiteCollab, "dec_b_reset", T.ms(), kDecB, { basePath }, "importMany kDecB <- base conflict path")) {
@@ -121,25 +121,25 @@ void runCollabPlanTest(GitService& git, CommitStore& st, std::filesystem::path c
     if (!requireCommit(git, R, kSuiteCollab, "b_conflict_commit", T.ms(), kDecB, "b_conflict", conflictDecB, "commit kDecB b_conflict")) {
         return;
     }
-    if (!requireExport(git, R, kSuiteCollab, "export_b_conflict", T.ms(), kDecB, decBPath, fmt::format("export b_conflict {}", pathUtf8(decBPath)))) {
+    if (!requireExport(git, R, kSuiteCollab, "export_b_conflict", T.ms(), kDecB, decBPath, fmt::format("export b_conflict {}", geode::utils::string::pathToString(decBPath)))) {
         return;
     }
     R.addAction(kSuiteCollab, "importMany merge overlapping conflicts");
     auto mergeConflict = git.importManyFromGdge(kCollabLay, { decAPath, decBPath });
-    if (!mergeConflict.ok) {
-        R.addFail(kSuiteCollab, "merge_conflict_import", mergeConflict.error, T.ms());
+    if (!mergeConflict) {
+        R.addFail(kSuiteCollab, "merge_conflict_import", mergeConflict.error(), T.ms());
         return;
     }
-    if (mergeConflict.value.conflictCount <= 0) {
-        R.addFail(kSuiteCollab, "merge_conflict_count", fmt::format("conflictCount {}", mergeConflict.value.conflictCount), T.ms());
+    if (mergeConflict->conflictCount <= 0) {
+        R.addFail(kSuiteCollab, "merge_conflict_count", fmt::format("conflictCount {}", mergeConflict->conflictCount), T.ms());
         return;
     }
-    R.addAction(kSuiteCollab, fmt::format("mergeConflict conflictCount {}", mergeConflict.value.conflictCount));
+    R.addAction(kSuiteCollab, fmt::format("mergeConflict conflictCount {}", mergeConflict->conflictCount));
 
     R.addPass(
         kSuiteCollab,
         "plan_and_merge",
-        fmt::format("overlap conflicts {}", mergeConflict.value.conflictCount),
+        fmt::format("overlap conflicts {}", mergeConflict->conflictCount),
         T.ms()
     );
 }

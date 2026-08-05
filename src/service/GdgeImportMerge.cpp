@@ -8,8 +8,8 @@
 #include "diff/Differ.hpp"
 #include "store/GdgePackage.hpp"
 #include "util/format/Shorten.hpp"
-#include "util/io/PathUtf8.hpp"
 
+#include <Geode/utils/string.hpp>
 #include <fmt/format.h>
 
 #include <string>
@@ -19,24 +19,19 @@
 namespace {
 
 git_editor::Result<git_editor::LevelState> loadGdgeHead(std::filesystem::path const& path) {
-    git_editor::Result<git_editor::LevelState> out;
     auto pkg = git_editor::readGdgePackage(path);
-    if (!pkg.ok) {
-        out.error = git_editor::pathUtf8(path.filename()) + ": " + pkg.error;
-        return out;
+    auto const name = geode::utils::string::pathToString(path.filename());
+    if (!pkg) {
+        return std::unexpected(name + ": " + pkg.error());
     }
-    if (pkg.value.commits.empty() || !pkg.value.metadata.headIndex) {
-        out.error = git_editor::pathUtf8(path.filename()) + ": missing commits or head_index";
-        return out;
+    if (pkg->commits.empty() || !pkg->metadata.headIndex) {
+        return std::unexpected(name + ": missing commits or head_index");
     }
-    auto head = git_editor::reconstructPackageHead(pkg.value);
+    auto head = git_editor::reconstructPackageHead(*pkg);
     if (!head) {
-        out.error = git_editor::pathUtf8(path.filename()) + ": package history graph invalid";
-        return out;
+        return std::unexpected(name + ": package history graph invalid");
     }
-    out.ok    = true;
-    out.value = std::move(*head);
-    return out;
+    return std::move(*head);
 }
 
 } // namespace
@@ -55,12 +50,12 @@ Prepared<ImportManyPayload> prepareImportManyFromGdge(
     payload.skippedCount += static_cast<int>(plan.invalid.size());
 
     PendingMergeImport pendingMerge;
-    LevelState         runningState = ours;
+    LevelState         runningState = std::move(ours);
     bool               anyMerged    = false;
     std::string        lastError;
 
     if (!plan.smart.empty()) {
-        LevelState merged = ours;
+        LevelState merged = runningState;
         int        conflicts = 0;
         std::vector<std::string> names;
         names.reserve(plan.smart.size());
@@ -68,13 +63,13 @@ Prepared<ImportManyPayload> prepareImportManyFromGdge(
         std::string err;
         for (auto const& inPath : plan.smart) {
             auto loaded = loadGdgeHead(inPath);
-            if (!loaded.ok) {
-                err = loaded.error;
+            if (!loaded) {
+                err = loaded.error();
                 ok  = false;
                 break;
             }
             int stepConflicts = 0;
-            auto step = mergeStates3Way(rootBefore, merged, loaded.value, stepConflicts);
+            auto step = mergeStates3Way(rootBefore, merged, *loaded, stepConflicts);
             if (!step) {
                 err = "3-way merge failed";
                 ok  = false;
@@ -82,7 +77,7 @@ Prepared<ImportManyPayload> prepareImportManyFromGdge(
             }
             merged = std::move(*step);
             conflicts += stepConflicts;
-            names.push_back(git_editor::pathUtf8(inPath.filename()));
+            names.push_back(geode::utils::string::pathToString(inPath.filename()));
         }
         if (!ok) {
             payload.skippedCount += static_cast<int>(plan.smart.size());
@@ -101,7 +96,7 @@ Prepared<ImportManyPayload> prepareImportManyFromGdge(
             p.levelKey  = dest;
             p.parent    = headBefore;
             p.message   = std::move(message);
-            p.deltaBlob = dumpDelta(diff(ours, merged));
+            p.deltaBlob = dumpDelta(diff(runningState, merged));
             pendingMerge.commits.push_back(std::move(p));
 
             anyMerged = true;
@@ -109,7 +104,6 @@ Prepared<ImportManyPayload> prepareImportManyFromGdge(
             payload.mergedCount += payload.smartCount;
             payload.conflictCount += conflicts;
             runningState = std::move(merged);
-            payload.state = runningState;
             if (!headBefore) {
                 rootBefore = runningState;
             }
@@ -118,9 +112,9 @@ Prepared<ImportManyPayload> prepareImportManyFromGdge(
 
     for (auto const& path : plan.sequential) {
         auto loaded = loadGdgeHead(path);
-        if (!loaded.ok) {
+        if (!loaded) {
             payload.skippedCount++;
-            if (lastError.empty()) lastError = loaded.error;
+            if (lastError.empty()) lastError = loaded.error();
             continue;
         }
 
@@ -129,21 +123,21 @@ Prepared<ImportManyPayload> prepareImportManyFromGdge(
         PendingHeadUpdate p;
         p.levelKey = dest;
         if (freshRoot) {
-            p.message    = "Import .gdge: " + git_editor::pathUtf8(path.filename());
-            p.deltaBlob  = dumpDelta(diff(LevelState {}, loaded.value));
-            runningState = loaded.value;
-            rootBefore   = loaded.value;
+            p.message    = "Import .gdge: " + geode::utils::string::pathToString(path.filename());
+            p.deltaBlob  = dumpDelta(diff(LevelState {}, *loaded));
+            rootBefore   = *loaded;
+            runningState = std::move(*loaded);
         } else {
             int conflicts = 0;
-            auto merged = mergeStates3Way(rootBefore, runningState, loaded.value, conflicts);
+            auto merged = mergeStates3Way(rootBefore, runningState, *loaded, conflicts);
             if (!merged) {
                 payload.skippedCount++;
                 if (lastError.empty()) {
-                    lastError = git_editor::pathUtf8(path.filename()) + ": 3-way merge failed";
+                    lastError = geode::utils::string::pathToString(path.filename()) + ": 3-way merge failed";
                 }
                 continue;
             }
-            p.message   = "Merge import: " + git_editor::pathUtf8(path.filename());
+            p.message   = "Merge import: " + geode::utils::string::pathToString(path.filename());
             p.deltaBlob = dumpDelta(diff(runningState, *merged));
             if (!pendingMerge.commits.empty()) {
                 p.parentPendingIx = pendingMerge.commits.size() - 1;
@@ -157,20 +151,21 @@ Prepared<ImportManyPayload> prepareImportManyFromGdge(
         anyMerged = true;
         payload.sequentialCount++;
         payload.mergedCount++;
-        payload.state = runningState;
     }
 
     if (!anyMerged) {
-        out.result.error = lastError.empty() ? "none of selected files merged" : lastError;
+        out.result = std::unexpected(
+            lastError.empty() ? "none of selected files merged" : lastError
+        );
         return out;
     }
 
+    payload.state = std::move(runningState);
     if (!pendingMerge.commits.empty()) {
         pendingMerge.commits.back().cacheState = payload.state;
     }
 
-    out.result.ok          = true;
-    out.result.value       = std::move(payload);
+    out.result             = std::move(payload);
     out.pendingMergeImport = std::move(pendingMerge);
     return out;
 }

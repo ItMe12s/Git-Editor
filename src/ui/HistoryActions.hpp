@@ -8,10 +8,8 @@
 
 namespace git_editor::history_actions {
 
-bool canApplyEditorResult(LevelEditorLayer* editor);
-
 bool applyStateToEditorOrNotify(
-    char const*       noun,
+    char const*       operation,
     LevelEditorLayer* editor,
     LevelState const& state,
     bool              hasConflicts

@@ -1,6 +1,5 @@
 #include "HistoryActions.hpp"
 
-#include "HistoryLayer.hpp"
 #include "editor/LevelStateIO.hpp"
 
 #include <Geode/binding/FLAlertLayer.hpp>
@@ -9,33 +8,29 @@
 
 namespace git_editor::history_actions {
 
-bool canApplyEditorResult(LevelEditorLayer* editor) {
-    return editor != nullptr && editor->getParent() != nullptr;
-}
-
 bool applyStateToEditorOrNotify(
-    char const*       noun,
+    char const*       operation,
     LevelEditorLayer* editor,
     LevelState const& state,
     bool              hasConflicts
 ) {
-    if (!canApplyEditorResult(editor)) {
+    if (!editor || !editor->getParent()) {
         geode::Notification::create(
-            (std::string(noun) + " ready but editor is no longer active, aborted before DB write").c_str(),
+            (std::string(operation) + " ready but editor is no longer active, aborted before DB write").c_str(),
             geode::NotificationIcon::Warning
         )->show();
         return false;
     }
     if (!applyLevelState(editor, state)) {
         geode::Notification::create(
-            (std::string(noun) + " ready but editor refused, aborted before DB write").c_str(),
+            (std::string(operation) + " ready but editor refused, aborted before DB write").c_str(),
             geode::NotificationIcon::Warning
         )->show();
         return false;
     }
     if (hasConflicts) {
         geode::Notification::create(
-            (std::string(noun) + ": conflicts merged into editor state").c_str(),
+            (std::string(operation) + ": conflicts merged into editor state").c_str(),
             geode::NotificationIcon::Warning
         )->show();
     }
@@ -67,16 +62,3 @@ void showConflictSummary(std::vector<Conflict> const& conflicts) {
 }
 
 } // namespace git_editor::history_actions
-
-namespace git_editor {
-
-bool HistoryLayer::tryApplyToEditor(
-    char const*       noun,
-    LevelEditorLayer* editor,
-    LevelState const& state,
-    bool              hasConflicts
-) {
-    return history_actions::applyStateToEditorOrNotify(noun, editor, state, hasConflicts);
-}
-
-} // namespace git_editor

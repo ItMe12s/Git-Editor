@@ -1,7 +1,7 @@
 #include "AutomatedTestHarness.hpp"
 
 #include "util/format/StateHash.hpp"
-#include "util/io/PathUtf8.hpp"
+#include <Geode/utils/string.hpp>
 
 #include <fmt/format.h>
 
@@ -40,7 +40,7 @@ void runGdgeExportImportTests(GitService& git, CommitStore& st, std::filesystem:
         R.addFail(kSuiteGdge, "export_raw", "compress setting toggle failed", rawPhase.ms());
         return;
     }
-    R.addAction(kSuiteGdge, fmt::format("exportLevelToGdge raw {}", pathUtf8(rawPath)));
+    R.addAction(kSuiteGdge, fmt::format("exportLevelToGdge raw {}", geode::utils::string::pathToString(rawPath)));
     if (!requireExport(git, R, kSuiteGdge, "export_raw", rawPhase.ms(), kRawEx, rawPath)) {
         return;
     }
@@ -57,7 +57,7 @@ void runGdgeExportImportTests(GitService& git, CommitStore& st, std::filesystem:
         R.addFail(kSuiteGdge, "export_zip", "compress setting toggle failed", zipPhase.ms());
         return;
     }
-    R.addAction(kSuiteGdge, fmt::format("exportLevelToGdge zip {}", pathUtf8(zipPath)));
+    R.addAction(kSuiteGdge, fmt::format("exportLevelToGdge zip {}", geode::utils::string::pathToString(zipPath)));
     if (!requireExport(git, R, kSuiteGdge, "export_zip", zipPhase.ms(), kZipEx, zipPath)) {
         return;
     }

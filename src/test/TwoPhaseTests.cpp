@@ -1,7 +1,7 @@
 #include "AutomatedTestHarness.hpp"
 
 #include "util/format/StateHash.hpp"
-#include "util/io/PathUtf8.hpp"
+#include <Geode/utils/string.hpp>
 
 #include <fmt/format.h>
 
@@ -16,12 +16,12 @@ void runTwoPhaseTests(GitService& git, CommitStore& st, std::filesystem::path co
     auto a = git.commit(kTwoPhase, "tp1", levelAt(0));
     auto b = git.commit(kTwoPhase, "tp2", levelAt(10));
     auto c = git.commit(kTwoPhase, "tp3", levelAt(20));
-    if (!a.ok || !b.ok || !c.ok) {
+    if (!a || !b || !c) {
         R.addFail(kSuiteTwoPhase, "setup_three", "commit failed", suiteT.ms());
         return;
     }
-    CommitId const c1 = a.value;
-    CommitId const c3 = c.value;
+    CommitId const c1 = *a;
+    CommitId const c3 = *c;
 
     auto headBefore = st.getHead(kTwoPhase);
     auto const rowsBefore = st.list(kTwoPhase).size();
@@ -33,8 +33,8 @@ void runTwoPhaseTests(GitService& git, CommitStore& st, std::filesystem::path co
     R.addAction(kSuiteTwoPhase, fmt::format("prepareCheckout c1 {} head {}", c1, *headBefore));
     ScopedTimer checkoutPhase;
     auto prep = git.prepareCheckout(kTwoPhase, c1);
-    if (!prep.result.ok) {
-        R.addFail(kSuiteTwoPhase, "prepare_checkout", prep.result.error, checkoutPhase.ms());
+    if (!prep.result) {
+        R.addFail(kSuiteTwoPhase, "prepare_checkout", prep.result.error(), checkoutPhase.ms());
         return;
     }
     if (!prep.pendingHead) {
@@ -55,9 +55,9 @@ void runTwoPhaseTests(GitService& git, CommitStore& st, std::filesystem::path co
     }
     R.addAction(kSuiteTwoPhase, "prepare left HEAD and row count unchanged");
 
-    auto fin = git.finalizeCheckout(*prep.pendingHead, prep.result.value);
-    if (!fin.ok) {
-        R.addFail(kSuiteTwoPhase, "finalize_checkout", fin.error, checkoutPhase.ms());
+    auto fin = git.finalizeCheckout(*prep.pendingHead, *prep.result);
+    if (!fin) {
+        R.addFail(kSuiteTwoPhase, "finalize_checkout", fin.error(), checkoutPhase.ms());
         return;
     }
     auto headAfter = st.getHead(kTwoPhase);
@@ -80,8 +80,8 @@ void runTwoPhaseTests(GitService& git, CommitStore& st, std::filesystem::path co
     R.addAction(kSuiteTwoPhase, "checkout noop when HEAD equals target");
     ScopedTimer noopPhase;
     auto prepNoop = git.prepareCheckout(kTwoPhase, *headAfter);
-    if (!prepNoop.result.ok) {
-        R.addFail(kSuiteTwoPhase, "prepare_noop", prepNoop.result.error, noopPhase.ms());
+    if (!prepNoop.result) {
+        R.addFail(kSuiteTwoPhase, "prepare_noop", prepNoop.result.error(), noopPhase.ms());
         return;
     }
     if (prepNoop.pendingHead) {
@@ -91,7 +91,7 @@ void runTwoPhaseTests(GitService& git, CommitStore& st, std::filesystem::path co
     R.addPass(kSuiteTwoPhase, "checkout_noop", "no pending when already at target", noopPhase.ms());
 
     auto const gdgePath = testDir / "at_two_phase.gdge";
-    R.addAction(kSuiteTwoPhase, fmt::format("export for import test {}", pathUtf8(gdgePath)));
+    R.addAction(kSuiteTwoPhase, fmt::format("export for import test {}", geode::utils::string::pathToString(gdgePath)));
     st.deleteLevel(kRawEx);
     if (!requireCommit(git, R, kSuiteTwoPhase, "export_setup", suiteT.ms(), kRawEx, "tp_export", levelAt(5))) {
         return;
@@ -110,8 +110,8 @@ void runTwoPhaseTests(GitService& git, CommitStore& st, std::filesystem::path co
     R.addAction(kSuiteTwoPhase, "prepareImportManyFromGdge on empty dest");
     ScopedTimer importPhase;
     auto prepImp = git.prepareImportManyFromGdge(kMix, { gdgePath });
-    if (!prepImp.result.ok) {
-        R.addFail(kSuiteTwoPhase, "prepare_import", prepImp.result.error, importPhase.ms());
+    if (!prepImp.result) {
+        R.addFail(kSuiteTwoPhase, "prepare_import", prepImp.result.error(), importPhase.ms());
         return;
     }
     if (!prepImp.pendingMergeImport) {
@@ -123,9 +123,9 @@ void runTwoPhaseTests(GitService& git, CommitStore& st, std::filesystem::path co
         return;
     }
 
-    auto finImp = git.finalizeImportManyFromGdge(*prepImp.pendingMergeImport, prepImp.result.value.state);
-    if (!finImp.ok) {
-        R.addFail(kSuiteTwoPhase, "finalize_import", finImp.error, importPhase.ms());
+    auto finImp = git.finalizeImportManyFromGdge(*prepImp.pendingMergeImport);
+    if (!finImp) {
+        R.addFail(kSuiteTwoPhase, "finalize_import", finImp.error(), importPhase.ms());
         return;
     }
     auto headMix = st.getHead(kMix);
@@ -138,7 +138,7 @@ void runTwoPhaseTests(GitService& git, CommitStore& st, std::filesystem::path co
         R.addFail(kSuiteTwoPhase, "finalize_import_recon", "reconstruct failed", importPhase.ms());
         return;
     }
-    if (hashLevelState(*mixRecon) != hashLevelState(prepImp.result.value.state)) {
+    if (hashLevelState(*mixRecon) != hashLevelState(prepImp.result->state)) {
         R.addFail(kSuiteTwoPhase, "finalize_import_state", "DB state != prepared payload state", importPhase.ms());
         return;
     }

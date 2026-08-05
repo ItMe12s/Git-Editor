@@ -2,11 +2,13 @@
 
 #include <Geode/loader/Log.hpp>
 #include <matjson.hpp>
+#include <matjson/stl_serialize.hpp>
 
 #include <charconv>
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace git_editor {
 
@@ -21,14 +23,6 @@ bool parseUInt64Full(std::string_view s, std::uint64_t& out) {
     return true;
 }
 
-matjson::Value fieldMapToJson(FieldMap const& m) {
-    auto obj = matjson::Value::object();
-    for (auto const& [k, v] : m) {
-        obj.set(k, v);
-    }
-    return obj;
-}
-
 FieldMap fieldMapFromJson(matjson::Value const& v) {
     FieldMap out;
     if (!v.isObject()) return out;
@@ -41,133 +35,118 @@ FieldMap fieldMapFromJson(matjson::Value const& v) {
     return out;
 }
 
-matjson::Value objectToJson(Object const& o) {
-    auto obj = matjson::Value::object();
-    obj.set("uuid",   std::to_string(o.uuid));
-    obj.set("fields", fieldMapToJson(o.fields));
-    return obj;
-}
-
-Object objectFromJson(matjson::Value const& v) {
-    Object o;
-    if (auto r = v.get("uuid"); r.isOk()) {
-        auto asStr = r.unwrap().asString();
-        if (asStr.isOk()) {
-            auto const& us = asStr.unwrap();
-            std::uint64_t u = 0;
-            if (parseUInt64Full(std::string_view(us.data(), us.size()), u)) {
-                o.uuid = u;
-            } else {
-                o.uuid = 0;
-            }
-        }
-    }
-    if (auto r = v.get("fields"); r.isOk()) {
-        o.fields = fieldMapFromJson(r.unwrap());
-    }
-    return o;
-}
-
-matjson::Value fieldChangeToJson(FieldChange const& c) {
-    auto obj = matjson::Value::object();
-    obj.set("b", c.before);
-    obj.set("a", c.after);
-    return obj;
-}
-
-FieldChange fieldChangeFromJson(matjson::Value const& v) {
-    FieldChange c;
-    if (auto r = v.get("b"); r.isOk()) {
-        auto s = r.unwrap().asString();
-        if (s.isOk()) c.before = s.unwrap();
-    }
-    if (auto r = v.get("a"); r.isOk()) {
-        auto s = r.unwrap().asString();
-        if (s.isOk()) c.after = s.unwrap();
-    }
-    return c;
-}
-
-matjson::Value headerChangesToJson(std::map<std::string, FieldChange> const& hc) {
-    auto obj = matjson::Value::object();
-    for (auto const& [k, c] : hc) {
-        obj.set(k, fieldChangeToJson(c));
-    }
-    return obj;
-}
-
-std::map<std::string, FieldChange> headerChangesFromJson(matjson::Value const& v) {
-    std::map<std::string, FieldChange> out;
-    if (!v.isObject()) return out;
-    for (auto const& entry : v) {
-        auto key = entry.getKey();
-        if (!key) continue;
-        out.emplace(std::string(key->data(), key->size()), fieldChangeFromJson(entry));
-    }
-    return out;
-}
-
-matjson::Value modifyToJson(Delta::Modify const& m) {
-    auto obj = matjson::Value::object();
-    obj.set("uuid", std::to_string(m.uuid));
-    auto fields = matjson::Value::object();
-    for (auto const& [k, c] : m.fields) {
-        fields.set(k, fieldChangeToJson(c));
-    }
-    obj.set("fields", fields);
-    return obj;
-}
-
-Delta::Modify modifyFromJson(matjson::Value const& v) {
-    Delta::Modify m;
-    if (auto r = v.get("uuid"); r.isOk()) {
-        auto s = r.unwrap().asString();
-        if (s.isOk()) {
-            auto const& us = s.unwrap();
-            std::uint64_t u = 0;
-            if (parseUInt64Full(std::string_view(us.data(), us.size()), u)) {
-                m.uuid = u;
-            } else {
-                m.uuid = 0;
-            }
-        }
-    }
-    if (auto r = v.get("fields"); r.isOk()) {
-        auto const& fields = r.unwrap();
-        if (fields.isObject()) {
-            for (auto const& entry : fields) {
-                auto key = entry.getKey();
-                if (!key) continue;
-                m.fields.emplace(std::string(key->data(), key->size()), fieldChangeFromJson(entry));
-            }
-        }
-    }
-    return m;
-}
-
 } // namespace
 
-std::string dumpDelta(Delta const& d) {
-    auto root = matjson::Value::object();
+} // namespace git_editor
 
-    root.set("h", headerChangesToJson(d.headerChanges));
-    if (d.rawHeaderChange.has_value()) {
-        root.set("hr", fieldChangeToJson(*d.rawHeaderChange));
+namespace matjson {
+
+template <>
+struct Serialize<git_editor::FieldChange> {
+    static Value toJson(git_editor::FieldChange const& change) {
+        auto value = Value::object();
+        value.set("b", change.before);
+        value.set("a", change.after);
+        return value;
     }
 
-    auto adds = matjson::Value::array();
-    for (auto const& o : d.adds) adds.push(objectToJson(o));
-    root.set("+", adds);
+    static geode::Result<git_editor::FieldChange> fromJson(Value const& value) {
+        git_editor::FieldChange change;
+        if (auto before = value.get<std::string>("b"); before.isOk()) {
+            change.before = std::move(before).unwrap();
+        }
+        if (auto after = value.get<std::string>("a"); after.isOk()) {
+            change.after = std::move(after).unwrap();
+        }
+        return geode::Ok(std::move(change));
+    }
+};
 
-    auto removes = matjson::Value::array();
-    for (auto const& o : d.removes) removes.push(objectToJson(o));
-    root.set("-", removes);
+template <>
+struct Serialize<git_editor::Object> {
+    static Value toJson(git_editor::Object const& object) {
+        auto value = Value::object();
+        value.set("uuid", std::to_string(object.uuid));
+        value.set("fields", object.fields);
+        return value;
+    }
 
-    auto mods = matjson::Value::array();
-    for (auto const& m : d.modifies) mods.push(modifyToJson(m));
-    root.set("~", mods);
+    static geode::Result<git_editor::Object> fromJson(Value const& value) {
+        git_editor::Object object;
+        if (auto uuid = value.get<std::string>("uuid"); uuid.isOk()) {
+            git_editor::parseUInt64Full(uuid.unwrap(), object.uuid);
+        }
+        if (auto fields = value.get("fields"); fields.isOk()) {
+            object.fields = git_editor::fieldMapFromJson(fields.unwrap());
+        }
+        return geode::Ok(std::move(object));
+    }
+};
 
-    return root.dump(matjson::NO_INDENTATION);
+template <>
+struct Serialize<git_editor::Delta::Modify> {
+    static Value toJson(git_editor::Delta::Modify const& modify) {
+        auto value = Value::object();
+        value.set("uuid", std::to_string(modify.uuid));
+        value.set("fields", modify.fields);
+        return value;
+    }
+
+    static geode::Result<git_editor::Delta::Modify> fromJson(Value const& value) {
+        git_editor::Delta::Modify modify;
+        if (auto uuid = value.get<std::string>("uuid"); uuid.isOk()) {
+            git_editor::parseUInt64Full(uuid.unwrap(), modify.uuid);
+        }
+        if (auto fields = value.get<std::map<std::string, git_editor::FieldChange>>("fields"); fields.isOk()) {
+            modify.fields = std::move(fields).unwrap();
+        }
+        return geode::Ok(std::move(modify));
+    }
+};
+
+template <>
+struct Serialize<git_editor::Delta> {
+    static Value toJson(git_editor::Delta const& delta) {
+        auto value = Value::object();
+        value.set("h", delta.headerChanges);
+        if (delta.rawHeaderChange.has_value()) {
+            value.set("hr", *delta.rawHeaderChange);
+        }
+        value.set("+", delta.adds);
+        value.set("-", delta.removes);
+        value.set("~", delta.modifies);
+        return value;
+    }
+
+    static geode::Result<git_editor::Delta> fromJson(Value const& value) {
+        if (!value.isObject()) return geode::Err("root is not an object");
+
+        git_editor::Delta delta;
+        if (auto changes = value.get<std::map<std::string, git_editor::FieldChange>>("h"); changes.isOk()) {
+            delta.headerChanges = std::move(changes).unwrap();
+        }
+        if (auto raw = value.get<git_editor::FieldChange>("hr"); raw.isOk()) {
+            delta.rawHeaderChange = std::move(raw).unwrap();
+        }
+        if (auto adds = value.get<std::vector<git_editor::Object>>("+"); adds.isOk()) {
+            delta.adds = std::move(adds).unwrap();
+        }
+        if (auto removes = value.get<std::vector<git_editor::Object>>("-"); removes.isOk()) {
+            delta.removes = std::move(removes).unwrap();
+        }
+        if (auto modifies = value.get<std::vector<git_editor::Delta::Modify>>("~"); modifies.isOk()) {
+            delta.modifies = std::move(modifies).unwrap();
+        }
+        return geode::Ok(std::move(delta));
+    }
+};
+
+} // namespace matjson
+
+namespace git_editor {
+
+std::string dumpDelta(Delta const& d) {
+    return matjson::Value(d).dump(matjson::NO_INDENTATION);
 }
 
 std::optional<Delta> parseDelta(std::string const& blob) {
@@ -179,44 +158,12 @@ std::optional<Delta> parseDelta(std::string const& blob) {
         );
         return std::nullopt;
     }
-    auto root = parsed.unwrap();
-    if (!root.isObject()) {
+    auto delta = std::move(parsed).unwrap().as<Delta>();
+    if (delta.isErr()) {
         geode::log::error("parseDelta: root is not an object");
         return std::nullopt;
     }
-
-    Delta out;
-    if (auto r = root.get("h"); r.isOk()) {
-        out.headerChanges = headerChangesFromJson(r.unwrap());
-    }
-    if (auto r = root.get("hr"); r.isOk()) {
-        out.rawHeaderChange = fieldChangeFromJson(r.unwrap());
-    }
-    if (auto r = root.get("+"); r.isOk()) {
-        auto const& arr = r.unwrap();
-        if (arr.isArray()) {
-            for (auto const& v : arr) {
-                out.adds.push_back(objectFromJson(v));
-            }
-        }
-    }
-    if (auto r = root.get("-"); r.isOk()) {
-        auto const& arr = r.unwrap();
-        if (arr.isArray()) {
-            for (auto const& v : arr) {
-                out.removes.push_back(objectFromJson(v));
-            }
-        }
-    }
-    if (auto r = root.get("~"); r.isOk()) {
-        auto const& arr = r.unwrap();
-        if (arr.isArray()) {
-            for (auto const& v : arr) {
-                out.modifies.push_back(modifyFromJson(v));
-            }
-        }
-    }
-    return out;
+    return std::move(delta).unwrap();
 }
 
 } // namespace git_editor

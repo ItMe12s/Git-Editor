@@ -2,11 +2,9 @@
 
 #include "HistoryCommitRow.hpp"
 #include "common/ScrollListPopup.hpp"
-#include "model/LevelState.hpp"
 #include "store/CommitStore.hpp"
 
 #include <Geode/Geode.hpp>
-#include <Geode/binding/CCMenuItemSpriteExtra.hpp>
 #include <Geode/binding/EditorPauseLayer.hpp>
 #include <Geode/binding/LevelEditorLayer.hpp>
 #include <Geode/ui/Popup.hpp>
@@ -56,13 +54,6 @@ protected:
     void runSquash(std::vector<CommitId> idsOldestFirst, std::string message);
     void startCheckoutFlow(CommitId commitId, std::string const& commitMsg);
     void startRevertFlow(CommitId commitId, std::string const& commitMsg);
-
-    bool tryApplyToEditor(
-        char const*       noun,
-        LevelEditorLayer* editor,
-        LevelState const& state,
-        bool              hasConflicts
-    );
 
     std::string                     m_levelKey;
     geode::Ref<LevelEditorLayer>    m_editor;
