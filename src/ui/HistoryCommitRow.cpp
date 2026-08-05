@@ -38,7 +38,7 @@ CCNode* createCommitRow(
     float rowWidth,
     bool squashMode,
     bool selected,
-    Ref<HistoryLayer> self
+    HistoryLayer* layer
 ) {
     auto row = CCNode::create();
     row->setID("git-editor-history-row"_spr);
@@ -115,12 +115,12 @@ CCNode* createCommitRow(
     if (squashMode) {
         auto tickBtn = CCMenuItemExt::createTogglerWithStandardSprites(
             .6f,
-            [self, commitId](CCMenuItemToggler*) {
-                if (!self) return;
+            [layer, commitId](CCMenuItemToggler*) {
+                if (!layer || layer->m_listState.closing) return;
                 // Track m_selected, not isToggled(). GD binding mismatch.
-                if (self->m_selected.count(commitId)) self->m_selected.erase(commitId);
-                else                                  self->m_selected.insert(commitId);
-                self->rebuildHeader();
+                if (layer->m_selected.count(commitId)) layer->m_selected.erase(commitId);
+                else                                   layer->m_selected.insert(commitId);
+                layer->rebuildHeader();
             }
         );
         tickBtn->toggle(selected);
@@ -128,8 +128,8 @@ CCNode* createCommitRow(
     } else {
         auto helpBtn = makeBtn(
             "?", "GJ_button_04.png",
-            [self, commitId, commitMsg](CCMenuItemSpriteExtra*) {
-                if (!self || self->m_listState.closing) return;
+            [layer, commitId, commitMsg](CCMenuItemSpriteExtra*) {
+                if (!layer || layer->m_listState.closing) return;
 
                 std::string title = "What changed";
                 if (!commitMsg.empty()) {
@@ -146,7 +146,9 @@ CCNode* createCommitRow(
 
         auto renameBtn = makeBtn(
             "Rename", "GJ_button_04.png",
-            [self, commitId, commitMsg](CCMenuItemSpriteExtra*) {
+            [layer, commitId, commitMsg](CCMenuItemSpriteExtra*) {
+                if (!layer || layer->m_listState.closing) return;
+                Ref<HistoryLayer> self(layer);
                 if (auto popup = CommitMessageLayer::create(
                     [self, commitId](std::string const& newMessage) {
                         ui_action_runner::runWorkerResult<bool>(
@@ -178,16 +180,20 @@ CCNode* createCommitRow(
 
         auto checkoutBtn = makeBtn(
             "Checkout", "GJ_button_02.png",
-            [self, commitId, commitMsg](CCMenuItemSpriteExtra*) {
-                if (self) self->startCheckoutFlow(commitId, commitMsg);
+            [layer, commitId, commitMsg](CCMenuItemSpriteExtra*) {
+                if (layer && !layer->m_listState.closing) {
+                    layer->startCheckoutFlow(commitId, commitMsg);
+                }
             }
         );
         menu->addChild(checkoutBtn);
 
         auto revertBtn = makeBtn(
             "Revert", "GJ_button_06.png",
-            [self, commitId, commitMsg](CCMenuItemSpriteExtra*) {
-                if (self) self->startRevertFlow(commitId, commitMsg);
+            [layer, commitId, commitMsg](CCMenuItemSpriteExtra*) {
+                if (layer && !layer->m_listState.closing) {
+                    layer->startRevertFlow(commitId, commitMsg);
+                }
             }
         );
         menu->addChild(revertBtn);

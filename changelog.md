@@ -13,7 +13,7 @@ Consider giving it a star and check the commit history for a more technical chan
 
 ## 1.0.0-beta.14
 
-add stuff here...
+- Fixed History/Levels popup leaking/retaining the editor pause menu.
 
 ## 1.0.0-beta.13
 

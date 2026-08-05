@@ -94,6 +94,7 @@ bool LevelBrowserLayer::init(
 }
 
 void LevelBrowserLayer::onClose(CCObject* sender) {
+    m_loadTask.cancel();
     scroll_list_popup::preparePopupClose(m_listState, m_scroll, m_mainLayer);
     Popup::onClose(sender);
 }
@@ -105,18 +106,15 @@ bool LevelBrowserLayer::closeOnce(CCObject* sender) {
 void LevelBrowserLayer::rebuildList() {
     if (m_listState.closing || !m_scroll) return;
 
-    Ref<LevelBrowserLayer> self(this);
     scroll_list_popup::loadAsync<std::vector<LevelSummary>>(
         m_listState,
+        m_loadTask,
         m_scroll,
         "Loading levels...",
         "git-editor-levels-loading"_spr,
         []() { return sharedCommitStore().listLevels(); },
-        [self](std::uint64_t serial) {
-            return self && !scroll_list_popup::isStaleLoad(self->m_listState, serial);
-        },
-        [self](std::vector<LevelSummary> levels) mutable {
-            self->renderList(std::move(levels));
+        [this](std::vector<LevelSummary> levels) mutable {
+            renderList(std::move(levels));
         }
     );
 }
@@ -139,7 +137,6 @@ void LevelBrowserLayer::renderList(std::vector<LevelSummary> levels) {
         return;
     }
 
-    Ref<LevelBrowserLayer> self(this);
     auto* editor = m_editor.data();
     if (!editor) return;
     std::string const destKey = levelKeyFor(editor->m_level);
@@ -202,8 +199,9 @@ void LevelBrowserLayer::renderList(std::vector<LevelSummary> levels) {
         auto const count    = lv.commitCount;
 
         auto loadBtn = makeLoadBtn(
-            [self, levelKey, destKey, count](CCMenuItemSpriteExtra*) {
-                if (!self || !tryBeginBusyAction(self->m_busy)) return;
+            [this, levelKey, destKey, count](CCMenuItemSpriteExtra*) {
+                Ref<LevelBrowserLayer> self(this);
+                if (!tryBeginBusyAction(self->m_busy)) return;
                 if (levelKey == destKey) {
                     finishBusyAction(self->m_busy);
                     Notification::create("Already this level: nothing to load", NotificationIcon::Info)
@@ -295,8 +293,9 @@ void LevelBrowserLayer::renderList(std::vector<LevelSummary> levels) {
         );
         menu->addChild(loadBtn);
 
-        auto delBtn = makeDeleteBtn([self, levelKey, count](CCMenuItemSpriteExtra*) {
-            if (!self || !tryBeginBusyAction(self->m_busy)) return;
+        auto delBtn = makeDeleteBtn([this, levelKey, count](CCMenuItemSpriteExtra*) {
+            Ref<LevelBrowserLayer> self(this);
+            if (!tryBeginBusyAction(self->m_busy)) return;
             createQuickPopup(
                 "ARE YOU SURE?",
                 ("PERMANENTLY DELETE all " + std::to_string(count) + " commits for \"" + shorten(levelKey, 48)

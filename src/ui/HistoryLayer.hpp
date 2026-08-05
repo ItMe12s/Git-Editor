@@ -10,6 +10,7 @@
 #include <Geode/binding/EditorPauseLayer.hpp>
 #include <Geode/binding/LevelEditorLayer.hpp>
 #include <Geode/ui/Popup.hpp>
+#include <Geode/utils/async.hpp>
 #include <alphalaneous.alphas-ui-pack/include/API.hpp>
 
 #include <cocos2d.h>
@@ -26,7 +27,7 @@ class HistoryLayer : public geode::Popup {
         float rowWidth,
         bool squashMode,
         bool selected,
-        geode::Ref<HistoryLayer> layer
+        HistoryLayer* layer
     );
 
 public:
@@ -37,10 +38,16 @@ public:
     );
 
 protected:
+    struct HistoryLoadResult {
+        LevelKey                   levelKey;
+        std::vector<CommitSummary> commits;
+    };
+
     bool init(std::string levelKey, LevelEditorLayer* editor, EditorPauseLayer* pauseLayer);
 
     void onClose(cocos2d::CCObject* sender) override;
     bool closeOnce(cocos2d::CCObject* sender = nullptr);
+    static HistoryLoadResult loadHistory(LevelKey levelKey, LevelKey const& activeEditorLevelKey);
     void rebuildList();
     void renderList(std::vector<CommitSummary> commits);
     void rebuildHeader();
@@ -68,6 +75,7 @@ protected:
     std::vector<CommitSummary>   m_commits;
     std::set<CommitId>           m_selected;
     cocos2d::CCMenu*             m_headerMenu = nullptr;
+    geode::async::TaskHolder<HistoryLoadResult> m_loadTask;
 };
 
 } // namespace git_editor

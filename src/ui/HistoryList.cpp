@@ -18,14 +18,10 @@ using namespace geode::prelude;
 
 namespace git_editor {
 
-namespace {
-
-struct HistoryLoadResult {
-    LevelKey                   levelKey;
-    std::vector<CommitSummary> commits;
-};
-
-HistoryLoadResult loadHistory(LevelKey levelKey, LevelKey const& activeEditorLevelKey) {
+HistoryLayer::HistoryLoadResult HistoryLayer::loadHistory(
+    LevelKey levelKey,
+    LevelKey const& activeEditorLevelKey
+) {
     auto commits = sharedGitService().listSummaries(levelKey);
     if (commits.empty() && !activeEditorLevelKey.empty() && activeEditorLevelKey != levelKey) {
         auto activeCommits = sharedGitService().listSummaries(activeEditorLevelKey);
@@ -37,28 +33,23 @@ HistoryLoadResult loadHistory(LevelKey levelKey, LevelKey const& activeEditorLev
     return { std::move(levelKey), std::move(commits) };
 }
 
-} // namespace
-
 void HistoryLayer::rebuildList() {
     if (m_listState.closing || !m_scroll) return;
 
     auto* editor = m_editor.data();
     auto const activeKey = (editor && editor->m_level) ? levelKeyFor(editor->m_level) : "";
-    Ref<HistoryLayer> self(this);
     std::string levelKey = m_levelKey;
 
     scroll_list_popup::loadAsync<HistoryLoadResult>(
         m_listState,
+        m_loadTask,
         m_scroll,
         "Loading commits...",
         "git-editor-history-loading"_spr,
         [levelKey, activeKey]() { return loadHistory(levelKey, activeKey); },
-        [self](std::uint64_t serial) {
-            return self && !scroll_list_popup::isStaleLoad(self->m_listState, serial);
-        },
-        [self](HistoryLoadResult loaded) mutable {
-            self->m_levelKey = std::move(loaded.levelKey);
-            self->renderList(std::move(loaded.commits));
+        [this](HistoryLoadResult loaded) mutable {
+            m_levelKey = std::move(loaded.levelKey);
+            renderList(std::move(loaded.commits));
         }
     );
 }
@@ -84,12 +75,10 @@ void HistoryLayer::renderList(std::vector<CommitSummary> loadedCommits) {
         return;
     }
 
-    Ref<HistoryLayer> self(this);
-
     for (auto const& c : commits) {
         bool const selected = m_squashMode && m_selected.count(c.id) > 0;
         content->addChild(history_rows::createCommitRow(
-            c, rowWidth, m_squashMode, selected, self
+            c, rowWidth, m_squashMode, selected, this
         ));
     }
 
@@ -101,20 +90,18 @@ void HistoryLayer::rebuildHeader() {
     if (m_listState.closing || !m_headerMenu) return;
     m_headerMenu->removeAllChildren();
 
-    Ref<HistoryLayer> self(this);
-
     auto modeLabel = m_squashMode ? "Exit Squash" : "Squash Mode";
     auto modeTex   = m_squashMode ? "GJ_button_06.png" : "GJ_button_04.png";
     auto modeSpr   = ButtonSprite::create(modeLabel, "bigFont.fnt", modeTex, .8f);
     modeSpr->setScale(.45f);
     auto modeBtn = CCMenuItemExt::createSpriteExtra(modeSpr,
-        [self](CCMenuItemSpriteExtra*) {
-            if (!self) return;
-            self->m_squashMode = !self->m_squashMode;
-            self->m_selected.clear();
-            self->rebuildHeader();
-            if (self->m_commits.empty()) self->rebuildList();
-            else                         self->renderList(self->m_commits);
+        [this](CCMenuItemSpriteExtra*) {
+            if (m_listState.closing) return;
+            m_squashMode = !m_squashMode;
+            m_selected.clear();
+            rebuildHeader();
+            if (m_commits.empty()) rebuildList();
+            else                   renderList(m_commits);
         }
     );
     modeBtn->setID("git-editor-history-mode-btn"_spr);
@@ -125,8 +112,8 @@ void HistoryLayer::rebuildHeader() {
         auto spr   = ButtonSprite::create(label.c_str(), "bigFont.fnt", "GJ_button_01.png", .8f);
         spr->setScale(.45f);
         auto squashBtn = CCMenuItemExt::createSpriteExtra(spr,
-            [self](CCMenuItemSpriteExtra*) {
-                if (self) self->onSquashPressed();
+            [this](CCMenuItemSpriteExtra*) {
+                if (!m_listState.closing) onSquashPressed();
             }
         );
         squashBtn->setID("git-editor-history-squash-btn"_spr);

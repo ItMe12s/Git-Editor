@@ -84,6 +84,7 @@ Something will eventually break. I can feel it.
 4. **(Automated)** `updateMessage` shows up in `listSummaries`.
 5. **(Automated)** `planImport` sets `noLocalCommits` when dest has no HEAD.
 6. **(Manual)** History on 50+ commits: scroll, tap, edit, no lag.
+7. **(Manual)** Test History and Levels popups: open/close rapidly with X/Esc and make sure all actions work after re-entering the editor.
 
 ## Geode index / paths / UI ids
 

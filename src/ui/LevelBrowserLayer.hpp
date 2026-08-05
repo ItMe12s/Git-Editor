@@ -7,6 +7,7 @@
 #include <Geode/binding/EditorPauseLayer.hpp>
 #include <Geode/binding/LevelEditorLayer.hpp>
 #include <Geode/ui/Popup.hpp>
+#include <Geode/utils/async.hpp>
 #include <alphalaneous.alphas-ui-pack/include/API.hpp>
 
 #include <cstdint>
@@ -34,6 +35,7 @@ protected:
     alpha::ui::AdvancedScrollLayer* m_scroll = nullptr;
     scroll_list_popup::ListState    m_listState{};
     bool m_busy = false;
+    geode::async::TaskHolder<std::vector<LevelSummary>> m_loadTask;
 };
 
 } // namespace git_editor

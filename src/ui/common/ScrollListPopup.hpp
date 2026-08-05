@@ -1,9 +1,10 @@
 #pragma once
 
-#include "GitUiActionRunner.hpp"
+#include "util/GitWorker.hpp"
 
 #include <Geode/Geode.hpp>
 #include <Geode/ui/Popup.hpp>
+#include <Geode/utils/async.hpp>
 #include <alphalaneous.alphas-ui-pack/include/API.hpp>
 
 #include <cstdint>
@@ -71,25 +72,24 @@ std::uint64_t beginLoading(
     char const* loadingId
 );
 
-template <class TResult, class Loader, class OnLoaded, class IsCurrent>
+template <class TResult, class Loader, class OnLoaded>
 void loadAsync(
     ListState& state,
+    geode::async::TaskHolder<TResult>& loadTask,
     alpha::ui::AdvancedScrollLayer* scroll,
     char const* loadingText,
     char const* loadingId,
     Loader&& loader,
-    IsCurrent&& isCurrent,
     OnLoaded&& onLoaded
 ) {
     if (state.closing || !scroll) return;
 
     auto const serial = beginLoading(state, scroll, loadingText, loadingId);
-    git_editor::ui_action_runner::runWorkerResult<TResult>(
-        std::forward<Loader>(loader),
-        [isCurrent = std::forward<IsCurrent>(isCurrent),
-         serial,
-         onLoaded = std::forward<OnLoaded>(onLoaded)](TResult result) mutable {
-            if (!isCurrent(serial)) return;
+    loadTask.spawn(
+        loadingText,
+        spawnOnGitWorker<TResult>(std::forward<Loader>(loader)),
+        [&state, serial, onLoaded = std::forward<OnLoaded>(onLoaded)](TResult result) mutable {
+            if (isStaleLoad(state, serial)) return;
             onLoaded(std::move(result));
         }
     );

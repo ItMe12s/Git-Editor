@@ -18,7 +18,7 @@ cocos2d::CCNode* createCommitRow(
     float rowWidth,
     bool squashMode,
     bool selected,
-    geode::Ref<HistoryLayer> layer
+    HistoryLayer* layer
 );
 
 } // namespace git_editor::history_rows

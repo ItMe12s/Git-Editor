@@ -1,24 +1,18 @@
 #include "GitWorker.hpp"
 
-#include <Geode/utils/async.hpp>
-
-#include <memory>
-#include <mutex>
-
 namespace git_editor {
 
-namespace {
+namespace detail {
 
-std::mutex gitWorkerMutex;
+std::mutex& gitWorkerMutex() {
+    static std::mutex mutex;
+    return mutex;
+}
 
-} // namespace
+} // namespace detail
 
 void postToGitWorker(std::function<void()> job) {
-    auto boxed = std::make_unique<std::function<void()>>(std::move(job));
-    geode::async::runtime().spawnBlocking<void>([box = std::move(boxed)]() mutable {
-        std::lock_guard lock(gitWorkerMutex);
-        (*box)();
-    });
+    spawnOnGitWorker<void>(std::move(job));
 }
 
 } // namespace git_editor
