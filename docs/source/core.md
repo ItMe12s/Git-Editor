@@ -1,21 +1,25 @@
 # core
 
-Shared types used by the main logic and import steps.
+## Summary
 
-## Main files
+Shared types used by the main logic and import steps. UI sees messages and counts, not these internal types.
 
-- `Result.hpp`: success or error wrapper (`value` / `error`)
-- `ImportPlan.hpp`: groups of import files and the data they carry
+## Files
 
-## Touches
+- `Result.hpp`: `Result<T>` alias for `std::expected<T, std::string>`
+- `ImportPlan.hpp`: `ImportPlan` plus `RevertPayload`, `ImportManyPayload`, and `InvalidImport`
 
-`GitService` and `GdgeImportPlanner` use these types. UI sees messages and counts, not the internal types.
+## Notes
 
-## You might care if
+`GitService` and `GdgeImportPlanner` use these types.
 
-Contributors only.
+## Related
 
-## Code
+- [README.md](README.md)
+- [service.md](service.md)
+- [store.md](store.md)
 
-- [src/core/Result.hpp](../../src/core/Result.hpp)
-- [src/core/ImportPlan.hpp](../../src/core/ImportPlan.hpp)
+## Source
+
+- `src/core/Result.hpp`
+- `src/core/ImportPlan.hpp`

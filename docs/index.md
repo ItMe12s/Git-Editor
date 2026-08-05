@@ -1,6 +1,9 @@
 # Git Editor docs
 
-Git Editor is a Geometry Dash mod. It saves named snapshots of your level in the editor. You can go back in time, merge work from friends, and back up history offline.
+## Summary
+
+Git Editor is a Geometry Dash mod. It saves named snapshots of your level in the editor.
+You can go back in time, merge work from friends, and back up history offline.
 
 ## For players
 
@@ -18,7 +21,16 @@ Git Editor is a Geometry Dash mod. It saves named snapshots of your level in the
 - [known-issues.md](known-issues.md): quirks and edge cases
 - [changelog.md](../changelog.md): read before updating, some versions wipe saves
 
-## Also in this repo
+## Related
 
-- [testing-checklist.md](../testing-checklist.md): test checklist after code changes
-- [support.md](../support.md): support links
+- [features/README.md](features/README.md)
+- [source/README.md](source/README.md)
+- [known-issues.md](known-issues.md)
+- [building.md](building.md)
+- [testing-checklist.md](../testing-checklist.md)
+- [support.md](../support.md)
+
+## Source
+
+- `docs/`
+- `mod.json`

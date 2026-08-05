@@ -1,26 +1,33 @@
 # settings
 
-Code that runs when you change mod settings in Geode.
+## Summary
 
-## Main files
+Code that runs when you change mod settings in Geode. Setting keys and display names live in `mod.json`.
+
+## Files
 
 - `RunAutomatedTestSetting.cpp`: runs in-mod test suites, writes `test-result.txt`
 
 ## Notes
 
-- Top Row Button Size Multiplier: scales pause menu Git buttons
-- Compress Export Files: zip `.gdge` exports when on
-- Run Automated Test: developer check. See [test.md](test.md)
-
-## Touches
+| Key | Display name |
+| --- | --- |
+| `size-multiplier` | Top Row Button Size Multiplier |
+| `compress-export-files` | Compress Export Files |
+| `run-automated-test` | Run Automated Test |
 
 Button size is read in `EditorPauseLayerHook`. Compress is read during export in store and service code.
+Automated test details live in [test.md](test.md).
 
-## You might care if
+## Related
 
-Buttons feel too small or exports should be smaller on disk.
+- [README.md](README.md)
+- [test.md](test.md)
+- [hooks.md](hooks.md)
+- [../features/README.md](../features/README.md)
+- [../../mod.json](../../mod.json)
 
-## Code
+## Source
 
-- [mod.json](../../mod.json)
-- [src/settings/RunAutomatedTestSetting.cpp](../../src/settings/RunAutomatedTestSetting.cpp)
+- `mod.json`
+- `src/settings/RunAutomatedTestSetting.cpp`

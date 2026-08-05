@@ -1,6 +1,9 @@
 # Source folder map
 
-Code lives under `src/`. Menus talk to **service/**. Service talks to **store/** for saved files. Slow work uses **util/** on a background thread.
+## Summary
+
+Code lives under `src/`. Menus talk to `service/`.
+Service talks to `store/` for saved files. Slow work uses `util/` on a background path.
 
 ## Flow
 
@@ -18,8 +21,8 @@ Code lives under `src/`. Menus talk to **service/**. Service talks to **store/**
 - `model/`: level state, parser, header merge. [model.md](model.md)
 - `diff/`: changes between two saved versions. [diff.md](diff.md)
 - `identity/`: stable object IDs across saves. [identity.md](identity.md)
-- `store/`: SQLite database and `.gdge` files. [store.md](store.md)
-- `service/`: commit, checkout, revert, merge, plus `GdgeExport` (write `.gdge`) and `GdgeImportMerge` (multi-file import). [service.md](service.md)
+- `store/`: SQLite database, `.gdge` packages, and export build. [store.md](store.md)
+- `service/`: commit, checkout, revert, merge, and multi-file import. [service.md](service.md)
 - `editor/`: level key and editor read/write. [editor.md](editor.md)
 - `hooks/`: pause menu entry. [hooks.md](hooks.md)
 - `ui/`: popups and labels. [ui.md](ui.md)
@@ -28,6 +31,15 @@ Code lives under `src/`. Menus talk to **service/**. Service talks to **store/**
 - `test/`: in-mod automated suites. [test.md](test.md)
 - `sqlite/`: built-in SQLite library. [sqlite.md](sqlite.md)
 
-## See also
+## Related
 
-- [docs/index.md](../index.md): all docs
+- [../index.md](../index.md)
+- [../features/README.md](../features/README.md)
+- [service.md](service.md)
+- [store.md](store.md)
+- [ui.md](ui.md)
+- [test.md](test.md)
+
+## Source
+
+- `src/`

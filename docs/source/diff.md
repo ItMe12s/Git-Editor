@@ -1,30 +1,39 @@
 # diff
 
+## Summary
+
 Compares two saved level versions and stores only the changes. Replays those changes to rebuild history.
+`GitService` commits and rebuilds state. History UI shows text from changes via `DeltaText`.
 
-## Main files
+## Files
 
-- `Delta.hpp` / `Delta.cpp`: change data and JSON save/load
-- `Differ.hpp` / `Differ.cpp`: compare, apply, undo a change set, conflict list
+- `Delta.hpp` / `Delta.cpp`: change data and JSON save/load (`dumpDelta` / `parseDelta`)
+- `Differ.hpp` / `Differ.cpp`: `diff`, `apply`, and conflict list
 
 ## Notes
 
 - `h`: header changes
+- `hr`: raw header
 - `+`: new objects
 - `-`: removed objects
 - `~`: changed objects
-- Each level has one straight timeline of saves. No split timelines.
-- Conflicts come up when an object is already gone, never existed, or has moved on from the version the change expected. Revert shows these in a short alert.
+- Each level has one straight timeline of saves. No split timelines
+- Conflicts come up when an object is already gone, never existed, or has moved on from the version the change expected.
+  Revert shows these in a short alert
+- There is no `undo` API. Revert is `diff` plus `apply` inside `GitService::prepareRevert`
 
-## Touches
+## Related
 
-`GitService` commits and rebuilds state. History UI shows text from changes via `DeltaText`.
+- [README.md](README.md)
+- [model.md](model.md)
+- [identity.md](identity.md)
+- [service.md](service.md)
+- [ui.md](ui.md)
+- [../known-issues.md](../known-issues.md)
 
-## You might care if
+## Source
 
-Revert shows a conflict summary. Checkout always saves a new snapshot instead of jumping back silently.
-
-## Code
-
-- [src/diff/Delta.hpp](../../src/diff/Delta.hpp)
-- [src/diff/Differ.cpp](../../src/diff/Differ.cpp)
+- `src/diff/Delta.hpp`
+- `src/diff/Delta.cpp`
+- `src/diff/Differ.hpp`
+- `src/diff/Differ.cpp`

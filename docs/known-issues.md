@@ -1,16 +1,19 @@
 # Known issues
 
+## Summary
+
 Limits and quirks to know before you play or update.
+For version-specific wipe warnings, read the changelog.
 
-## See also
+## Caps
 
-- [docs/index.md](index.md): all docs
-- [changelog.md](../changelog.md): version notes and save wipe warnings
+- No branches or rebasing. Each level has one straight timeline
+- Commit messages are capped at 120 characters in the UI
+- Large or sweeping edits may show as add plus remove instead of modify. See [source/identity.md](source/identity.md)
 
 ## While you play
 
 - History and Levels lists may lag or freeze briefly while saving
-- Big edits may look like many objects were deleted and re-added, not edited. See [source/identity.md](source/identity.md)
 
 ## Exports and imports
 
@@ -26,3 +29,17 @@ Limits and quirks to know before you play or update.
 
 - The code expects the database to enforce linked-table rules (SQLite foreign keys on)
 - Reading history on screen while saving in the background can sometimes clash
+
+## Related
+
+- [index.md](index.md)
+- [../changelog.md](../changelog.md)
+- [features/README.md](features/README.md)
+- [source/identity.md](source/identity.md)
+- [source/store.md](source/store.md)
+
+## Source
+
+- `src/ui/CommitMessageLayer.hpp`
+- `src/identity/Matcher.cpp`
+- `src/store/CommitStore.cpp`

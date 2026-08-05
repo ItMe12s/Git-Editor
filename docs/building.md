@@ -1,12 +1,31 @@
 # Building from source
 
-Have Geode installed. Check [CMakeLists.txt](../CMakeLists.txt) and [mod.json](../mod.json) for versions and dependencies, then build like any other Geode mod.
+## Summary
 
-## See also
+Have Geode installed. Build like any other Geode mod.
+SQLite is vendored under `src/sqlite/`, so you do not install it separately.
 
-- [docs/index.md](index.md): all docs
+## Targets
 
-## Code
+- Mod version: `v1.0.0-beta.14`
+- Geode: `5.8.2`
+- Geometry Dash: `2.2081`
 
-- [CMakeLists.txt](../CMakeLists.txt)
-- [mod.json](../mod.json)
+## Required dependencies
+
+- `geode.node-ids` `>=v1.23.3`
+- `cvolton.level-id-api` `>=2.0.0`
+- `alphalaneous.alphas-ui-pack` `>=v1.1.1`
+
+## Related
+
+- [index.md](index.md)
+- [source/README.md](source/README.md)
+- [source/sqlite.md](source/sqlite.md)
+- [../mod.json](../mod.json)
+
+## Source
+
+- `CMakeLists.txt`
+- `mod.json`
+- `src/sqlite/sqlite3.c`
